@@ -1,0 +1,14 @@
+# India policy (DPDP Act 2023). Research-based defaults, not legal advice. TODO: legal review.
+country: IN
+minor_age: 18                # under 18 => verifiable parental consent required
+search_window_days: 30       # guests can search an event for this many days after it ends
+retention:
+  selfie: none               # selfies are never stored (in memory only)
+  liveness_frames: none
+  face_embeddings_days: 30   # deleted with the event's key at end of search window
+  photos_days: 365           # TODO: confirm with product/legal
+  audit_log_days: 365
+allowed_access_modes:
+  - invite_link
+  - event_code
+  - qr_code

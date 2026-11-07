@@ -1,0 +1,25 @@
+# Local hooks use the tool versions pinned in pyproject.toml / package.json,
+# so no extra dependency is pulled from the network.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --check
+        language: system
+        types: [python]
+      - id: check-licences
+        name: check licences
+        entry: uv run python scripts/check_licences.py
+        language: system
+        pass_filenames: false
+      - id: no-env-file
+        name: refuse committing .env
+        entry: .env files must not be committed
+        language: fail
+        files: '(^|/)\.env$'

@@ -1,0 +1,3 @@
+# components/
+
+Shared presentational components.

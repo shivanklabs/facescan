@@ -1,0 +1,19 @@
+# Which adapter implements each port. Resolution order: plan > region > defaults.
+# Paid adapters (aws_rekognition, aws_s3, aws_kms, sms_otp) can be added later by config only.
+defaults:
+  face_detector: yunet
+  face_embedder: auraface
+  face_embedder_second_opinion: sface
+  face_quality: ofiq
+  liveness: silent_face
+  vector_search: in_memory
+  object_storage: minio
+  login: [passkey, email_link]
+  key_manager: env_master_key
+  job_queue: postgres
+
+regions:
+  in: {}  # India: defaults; data stays in-region
+
+plans:
+  free: {}

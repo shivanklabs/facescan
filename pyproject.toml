@@ -1,0 +1,46 @@
+[project]
+name = "facescan"
+version = "0.0.0"
+description = "FaceScan uv workspace root (not a package)"
+requires-python = ">=3.12"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["backend", "ai"]
+
+[tool.uv.sources]
+facescan-ai = { workspace = true }
+facescan-backend = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "ruff==0.17.4",
+    "mypy==2.4.1",
+    "pytest==9.2.0",
+    "pytest-asyncio==1.4.1.post1",
+    "httpx==0.28.1",
+    "pre-commit==4.7.0",
+    "types-PyYAML",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["frontend", "ai/benchmark/datasets"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "N", "SIM", "ANN"]
+ignore = ["S101"]  # assert is fine in tests
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "ANN"]
+"database/migrations/**" = ["ANN"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = ["backend", "ai/src"]
+explicit_package_bases = true

@@ -1,0 +1,52 @@
+{
+  "models": [
+    {
+      "name": "yunet",
+      "version": "2023mar",
+      "file": "face_detection_yunet_2023mar.onnx",
+      "source_url": "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "licence": "MIT"
+    },
+    {
+      "name": "sface",
+      "version": "2021dec",
+      "file": "face_recognition_sface_2021dec.onnx",
+      "source_url": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+      "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+      "licence": "Apache-2.0"
+    },
+    {
+      "name": "auraface",
+      "version": "v1",
+      "file": "glintr100.onnx",
+      "source_url": "https://huggingface.co/fal/AuraFace-v1/resolve/main/glintr100.onnx",
+      "sha256": "a7933ea5330113b01c9b60351d8f4c33003f145d8470ac5f0e52ee2effe25c60",
+      "licence": "Apache-2.0"
+    },
+    {
+      "name": "minifasnet_v2",
+      "version": "2.7_80x80",
+      "file": "2.7_80x80_MiniFASNetV2.onnx",
+      "source_url": "TODO: in-house ONNX export of https://raw.githubusercontent.com/minivision-ai/Silent-Face-Anti-Spoofing/master/resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth",
+      "sha256": "TODO",
+      "licence": "Apache-2.0"
+    },
+    {
+      "name": "minifasnet_v1se",
+      "version": "4_0_0_80x80",
+      "file": "4_0_0_80x80_MiniFASNetV1SE.onnx",
+      "source_url": "TODO: in-house ONNX export of https://raw.githubusercontent.com/minivision-ai/Silent-Face-Anti-Spoofing/master/resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth",
+      "sha256": "TODO",
+      "licence": "Apache-2.0"
+    },
+    {
+      "name": "ofiq",
+      "version": "TODO",
+      "file": "TODO",
+      "source_url": "TODO: pick the OFIQ release and model files",
+      "sha256": "TODO",
+      "licence": "MIT (code); bundled models TODO review"
+    }
+  ]
+}
