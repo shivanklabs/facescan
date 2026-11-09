@@ -4,6 +4,10 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from app import __version__
+from app.adapters.storage.local_filesystem_download import (
+    build_local_storage,
+    create_download_router,
+)
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
@@ -21,7 +25,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     Purpose: build the FastAPI application.
     Inputs: optional Settings (tests inject their own); defaults to environment settings.
     Outputs: a configured FastAPI instance.
-    Side effects: configures root logging (with the redaction filter).
+    Side effects: configures root logging (with the redaction filter); mounts the signed
+        storage download route when FACESCAN_STORAGE_SIGNING_KEY is set.
     """
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -39,6 +44,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> HealthResponse:
         """Purpose: liveness probe. Inputs: none. Outputs: status + version. Side effects: none."""
         return HealthResponse(status="ok", version=__version__)
+
+    # Signed downloads for the local filesystem storage adapter (invariant 6).
+    if settings.storage_signing_key is not None:
+        app.include_router(create_download_router(build_local_storage(settings)))
 
     # TODO: include module routers (identity, events, ingest, gallery, consent, admin, ...).
     return app

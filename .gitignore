@@ -30,6 +30,7 @@ ai/models/weights/
 ai/benchmark/datasets/*
 !ai/benchmark/datasets/README.md
 uploads/
+var/
 *.jpg
 *.jpeg
 *.png

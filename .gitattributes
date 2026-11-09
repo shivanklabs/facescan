@@ -1,6 +1,9 @@
+# Force LF everywhere (Windows and Linux), so scripts and SQL behave the same on both.
 * text=auto eol=lf
-*.sh text eol=lf
 *.png binary
 *.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
 *.onnx binary
 *.pth binary

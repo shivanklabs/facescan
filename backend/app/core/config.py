@@ -16,6 +16,20 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     db_url: SecretStr | None = None
+
+    # Local filesystem storage (default adapter). The signing key is required to serve files.
+    storage_root: str = "var/storage"
+    storage_bucket_photos: str = Field(
+        default="facescan-photos", pattern=r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"
+    )
+    storage_bucket_derivatives: str = Field(
+        default="facescan-derivatives", pattern=r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"
+    )
+    storage_signing_key: SecretStr | None = Field(default=None, min_length=32)
+    storage_url_expiry_minutes: int = Field(default=5, ge=1, le=60)
+    storage_public_base_url: str = "http://localhost:8000"
+
+    # S3-compatible storage (production placeholder, decided in Phase 3).
     storage_endpoint: str | None = None
     storage_access_key: SecretStr | None = None
     storage_secret_key: SecretStr | None = None

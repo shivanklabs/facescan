@@ -1,2 +1,2 @@
 # workflows/
-`ci.yml`: lint and tests for backend, ai and frontend.
+`ci.yml`: lint, licence check and tests via `uv run tasks` (Python job) and npm (frontend job).

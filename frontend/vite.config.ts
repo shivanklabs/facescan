@@ -18,7 +18,8 @@ export default defineConfig({
     // '/src/' resolves from the project root in both Vite and Vitest.
     alias: [{ find: /^@\//, replacement: '/src/' }],
   },
-  server: { host: true, port: 5173, strictPort: true },
+  // Dev server listens on this machine only (not the local network).
+  server: { host: '127.0.0.1', port: 5173, strictPort: true },
   test: {
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],

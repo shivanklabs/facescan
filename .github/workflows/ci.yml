@@ -14,13 +14,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv python install 3.12
-      - run: uv sync --all-packages
-      - run: uv run ruff check backend ai database scripts
-      - run: uv run ruff format --check backend ai database scripts
-      - run: uv run mypy backend/app ai/src
-      - run: uv run python scripts/check_licences.py
-      - run: cd backend && uv run pytest
-      - run: cd ai && uv run pytest
+      - run: uv sync --locked
+      - run: uv run tasks lint --only python
+      - run: uv run tasks licences
+      - run: uv run tasks test --only python
 
   frontend:
     runs-on: ubuntu-latest

@@ -14,7 +14,8 @@ enforces the forbidden list. Every model must also appear in `ai/models/models.l
 
 Notes
 - **AuraFace repo also ships `scrfd_10g_bnkps.onnx`, `1k3d68.onnx`, `2d106det.onnx`,
-  `genderage.onnx`.** Only `glintr100.onnx` is approved. The others are not used.
+  `genderage.onnx`.** Only `glintr100.onnx` is approved. `scripts/check_licences.py` fails if
+  any of the others, or any `scrfd_*` / `buffalo_*` file, is present.
 - **OFIQ**: OFIQ code is MIT. Its `LICENSE.md` table lists some bundled files as Apache 2.0 and
   two entries as "mixed". TODO: review each bundled model used by `quality/ofiq.py` before shipping.
 - Silent-Face ships PyTorch `.pth` weights. TODO: convert to ONNX in-house and record the
@@ -29,8 +30,9 @@ Notes
 | Package | Licence |
 |---|---|
 | FastAPI, Pydantic, pydantic-settings, SQLAlchemy, Alembic, Uvicorn, httpx | MIT / BSD |
+| httpx2 (dev only, Starlette test client) | BSD-3-Clause |
+| gitleaks (pre-commit hook, dev only) | MIT |
 | psycopg | LGPL-3.0 (dynamically linked, unmodified) |
-| pgvector (Python) | MIT |
 | boto3 | Apache-2.0 |
 | PyYAML | MIT |
 | webauthn (py_webauthn) | BSD-3-Clause |
@@ -39,5 +41,3 @@ Notes
 | numpy, scikit-learn | BSD-3-Clause |
 | React, React Router, Vite, vite-plugin-pwa, i18next | MIT |
 | PostgreSQL | PostgreSQL licence |
-| pgvector (extension) | PostgreSQL licence |
-| MinIO | AGPL-3.0, used as an unmodified separate network service. TODO: legal review before production |

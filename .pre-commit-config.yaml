@@ -1,6 +1,17 @@
-# Local hooks use the tool versions pinned in pyproject.toml / package.json,
-# so no extra dependency is pulled from the network.
+# Run by `uv run tasks lint` (pre-commit run --all-files). Local hooks use the tool versions
+# pinned in pyproject.toml. gitleaks is pinned to an exact release; pre-commit builds it on first
+# use, so nothing needs installing on Windows, Linux or CI.
 repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      # Staged changes (what the next commit will contain).
+      - id: gitleaks
+      # Unstaged changes to tracked files.
+      - id: gitleaks
+        alias: gitleaks-unstaged
+        name: Detect hardcoded secrets (unstaged changes)
+        entry: gitleaks git --pre-commit --redact --verbose
   - repo: local
     hooks:
       - id: ruff-check

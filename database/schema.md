@@ -22,4 +22,4 @@ All IDs are UUIDs. Every table except `users` and `passkeys` has `event_id` with
 | jobs | Postgres job queue | id, event_id, type, payload, status, attempts, run_after, locked_by |
 
 Indexes on all lookup fields (event_id first). Embeddings are stored encrypted; vector search
-happens in memory after decryption (ADR 0004). pgvector is installed for future use.
+happens in memory after decryption (ADR 0004). pgvector is not used.
