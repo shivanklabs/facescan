@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     upload_max_pixels: int = Field(default=60_000_000, ge=1)
     selfie_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
     web_copy_max_side: int = Field(default=2048, ge=256, le=8192)
+    # Event-photo upload parts over 1 MB spool here while a request is parsed (deleted when it
+    # ends). Must be under var/ (git-ignored). Selfies never spool.
+    upload_spool_dir: str = "var/tmp/uploads"
 
     # TEMPORARY DEV-ONLY ACCESS (stand-in until login is built): a single admin bearer token.
     # Accepted only when env == "dev"; the API refuses to start if it is set anywhere else.

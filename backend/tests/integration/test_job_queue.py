@@ -85,3 +85,35 @@ def test_complete_and_stale_lock_recovery(ctx: AppContext) -> None:
     ctx.queue.complete(again)
     with event_transaction(ctx.sessions, event_id) as s:
         assert s.execute(text("SELECT status FROM jobs")).scalar() == "done"
+
+
+def test_payloads_may_hold_only_ids(ctx: AppContext) -> None:
+    import pytest
+    from app.adapters.queue.postgres_job_queue import InvalidJobPayloadError, validate_payload
+
+    good = {"photo_id": str(uuid.uuid4()), "reason": "collection_approved", "n": 3, "force": True}
+    assert validate_payload(good) == good
+    for bad in (
+        {"email": "guest@example.com"},
+        {"name": "Asha Rao"},
+        {"note": "free text with spaces"},
+        {"vector": [0.1, 0.2]},
+        {"Key": "x"},
+        {"blob": "A" * 65},
+    ):
+        with pytest.raises(InvalidJobPayloadError):
+            validate_payload(bad)
+    event_id = create_event(ctx, "Payload", "IN", "test").event_id
+    with pytest.raises(InvalidJobPayloadError), event_transaction(ctx.sessions, event_id) as s:
+        ctx.queue.enqueue(s, event_id, "noop", {"email": "guest@example.com"})
+
+
+def test_every_stored_job_payload_holds_only_ids(ctx: AppContext) -> None:
+    """Scans the jobs table after the other tests in this module ran."""
+    from app.adapters.queue.postgres_job_queue import validate_payload
+
+    with scoped_transaction(ctx.sessions, DISPATCH_SCOPE) as s:
+        payloads = [row[0] for row in s.execute(text("SELECT payload FROM jobs"))]
+    assert payloads
+    for payload in payloads:
+        validate_payload(payload)

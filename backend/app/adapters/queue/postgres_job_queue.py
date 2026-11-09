@@ -1,10 +1,13 @@
 """JobQueue adapter on the Postgres jobs table using SELECT ... FOR UPDATE SKIP LOCKED.
 
-Claiming runs in the 'dispatch' RLS scope (jobs rows only; no biometric tables). A job that
+Claiming runs in the 'dispatch' RLS scope (jobs rows only; no biometric tables). Because that
+scope can read every job's payload, payloads may hold only ids: enqueue() refuses anything but
+short lowercase codes, UUIDs, integers and booleans (validate_payload). A job that
 stays 'running' longer than the lock timeout (crashed worker) becomes claimable again. Failed
 attempts are retried with exponential backoff until max_attempts, then marked 'failed'.
 """
 
+import re
 from uuid import UUID
 
 from sqlalchemy import text
@@ -14,6 +17,34 @@ from app.db.event_scope import DISPATCH_SCOPE, scoped_transaction
 from app.jobs.models import Job
 from app.ports.capabilities import Capabilities
 from app.ports.job_queue import ClaimedJob
+
+_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+_CODE_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+MAX_PAYLOAD_KEYS = 10
+
+
+class InvalidJobPayloadError(ValueError):
+    """A job payload holds something other than ids (it might carry personal data)."""
+
+
+def validate_payload(payload: dict[str, object]) -> dict[str, object]:
+    """
+    Purpose: allow only id-like payloads (keys: snake_case; values: UUID strings, short
+        lowercase codes, ints, bools). Raises InvalidJobPayloadError naming the key only.
+    """
+    if len(payload) > MAX_PAYLOAD_KEYS:
+        raise InvalidJobPayloadError("too many payload keys")
+    for key, value in payload.items():
+        if not _KEY_RE.fullmatch(key):
+            raise InvalidJobPayloadError("payload key is not snake_case")
+        if isinstance(value, bool | int):
+            continue
+        if isinstance(value, str) and (_UUID_RE.fullmatch(value) or _CODE_RE.fullmatch(value)):
+            continue
+        raise InvalidJobPayloadError(f"payload value for '{key}' is not an id")
+    return payload
+
 
 _CLAIM_SQL = text(
     """
@@ -71,9 +102,17 @@ class PostgresJobQueue:
     def enqueue(
         self, session: Session, event_id: UUID, job_type: str, payload: dict[str, object]
     ) -> UUID:
-        """Purpose: insert a queued job in the caller's event transaction. Outputs: job id."""
+        """
+        Purpose: insert a queued job in the caller's event transaction. Outputs: job id.
+        Raises InvalidJobPayloadError unless the payload holds only ids.
+        """
+        if not _CODE_RE.fullmatch(job_type):
+            raise InvalidJobPayloadError("job type must be a short lowercase code")
         job = Job(
-            event_id=event_id, type=job_type, payload=payload, max_attempts=self._max_attempts
+            event_id=event_id,
+            type=job_type,
+            payload=validate_payload(payload),
+            max_attempts=self._max_attempts,
         )
         session.add(job)
         session.flush()

@@ -10,11 +10,41 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
+    services:
+      # Throwaway database for the database, RLS and security tests. Only reachable from this
+      # job; trust auth so no password is stored anywhere. The app itself connects as the
+      # non-superuser facescan role created by `tasks db-init`.
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      FACESCAN_ENV: test
+      FACESCAN_DB_HOST: localhost
+      FACESCAN_DB_PORT: "5432"
+      FACESCAN_DB_ADMIN_USER: postgres
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv python install 3.12
       - run: uv sync --locked
+      - name: Generate a random facescan role password for this run
+        run: |
+          pw="$(openssl rand -hex 24)"
+          echo "::add-mask::$pw"
+          echo "FACESCAN_DB_PASSWORD=$pw" >> "$GITHUB_ENV"
+          echo "FACESCAN_DB_URL=postgresql+psycopg://facescan:$pw@localhost:5432/facescan" >> "$GITHUB_ENV"
+      - name: Create .env with random local secrets
+        run: uv run python -c "from scripts.tasks import create_env_file; create_env_file()"
+      - run: uv run tasks db-init
+      - run: uv run tasks db-migrate
       - run: uv run tasks lint --only python
       - run: uv run tasks licences
       - run: uv run tasks test --only python

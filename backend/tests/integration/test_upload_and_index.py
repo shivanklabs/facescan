@@ -197,3 +197,75 @@ def test_dev_routes_need_the_token(api: TestClient, path: str) -> None:
     assert anonymous.get(path).status_code == 401
     wrong = TestClient(api.app, headers={"Authorization": "Bearer " + "x" * 40})
     assert wrong.get(path).status_code == 401
+
+
+def big_png() -> bytes:
+    """A valid PNG over 1 MB (random pixels do not compress)."""
+    import numpy as np
+
+    pixels = np.random.default_rng(5).integers(0, 256, size=(700, 700, 3), dtype=np.uint8)
+    pixels[0, 0] = (1, 1, 0)  # FakeFaceAnalyzer marker: person 1, one face
+    buf = io.BytesIO()
+    Image.fromarray(pixels).save(buf, format="PNG")
+    assert len(buf.getvalue()) > 1024 * 1024
+    return buf.getvalue()
+
+
+def test_large_upload_parts_spool_only_under_the_spool_dir_and_are_deleted(
+    api: TestClient, ctx: AppContext, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.multipart import SpoolDirMultiPartParser
+
+    spools: list[object] = []
+    original = SpoolDirMultiPartParser.new_spool
+
+    def recording(self: SpoolDirMultiPartParser) -> object:
+        spool = original(self)
+        spools.append(spool)
+        return spool
+
+    monkeypatch.setattr(SpoolDirMultiPartParser, "new_spool", recording)
+    event_id = new_event(api)
+    response = upload(api, event_id, [big_png()])
+    assert response.status_code == 201, response.text
+    spool_dir = Path(ctx.settings.upload_spool_dir)
+    rolled = [s for s in spools if getattr(s, "_rolled", False)]
+    assert rolled, "the >1 MB part should have been spooled to disk"
+    for spool in rolled:
+        path = Path(getattr(spool, "_file").name)  # noqa: B009
+        assert path.parent == spool_dir
+        assert not path.exists()
+    assert list(spool_dir.iterdir()) == []
+
+
+def test_cluster_membership_is_not_stored_in_plaintext(
+    api: TestClient, ctx: AppContext, db_schema: str
+) -> None:
+    from tests.integration.test_job_queue import drain
+
+    drain(ctx)
+    event_id = new_event(api)
+    body = upload(api, event_id, [make_png(1, 2, (64 + i, 48)) for i in range(3)]).json()
+    api.post(f"/events/{event_id}/collections/{body['collection_id']}/approve")
+    while run_one(ctx, "test-worker"):
+        pass
+    with ctx.engine.connect() as conn:
+        columns = {
+            r[0]
+            for r in conn.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = :s AND table_name IN ('faces', 'clusters')"
+                ),
+                {"s": db_schema},
+            )
+        }
+    assert not columns & {"cluster_id", "attached_weak", "prototype_encrypted"}
+    with event_transaction(ctx.sessions, uuid.UUID(event_id)) as s:
+        face_ids = [str(r[0]) for r in s.execute(text("SELECT id FROM faces"))]
+        payloads = [bytes(r[0]) for r in s.execute(text("SELECT payload_encrypted FROM clusters"))]
+    assert face_ids and payloads
+    for payload in payloads:
+        assert payload.startswith(b"FSD1")
+        for face_id in face_ids:
+            assert face_id.encode() not in payload

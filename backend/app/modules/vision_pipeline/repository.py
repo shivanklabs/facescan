@@ -1,4 +1,4 @@
-"""Encrypted storage of an event's faces, clusters and calibration.
+"""Encrypted storage of an event's faces, clusters (prototypes and membership) and calibration.
 
 Vectors are packed as little-endian float32 + base64 inside JSON, then sealed with the event
 data key; the associated data names the event, the table and the row (app/core/crypto.py).
@@ -107,32 +107,29 @@ def save_event_model(
     data_key: bytes,
     key_version: int,
 ) -> None:
-    """Purpose: store weak flags, clusters (encrypted prototypes) and encrypted calibration."""
+    """Purpose: store weak flags, clusters (prototypes and membership encrypted together) and
+    encrypted calibration."""
     faces = {f.id: f for f in session.scalars(select(Face).where(Face.event_id == event_id))}
     for face_id, weak in built.weak.items():
         faces[face_id].weak = weak
-        faces[face_id].cluster_id = None
-        faces[face_id].attached_weak = False
     for number, cluster in enumerate(built.clusters):
         row = Cluster(
             event_id=event_id,
             cluster_no=number,
             size=len(cluster.members) + len(cluster.attached_weak),
-            prototype_encrypted=b"",
+            payload_encrypted=b"",
             key_version=key_version,
         )
         session.add(row)
         session.flush()
-        row.prototype_encrypted = seal(
-            data_key,
-            json.dumps(_pack(cluster.prototypes)).encode("utf-8"),
-            aad(event_id, "clusters", row.id),
+        payload = {
+            "prototypes": _pack(cluster.prototypes),
+            "members": [str(f) for f in cluster.members],
+            "attached_weak": [str(f) for f in cluster.attached_weak],
+        }
+        row.payload_encrypted = seal(
+            data_key, json.dumps(payload).encode("utf-8"), aad(event_id, "clusters", row.id)
         )
-        for face_id in cluster.members:
-            faces[face_id].cluster_id = row.id
-        for face_id in cluster.attached_weak:
-            faces[face_id].cluster_id = row.id
-            faces[face_id].attached_weak = True
     calibration = EventCalibration(
         event_id=event_id, payload_encrypted=b"", key_version=key_version
     )
@@ -153,27 +150,18 @@ def load_event_model(
     Outputs: (faces, clusters, calibration, engine versions). Raises DecryptionError.
     """
     faces = load_faces(session, event_id, data_key)
-    members: dict[UUID, list[UUID]] = {}
-    attached: dict[UUID, list[UUID]] = {}
-    for face in session.scalars(select(Face).where(Face.event_id == event_id)):
-        if face.cluster_id is not None:
-            (attached if face.attached_weak else members).setdefault(face.cluster_id, []).append(
-                face.id
-            )
     clusters = []
     for row in session.scalars(
         select(Cluster).where(Cluster.event_id == event_id).order_by(Cluster.cluster_no)
     ):
-        prototypes = _unpack(
-            json.loads(
-                open_sealed(data_key, row.prototype_encrypted, aad(event_id, "clusters", row.id))
-            )
+        payload = json.loads(
+            open_sealed(data_key, row.payload_encrypted, aad(event_id, "clusters", row.id))
         )
         clusters.append(
             BuiltCluster(
-                members=members.get(row.id, []),
-                attached_weak=attached.get(row.id, []),
-                prototypes=prototypes,
+                members=[UUID(f) for f in payload["members"]],
+                attached_weak=[UUID(f) for f in payload["attached_weak"]],
+                prototypes=_unpack(payload["prototypes"]),
             )
         )
     calibration: CalibrationDict = {}

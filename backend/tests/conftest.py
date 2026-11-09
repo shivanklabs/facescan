@@ -149,6 +149,7 @@ def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
         env="dev",
         dev_admin_token=SecretStr(DEV_TOKEN),
         storage_root=str(tmp_path / "storage"),
+        upload_spool_dir=str(tmp_path / "spool"),
         storage_signing_key=SecretStr("s" * 48),
         keys_master_key=SecretStr(base64.b64encode(secrets.token_bytes(32)).decode()),
         job_retry_base_seconds=0.01,

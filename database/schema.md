@@ -1,4 +1,4 @@
-# Schema (migration 0001)
+# Schema (migrations 0001-0002)
 
 All IDs are UUIDs (audit_log uses a bigint sequence). Timestamps are `timestamptz`.
 Every table except `users` and `passkeys` has `event_id` with row-level security ENABLED and
@@ -15,8 +15,8 @@ no BYPASSRLS). Models: `backend/app/**/models.py`; migration:
 | event_sections | sub-areas/days of an event | id, event_id, name |
 | collections | an upload batch; approval releases it for indexing | id, event_id, status (open/approved), approved_at |
 | photos | uploaded photos | id, event_id, collection_id, bucket, object_key, web_object_key, content_type, byte_size, width, height, status (quarantined/approved/indexed/failed) |
-| faces | detected faces | id, event_id, photo_id, cluster_id, attached_weak, bbox_x/y/w/h, quality, weak, embedding_encrypted (both engines + landmarks), key_version |
-| clusters | groups of faces of one person | id, event_id, cluster_no, size, prototype_encrypted, key_version |
+| faces | detected faces | id, event_id, photo_id, bbox_x/y/w/h, quality, weak, embedding_encrypted (both engines + landmarks), key_version |
+| clusters | groups of faces of one person | id, event_id, cluster_no, size, payload_encrypted (prototypes + member and attached face ids), key_version |
 | event_calibrations | per-event thresholds and engine versions | id, event_id, payload_encrypted, key_version |
 | matches | guest-to-photo candidate matches | id, event_id, user_id, photo_id, score_band, released_at |
 | claims | guest claims a photo | id, event_id, user_id, photo_id, status, reviewed_by |
@@ -25,6 +25,9 @@ no BYPASSRLS). Models: `backend/app/**/models.py`; migration:
 | event_keys | wrapped per-event data keys | id, event_id, key_version, wrapped_key (NULL = destroyed), master_key_id, destroyed_at |
 | audit_log | append-only audit trail | id, event_id (NULL only for non-event actions), actor, action, target, details, at |
 | jobs | Postgres job queue | id, event_id, type, payload, status (queued/running/done/failed), attempts, max_attempts, run_after, locked_by, locked_at, last_error |
+
+Job payloads hold ids only (enforced by `validate_payload` in the queue adapter), because the
+dispatch scope can read every job.
 
 ## Row-level security
 One policy per event table: `event_id = nullif(current_setting('app.event_id', true), '')::uuid`.
@@ -37,7 +40,8 @@ No scope other than the event's own can see photos, faces, clusters, keys or cal
 `audit_log` is append-only (trigger). `SET row_security = off` fails for the app role.
 
 ## Encryption
-Embeddings, landmarks, prototypes and calibration are AES-256-GCM ciphertext under the event's
+Embeddings, landmarks, prototypes, cluster membership and calibration are AES-256-GCM
+ciphertext under the event's
 data key; the associated data names the event, table and row. The data key is stored only
 wrapped by the master key (KeyManager port). Destroying it (`wrapped_key` NULL) crypto-shreds
 the event. Vector search happens in memory after decryption (ADR 0004). pgvector is not used.

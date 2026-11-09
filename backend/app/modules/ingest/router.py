@@ -2,18 +2,20 @@
 
 TEMPORARY DEV-ONLY: protected by the dev admin token until login. Uploads are multipart
 (field name "files", optional "collection_id"); the request size is checked from
-Content-Length before the body is parsed. Starlette keeps parts up to 1 MB in memory and
-spools larger event photos to a temporary file while parsing (never selfies: see matching).
+Content-Length before the body is parsed. Parts up to 1 MB stay in memory; larger event photos
+are spooled to FACESCAN_UPLOAD_SPOOL_DIR (under var/, git-ignored) while parsing and deleted
+when the request ends (app/core/multipart.py). Selfies never take this path.
 """
 
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from starlette.datastructures import UploadFile
-from starlette.exceptions import HTTPException
 
 from app.core.errors import PayloadTooLargeError, UnprocessableError
+from app.core.multipart import MultiPartException, parse_upload_form
 from app.core.rate_limit import RateLimiter
 from app.core.security import require_dev_admin
 from app.modules.events.router import Ctx
@@ -27,7 +29,7 @@ MULTIPART_OVERHEAD = 64 * 1024
 
 
 async def _read_files(
-    request: Request, max_files: int, max_bytes: int
+    request: Request, max_files: int, max_bytes: int, spool_dir: Path
 ) -> tuple[list[bytes], UUID | None]:
     """
     Purpose: parse the multipart form with size limits.
@@ -42,11 +44,18 @@ async def _read_files(
     if not request.headers.get("content-type", "").startswith("multipart/form-data"):
         raise UnprocessableError("upload must be multipart/form-data")
     try:
-        form = await request.form(max_files=max_files, max_fields=5, max_part_size=1024)
-    except HTTPException as exc:
-        if "too many" in str(exc.detail).lower():
+        form = await parse_upload_form(
+            request.headers,
+            request.stream(),
+            spool_dir,
+            max_files=max_files,
+            max_fields=5,
+            max_part_size=1024,
+        )
+    except MultiPartException as exc:
+        if "too many files" in exc.message.lower():
             raise PayloadTooLargeError(f"at most {max_files} files per upload") from exc
-        raise
+        raise UnprocessableError("malformed multipart upload") from exc
     try:
         collection_raw = form.get("collection_id")
         collection_id = UUID(collection_raw) if isinstance(collection_raw, str) else None
@@ -75,7 +84,10 @@ async def upload_photos(event_id: UUID, request: Request, actor: Actor, ctx: Ctx
     """Purpose: upload photos into quarantine (validated, random ids)."""
     settings = ctx.settings
     files, collection_id = await _read_files(
-        request, settings.upload_max_files, settings.upload_max_bytes
+        request,
+        settings.upload_max_files,
+        settings.upload_max_bytes,
+        Path(settings.upload_spool_dir),
     )
     result = service.upload_photos(ctx, event_id, files, collection_id, actor)
     return UploadResponse(collection_id=result.collection_id, photo_ids=result.photo_ids)
