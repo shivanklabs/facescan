@@ -15,6 +15,8 @@ dependencies = [
     "boto3==1.43.126",
     "pyyaml==6.0.3",
     "webauthn==3.0.1",
+    "python-multipart==0.0.32",
+    "cryptography==50.0.2",
 ]
 
 [build-system]

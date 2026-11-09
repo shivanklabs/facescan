@@ -1,35 +1,83 @@
-"""Worker process entrypoint: polls the Postgres jobs table and runs job handlers.
+"""Worker process entrypoint: claims jobs from the Postgres jobs table and runs their handlers.
 
-For now it runs an idle loop. TODO: claim jobs via the JobQueue port and dispatch through
-app.jobs.handlers.
+Jobs are claimed with SELECT ... FOR UPDATE SKIP LOCKED (two workers never take the same job).
+A failing job is retried with exponential backoff; after the last attempt it is marked failed
+and the job type's failure handler runs (index_event marks the event failed). Logs carry job
+ids, types and exception type names only, never payload contents or personal data.
+Without a database configuration the worker runs an idle loop (local tooling, tests).
 """
 
 import logging
+import os
 import signal
+import socket
 import threading
 from types import FrameType
 
 from app.core.config import Settings, get_settings
+from app.core.context import AppContext, ContextConfigError, build_context
 from app.core.logging import configure_logging
+from app.jobs.handlers import ON_FINAL_FAILURE, dispatch
 
 logger = logging.getLogger("facescan.worker")
 
 
-def run(settings: Settings, stop: threading.Event, max_iterations: int | None = None) -> int:
+def worker_id() -> str:
+    """Purpose: identifier stored in jobs.locked_by (host and process id)."""
+    return f"{socket.gethostname()}:{os.getpid()}"
+
+
+def run_one(ctx: AppContext, worker: str) -> bool:
+    """
+    Purpose: claim and run at most one job.
+    Outputs: True if a job was processed (successfully or not), False if the queue was idle.
+    Side effects: runs the job handler; updates the job row.
+    """
+    job = ctx.queue.claim(worker)
+    if job is None:
+        return False
+    logger.info("job started", extra={"job_id": str(job.job_id), "job_type": job.type})
+    try:
+        dispatch(ctx, job.type, job.event_id, job.payload)
+    except Exception as exc:  # noqa: BLE001 - every failure must be recorded, then retried
+        retry = ctx.queue.fail(job, type(exc).__name__)
+        logger.warning(
+            "job failed",
+            extra={"job_id": str(job.job_id), "error": type(exc).__name__, "retry": retry},
+        )
+        if not retry:
+            handler = ON_FINAL_FAILURE.get(job.type)
+            if handler is not None:
+                handler(ctx, job.event_id)
+        return True
+    ctx.queue.complete(job)
+    logger.info("job done", extra={"job_id": str(job.job_id)})
+    return True
+
+
+def run(
+    settings: Settings,
+    stop: threading.Event,
+    max_iterations: int | None = None,
+    ctx: AppContext | None = None,
+) -> int:
     """
     Purpose: main poll loop.
-    Inputs: settings (poll interval), a stop event, optional iteration cap (tests).
+    Inputs: settings (poll interval), a stop event, optional iteration cap (tests), optional
+        application context (None = idle loop without a database).
     Outputs: number of poll iterations performed.
-    Side effects: sleeps between polls; logs start/stop only (never job payloads).
+    Side effects: runs jobs; sleeps between empty polls; logs start/stop and job outcomes.
     """
     iterations = 0
+    worker = worker_id()
     logger.info("worker started", extra={"poll_interval": settings.worker_poll_interval_seconds})
     while not stop.is_set():
-        # TODO: job = queue.claim_next(); handlers.dispatch(job)
+        busy = run_one(ctx, worker) if ctx is not None else False
         iterations += 1
         if max_iterations is not None and iterations >= max_iterations:
             break
-        stop.wait(settings.worker_poll_interval_seconds)
+        if not busy:
+            stop.wait(settings.worker_poll_interval_seconds)
     logger.info("worker stopped")
     return iterations
 
@@ -49,7 +97,12 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
-    run(settings, stop)
+    try:
+        ctx: AppContext | None = build_context(settings)
+    except ContextConfigError as exc:
+        logger.warning("database features disabled: %s", exc)
+        ctx = None
+    run(settings, stop, ctx=ctx)
 
 
 if __name__ == "__main__":

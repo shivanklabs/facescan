@@ -1,6 +1,7 @@
 """FaceScan developer tasks: `uv run tasks <name>`. Works in PowerShell and on Linux.
 
-Tasks: setup, db-init, dev, lint, format, test, models, licences. Standard library only.
+Tasks: setup, db-init, db-migrate, dev, lint, format, test, models, licences.
+Standard library only.
 """
 
 import argparse
@@ -123,7 +124,11 @@ def _random_value(key: str) -> str:
     """Purpose: a random dev secret suited to the variable. Inputs: env var name."""
     if key in AES_256_KEY_VARS:
         return base64.b64encode(secrets.token_bytes(32)).decode("ascii")
-    if key in ("FACESCAN_STORAGE_SIGNING_KEY", "FACESCAN_AUTH_SESSION_SECRET"):
+    if key in (
+        "FACESCAN_STORAGE_SIGNING_KEY",
+        "FACESCAN_AUTH_SESSION_SECRET",
+        "FACESCAN_DEV_ADMIN_TOKEN",
+    ):
         return secrets.token_urlsafe(48)
     return secrets.token_urlsafe(24)
 
@@ -294,6 +299,19 @@ def task_db_init(_args: argparse.Namespace) -> None:
             str(ROOT / "database" / "setup" / "create_dev_database.sql"),
         ],
         env=env,
+    )
+
+
+def task_db_migrate(_args: argparse.Namespace) -> None:
+    """
+    Purpose: apply database migrations (alembic upgrade head) as the facescan role.
+    Side effects: creates or alters tables in FACESCAN_DB_NAME.
+    """
+    if not ENV_FILE.exists():
+        raise TaskError(".env is missing. Run: uv run tasks setup")
+    run(
+        python_tool("alembic", "-c", str(ROOT / "database" / "alembic.ini"), "upgrade", "head"),
+        env=child_env(),
     )
 
 
@@ -537,6 +555,7 @@ def task_licences(_args: argparse.Namespace) -> None:
 TASKS: dict[str, tuple[Callable[[argparse.Namespace], None], str]] = {
     "setup": (task_setup, "first-time setup: .env, npm ci, pre-commit, var/storage"),
     "db-init": (task_db_init, "create the facescan role and database (asks for the PG password)"),
+    "db-migrate": (task_db_migrate, "apply database migrations (alembic upgrade head)"),
     "dev": (task_dev, "run api, worker and Vite together; Ctrl+C stops all three"),
     "lint": (task_lint, "ruff + mypy, eslint + tsc, pre-commit (gitleaks); run before commits"),
     "format": (task_format, "ruff format/fix + prettier"),

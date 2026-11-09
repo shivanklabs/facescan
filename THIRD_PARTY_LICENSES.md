@@ -42,5 +42,6 @@ Notes
 | Pillow | MIT-CMU (HPND) |
 | typer (and its dependencies rich, markdown-it-py, mdurl: MIT; shellingham: ISC) | MIT |
 | cryptography | Apache-2.0 OR BSD-3-Clause |
+| python-multipart (backend uploads) | Apache-2.0 |
 | React, React Router, Vite, vite-plugin-pwa, i18next | MIT |
 | PostgreSQL | PostgreSQL licence |

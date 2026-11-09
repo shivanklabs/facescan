@@ -47,7 +47,13 @@ def build_local_storage(
         root = repo_root / root
     return LocalFilesystemStorage(
         root=root,
-        buckets=frozenset({settings.storage_bucket_photos, settings.storage_bucket_derivatives}),
+        buckets=frozenset(
+            {
+                settings.storage_bucket_photos,
+                settings.storage_bucket_derivatives,
+                settings.storage_bucket_quarantine,
+            }
+        ),
         signing_key=settings.storage_signing_key.get_secret_value().encode("utf-8"),
         url_expiry_minutes=settings.storage_url_expiry_minutes,
         public_base_url=settings.storage_public_base_url,
