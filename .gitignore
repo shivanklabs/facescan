@@ -33,6 +33,8 @@ ai/benchmark/datasets/*
 ai/tests/fixtures/local/
 # Encrypted benchmark indexes (facescan-ai index)
 ai/benchmark/work/
+# Reports of synthetic benchmark runs (real-event reports hold aggregates only and may be kept)
+ai/benchmark/reports/synthetic_*
 uploads/
 var/
 *.jpg

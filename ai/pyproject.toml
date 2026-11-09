@@ -26,5 +26,11 @@ packages = ["src/facescan_ai"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--import-mode=importlib -ra"
-pythonpath = ["src"]
+pythonpath = ["src", "benchmark"]
 asyncio_default_fixture_loop_scope = "function"
+
+[dependency-groups]
+dev = [
+    "fastapi==0.162.2",
+    "uvicorn==0.54.0",
+]

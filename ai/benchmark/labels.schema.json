@@ -1,60 +1,41 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FaceScan benchmark labels",
+  "title": "FaceScan benchmark labels (datasets/<event>/labels.json, written by facescan-ai label)",
   "type": "object",
-  "required": [
-    "dataset_id",
-    "consent_reference",
-    "images"
-  ],
+  "required": ["format", "event", "persons", "faces"],
   "additionalProperties": false,
   "properties": {
-    "dataset_id": {
-      "type": "string"
+    "format": { "const": 1 },
+    "event": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
+    "updated_at": { "type": "string" },
+    "persons": {
+      "description": "Photo-level ground truth: opaque person id -> photo ids the person appears in. Derived from faces.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$" },
+      "additionalProperties": { "type": "array", "items": { "type": "string" } }
     },
-    "consent_reference": {
-      "type": "string",
-      "description": "ID of the signed consent record"
-    },
-    "images": {
+    "faces": {
+      "description": "Face-level detail: one entry per labelled face.",
       "type": "array",
       "items": {
         "type": "object",
-        "required": [
-          "file",
-          "faces"
-        ],
+        "required": ["photo_id", "bbox", "label"],
         "additionalProperties": false,
         "properties": {
-          "file": {
-            "type": "string"
-          },
-          "faces": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "person_id",
-                "bbox"
-              ],
-              "additionalProperties": false,
-              "properties": {
-                "person_id": {
-                  "type": "string",
-                  "description": "opaque ID, never a name"
-                },
-                "bbox": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  },
-                  "minItems": 4,
-                  "maxItems": 4
-                }
-              }
-            }
-          }
+          "photo_id": { "type": "string" },
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4, "description": "x, y, width, height in original pixels" },
+          "label": { "type": "string", "pattern": "^([a-z0-9][a-z0-9_-]{0,31}|unknown)$", "description": "opaque person id (never a name) or 'unknown'" }
         }
+      }
+    },
+    "labeler_state": {
+      "description": "Labeler view state for one index build (merged clusters, faces removed from clusters).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "index_created_at": { "type": "string" },
+        "merged": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "removed": { "type": "array", "items": { "type": "string" } }
       }
     }
   }

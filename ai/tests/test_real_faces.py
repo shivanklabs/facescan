@@ -26,9 +26,8 @@ def best_score(pipeline: FacePipeline, photo: Path, query: np.ndarray) -> float:
     return max(float(np.dot(f.embeddings["auraface"].vector, query)) for f in faces)
 
 
-def test_selfie_produces_tagged_unit_embeddings(local_faces, pipeline: FacePipeline) -> None:
-    analysed, faces_seen = pipeline.analyse_selfie(read_image(local_faces.selfie))
-    assert faces_seen >= 1
+def test_selfie_produces_tagged_unit_embeddings(single_face_selfie, pipeline: FacePipeline) -> None:
+    analysed = pipeline.analyse_selfie(read_image(single_face_selfie.selfie))
     dims = {"auraface": 512, "sface": 128}
     for engine, emb in analysed.embeddings.items():
         assert emb.engine == engine
@@ -40,38 +39,47 @@ def test_selfie_produces_tagged_unit_embeddings(local_faces, pipeline: FacePipel
     assert 0.0 <= analysed.quality.value <= 1.0
 
 
-def test_photos_with_me_score_above_photos_without_me(local_faces, pipeline: FacePipeline) -> None:
+def test_photos_with_me_score_above_photos_without_me(
+    single_face_selfie, pipeline: FacePipeline
+) -> None:
+    local_faces = single_face_selfie
     if not local_faces.with_me or not local_faces.without_me:
         pytest.skip("manifest needs photos_with_me and photos_without_me")
-    selfie, _ = pipeline.analyse_selfie(read_image(local_faces.selfie))
+    selfie = pipeline.analyse_selfie(read_image(local_faces.selfie))
     query = selfie.embeddings["auraface"].vector
     positives = [best_score(pipeline, p, query) for p in local_faces.with_me]
     negatives = [best_score(pipeline, p, query) for p in local_faces.without_me]
     assert min(positives) > max(negatives)
 
 
-def test_cli_index_and_search_end_to_end(
-    local_faces,
+def test_cli_index_match_and_search_end_to_end(
+    single_face_selfie,
     model_registry: ModelRegistry,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("FACESCAN_BENCH_KEY", base64.b64encode(secrets.token_bytes(32)).decode())
     monkeypatch.setenv("FACESCAN_BENCH_WORK_DIR", str(tmp_path / "work"))
+    local_faces = single_face_selfie
     runner = CliRunner()
     indexed = runner.invoke(app, ["index", str(local_faces.folder), "--event", "e2e"])
     assert indexed.exit_code == 0, indexed.output
     assert "photos/second" in indexed.output
     assert (tmp_path / "work" / "e2e.fsidx").is_file()
+    assert "clusters:" in indexed.output and "calibration:" in indexed.output
     found = runner.invoke(app, ["search", str(local_faces.selfie), "--event", "e2e", "--top", "5"])
     assert found.exit_code == 0, found.output
     assert "auraface" in found.output
+    matched = runner.invoke(app, ["match", str(local_faces.selfie), "--event", "e2e"])
+    assert matched.exit_code == 0, matched.output
+    assert "RELEASE (" in matched.output and "borderline" in matched.output
     cleaned = runner.invoke(app, ["clean", "--event", "e2e"])
     assert cleaned.exit_code == 0
     assert not (tmp_path / "work" / "e2e.fsidx").exists()
 
 
 def test_blurred_faces_are_no_longer_recognisable(local_faces, pipeline: FacePipeline) -> None:
+    # Uses the whole fixture photo (any number of faces), not the selfie rule.
     image = read_image(local_faces.selfie)
     originals = pipeline.analyse(image)
     assert originals

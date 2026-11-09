@@ -1,8 +1,9 @@
 """Encrypted per-event face index for the offline pipeline (benchmark use only).
 
 One file per event: ai/benchmark/work/<event>.fsidx (git-ignored). It holds, per face: photo
-id, bbox, landmarks, quality and both embeddings, plus the engine versions. It never holds face
-crops or images. The file is AES-256-GCM encrypted with FACESCAN_BENCH_KEY (base64, 32 bytes);
+id, bbox, landmarks, quality, weak flag and both embeddings; the event's clusters (membership
+and prototypes per engine) and per-engine calibration; and the engine versions. It never holds
+face crops or images. The file is AES-256-GCM encrypted with FACESCAN_BENCH_KEY (base64, 32 bytes);
 the event name is authenticated as associated data, so a file cannot be renamed to another
 event. Serialisation is JSON (no pickle), so loading cannot execute code.
 """
@@ -21,6 +22,8 @@ import numpy as np
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from facescan_ai.clustering.hdbscan_clusterer import EventCluster
+from facescan_ai.matching.calibration import EngineCalibration
 from facescan_ai.types import BBox, FloatArray, Landmarks
 
 KEY_ENV = "FACESCAN_BENCH_KEY"
@@ -31,7 +34,7 @@ FILE_SUFFIX = ".fsidx"
 MAGIC = b"FSIDX\x01"
 NONCE_BYTES = 12
 KEY_BYTES = 32
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 class IndexStoreError(Exception):
@@ -60,6 +63,7 @@ class IndexedFace:
     detector_score: float
     quality: float
     embeddings: dict[str, FloatArray]
+    weak: bool = False
 
     def __repr__(self) -> str:
         """Purpose: debug text without vectors."""
@@ -75,6 +79,12 @@ class EventIndex:
     photos: list[str] = field(default_factory=list)
     faces: list[IndexedFace] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    clusters: list[EventCluster] = field(default_factory=list)
+    calibration: dict[str, EngineCalibration] = field(default_factory=dict)
+
+    def cluster_of(self) -> dict[int, int]:
+        """Purpose: face row -> cluster id (members and attached weak faces)."""
+        return {face: c.cluster_id for c in self.clusters for face in c.all_faces}
 
     def gallery(self, engine: str) -> FloatArray:
         """
@@ -148,10 +158,31 @@ def serialise(index: EventIndex) -> bytes:
                 "landmarks": [list(p) for p in f.landmarks],
                 "detector_score": f.detector_score,
                 "quality": f.quality,
+                "weak": f.weak,
                 "embeddings": {k: _encode_vector(v) for k, v in f.embeddings.items()},
             }
             for f in index.faces
         ],
+        "clusters": [
+            {
+                "cluster_id": c.cluster_id,
+                "members": c.members,
+                "attached_weak": c.attached_weak,
+                "prototypes": {k: _encode_vector(v) for k, v in c.prototypes.items()},
+            }
+            for c in index.clusters
+        ],
+        "calibration": {
+            k: {
+                "release_threshold": c.release_threshold,
+                "borderline_threshold": c.borderline_threshold,
+                "impostor_pairs": c.impostor_pairs,
+                "release_calibrated": c.release_calibrated,
+                "borderline_calibrated": c.borderline_calibrated,
+                "impostor_max": c.impostor_max,
+            }
+            for k, c in index.calibration.items()
+        },
     }
     return json.dumps(payload, separators=(",", ":")).encode("utf-8")
 
@@ -161,7 +192,7 @@ def deserialise(data: bytes) -> EventIndex:
     try:
         payload = json.loads(data.decode("utf-8"))
         if payload["format"] != FORMAT_VERSION:
-            raise IndexDecryptionError("unsupported index format")
+            raise IndexDecryptionError("index format is outdated; re-run `facescan-ai index`")
         faces = []
         for f in payload["faces"]:
             x, y, w, h = (float(v) for v in f["bbox"])
@@ -176,14 +207,44 @@ def deserialise(data: bytes) -> EventIndex:
                     detector_score=float(f["detector_score"]),
                     quality=float(f["quality"]),
                     embeddings={str(k): _decode_vector(v) for k, v in f["embeddings"].items()},
+                    weak=bool(f["weak"]),
                 )
             )
+        n = len(faces)
+        clusters = []
+        for c in payload["clusters"]:
+            members = [int(i) for i in c["members"]]
+            weak_faces = [int(i) for i in c["attached_weak"]]
+            if any(not 0 <= i < n for i in members + weak_faces):
+                raise IndexDecryptionError("cluster refers to a missing face")
+            clusters.append(
+                EventCluster(
+                    cluster_id=int(c["cluster_id"]),
+                    members=members,
+                    attached_weak=weak_faces,
+                    prototypes={str(k): _decode_vector(v) for k, v in c["prototypes"].items()},
+                )
+            )
+        calibration = {
+            str(k): EngineCalibration(
+                engine=str(k),
+                release_threshold=float(c["release_threshold"]),
+                borderline_threshold=float(c["borderline_threshold"]),
+                impostor_pairs=int(c["impostor_pairs"]),
+                release_calibrated=bool(c["release_calibrated"]),
+                borderline_calibrated=bool(c["borderline_calibrated"]),
+                impostor_max=None if c["impostor_max"] is None else float(c["impostor_max"]),
+            )
+            for k, c in payload["calibration"].items()
+        }
         return EventIndex(
             event=str(payload["event"]),
             engine_versions={str(k): str(v) for k, v in payload["engine_versions"].items()},
             photos=[str(p) for p in payload["photos"]],
             faces=faces,
             created_at=str(payload["created_at"]),
+            clusters=clusters,
+            calibration=calibration,
         )
     except (KeyError, TypeError, ValueError, binascii.Error) as exc:
         raise IndexDecryptionError("index content is malformed") from exc

@@ -29,7 +29,7 @@ FRONTEND = ROOT / "frontend"
 ENV_FILE = ROOT / ".env"
 ENV_EXAMPLE = ROOT / ".env.example"
 PY_PATHS = ("backend", "ai", "database", "scripts")
-MYPY_PATHS = ("backend/app", "ai/src", "scripts")
+MYPY_PATHS = ("backend/app", "ai/src", "ai/benchmark", "scripts")
 # .env values that are paths; made absolute (relative to the repo root) for child processes.
 PATH_VARS = (
     "FACESCAN_CONFIG_ADAPTERS_PATH",

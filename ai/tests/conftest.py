@@ -60,3 +60,18 @@ def model_registry() -> ModelRegistry:
     except ModelRegistryError as exc:
         pytest.skip(f"model weights unavailable ({exc}); run `uv run tasks models`")
     return registry
+
+
+@pytest.fixture(scope="session")
+def single_face_selfie(local_faces: LocalFaces, model_registry: ModelRegistry) -> LocalFaces:
+    """Purpose: the local photos, but skip when the fixture selfie breaks the one-face rule."""
+    from facescan_ai.image_io import read_image
+    from facescan_ai.pipeline import FacePipeline
+
+    count = len(FacePipeline(model_registry).detector.detect(read_image(local_faces.selfie)))
+    if count != 1:
+        pytest.skip(
+            f"fixture selfie shows {count} faces; replace it with a single-face selfie "
+            "and update manifest.json"
+        )
+    return local_faces

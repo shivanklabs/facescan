@@ -39,7 +39,7 @@ SCAN_FILES = (
     MODEL_LOCK,
     "config/adapters.yaml",
 )
-SCAN_GLOBS = ("ai/src/**/*.py", "backend/app/**/*.py")
+SCAN_GLOBS = ("ai/src/**/*.py", "ai/benchmark/**/*.py", "backend/app/**/*.py")
 SKIP_DIRS = frozenset(
     {".venv", "node_modules", ".git", ".mypy_cache", ".ruff_cache", ".pytest_cache", "__pycache__"}
 )

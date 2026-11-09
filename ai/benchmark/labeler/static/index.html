@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'">
+  <title>FaceScan labeler</title>
+  <link rel="stylesheet" href="/static/labeler.css">
+</head>
+<body>
+  <header>
+    <h1>FaceScan labeler <span id="event"></span></h1>
+    <p class="hint">Use opaque person ids (e.g. p001), never names. Selfies found:
+      <span id="selfies"></span></p>
+    <nav>
+      <button data-view="clusters" class="active">Clusters</button>
+      <button data-view="unclustered">Unclustered faces</button>
+      <button data-view="photos">Photos</button>
+    </nav>
+    <p id="status" role="status"></p>
+  </header>
+  <main id="main"></main>
+  <script src="/static/labeler.js"></script>
+</body>
+</html>

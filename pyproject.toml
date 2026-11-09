@@ -51,5 +51,5 @@ ignore = ["S101"]  # assert is fine in tests
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = ["backend", "ai/src", "ai/typings"]
+mypy_path = ["backend", "ai/src", "ai/typings", "ai/benchmark"]
 explicit_package_bases = true
