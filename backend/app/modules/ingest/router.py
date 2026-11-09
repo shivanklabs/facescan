@@ -1,6 +1,6 @@
 """HTTP routes for photo upload and collection approval.
 
-TEMPORARY DEV-ONLY: protected by the dev admin token until login. Uploads are multipart
+Upload: photographers and organisers (passkey session). Approval: organisers. Uploads are multipart
 (field name "files", optional "collection_id"); the request size is checked from
 Content-Length before the body is parsed. Parts up to 1 MB stay in memory; larger event photos
 are spooled to FACESCAN_UPLOAD_SPOOL_DIR (under var/, git-ignored) while parsing and deleted
@@ -8,22 +8,24 @@ when the request ends (app/core/multipart.py). Selfies never take this path.
 """
 
 from pathlib import Path
-from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from starlette.datastructures import UploadFile
 
+from app.core.deps import Ctx, PasskeyUser
 from app.core.errors import PayloadTooLargeError, UnprocessableError
 from app.core.multipart import MultiPartException, parse_upload_form
 from app.core.rate_limit import RateLimiter
-from app.core.security import require_dev_admin
-from app.modules.events.router import Ctx
 from app.modules.ingest import service
-from app.modules.ingest.schemas import ApproveResponse, UploadResponse
+from app.modules.ingest.schemas import (
+    ApproveResponse,
+    CollectionListResponse,
+    CollectionResponse,
+    UploadResponse,
+)
 
-router = APIRouter(prefix="/events/{event_id}", tags=["upload (dev token)"])
-Actor = Annotated[str, Depends(require_dev_admin)]
+router = APIRouter(prefix="/events/{event_id}", tags=["upload"])
 upload_limiter = RateLimiter("upload", limit=60, window_seconds=60)
 MULTIPART_OVERHEAD = 64 * 1024
 
@@ -80,7 +82,9 @@ async def _read_files(
     response_model=UploadResponse,
     dependencies=[Depends(upload_limiter)],
 )
-async def upload_photos(event_id: UUID, request: Request, actor: Actor, ctx: Ctx) -> UploadResponse:
+async def upload_photos(
+    event_id: UUID, request: Request, user: PasskeyUser, ctx: Ctx
+) -> UploadResponse:
     """Purpose: upload photos into quarantine (validated, random ids)."""
     settings = ctx.settings
     files, collection_id = await _read_files(
@@ -89,14 +93,27 @@ async def upload_photos(event_id: UUID, request: Request, actor: Actor, ctx: Ctx
         settings.upload_max_bytes,
         Path(settings.upload_spool_dir),
     )
-    result = service.upload_photos(ctx, event_id, files, collection_id, actor)
+    result = service.upload_photos(ctx, event_id, files, collection_id, user)
     return UploadResponse(collection_id=result.collection_id, photo_ids=result.photo_ids)
 
 
 @router.post("/collections/{collection_id}/approve", response_model=ApproveResponse)
 def approve_collection(
-    event_id: UUID, collection_id: UUID, actor: Actor, ctx: Ctx
+    event_id: UUID, collection_id: UUID, user: PasskeyUser, ctx: Ctx
 ) -> ApproveResponse:
     """Purpose: approve a collection; the worker then indexes the event."""
-    count = service.approve_collection(ctx, event_id, collection_id, actor)
+    count = service.approve_collection(ctx, event_id, collection_id, user)
     return ApproveResponse(collection_id=collection_id, approved_photos=count, status="indexing")
+
+
+@router.get("/collections", response_model=CollectionListResponse)
+def list_collections(event_id: UUID, user: PasskeyUser, ctx: Ctx) -> CollectionListResponse:
+    """Purpose: collections with counts and signed previews (organiser)."""
+    return CollectionListResponse(
+        collections=[
+            CollectionResponse(
+                collection_id=c.collection_id, status=c.status, photos=c.photos, previews=c.previews
+            )
+            for c in service.list_collections(ctx, event_id, user)
+        ]
+    )

@@ -139,15 +139,17 @@ def db_schema() -> Iterator[str]:
         admin.dispose()
 
 
-DEV_TOKEN = "t" * 40
-
-
 @pytest.fixture
 def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
-    """Application context on the test schema with local storage under tmp_path."""
+    """Application context on the test schema: local storage under tmp_path, captured email,
+    one allow-listed organiser."""
+    from tests.helpers import ORGANISER_EMAIL, ORIGIN, MemoryEmailSender
+
     settings = _repo_settings(
         env="dev",
-        dev_admin_token=SecretStr(DEV_TOKEN),
+        auth_rp_id="localhost",
+        auth_rp_origin=ORIGIN,
+        auth_organiser_emails=ORGANISER_EMAIL,
         storage_root=str(tmp_path / "storage"),
         upload_spool_dir=str(tmp_path / "spool"),
         storage_signing_key=SecretStr("s" * 48),
@@ -155,14 +157,16 @@ def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
         job_retry_base_seconds=0.01,
         worker_poll_interval_seconds=0.01,
     )
-    context = build_context(settings, analyzer=FakeFaceAnalyzer(), search_path=db_schema)
+    context = build_context(
+        settings, analyzer=FakeFaceAnalyzer(), search_path=db_schema, email=MemoryEmailSender()
+    )
     yield context
     context.engine.dispose()
 
 
 @pytest.fixture
-def api(ctx: AppContext) -> TestClient:
-    """API client with the dev token header."""
-    test_client = TestClient(create_app(ctx.settings, ctx=ctx))
-    test_client.headers["Authorization"] = f"Bearer {DEV_TOKEN}"
-    return test_client
+def organiser(ctx: AppContext) -> TestClient:
+    """The allow-listed organiser, signed in with a passkey."""
+    from tests.helpers import ORGANISER_EMAIL, staff_client
+
+    return staff_client(ctx, ORGANISER_EMAIL)

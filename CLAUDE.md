@@ -33,8 +33,10 @@ The face is a search query, never a password. Login is passkeys (WebAuthn) + ema
 - Validate every request payload with Pydantic schemas; never return stack traces.
 - Strict typing: no `Any`, no `# type: ignore`, no `@ts-ignore`.
 - The Phase 3 AI agent (`ai/agent/`) may only call public API tools, never face search or vectors.
-- TEMPORARY: `FACESCAN_DEV_ADMIN_TOKEN` (dev only; the API refuses to start with it elsewhere)
-  guards the event/upload/dev-match API until login exists. Never extend it; remove it with login.
+- Sign-in: email magic links + passkeys; server-side sessions in PostgreSQL (HttpOnly, Secure,
+  SameSite=Strict cookies). Organisers and photographers need a passkey session. Event roles
+  come from event_members and are checked on every request. Guest face search runs only in
+  dev until a liveness adapter exists.
 
 ## Dev commands
 Requirements: Git, [uv](https://docs.astral.sh/uv/) (installs Python 3.12), Node.js LTS, a native
@@ -53,7 +55,9 @@ PostgreSQL 15+ server. Commands are the same in PowerShell and on Linux (`script
 | `uv run tasks licences` | `scripts/check_licences.py`: fails on forbidden models, files or packages |
 | `uv run --env-file .env facescan-ai <index\|match\|search\|label\|bench\|blur\|clean>` | face pipeline, matching engine, labeler and benchmark (see `ai/README.md`) |
 
-API: http://127.0.0.1:8000/health  Frontend: http://127.0.0.1:5173 (both listen on this machine only)
+Open the app at http://localhost:5173 (passkeys need the `localhost` host; the API is reached
+through Vite's `/api` proxy). API health: http://127.0.0.1:8000/health. Magic links are printed
+in the API terminal in dev. Put your email in `FACESCAN_AUTH_ORGANISER_EMAILS` to create events.
 Never commit `.env` or the PostgreSQL superuser password.
 
 ## Folder map

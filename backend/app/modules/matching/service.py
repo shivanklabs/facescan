@@ -1,56 +1,144 @@
-"""TEMPORARY DEV-ONLY matching: one selfie against one event, photo ids per band.
+"""Guest face search: the guest's own face, in one event, with consent, within limits.
 
-The selfie is embedded in memory only (invariant 3) and must show exactly one face. The result
-carries photo ids per band, never vectors or scores. Real guest matching (login, consent,
-liveness, guest-only search per invariant 5) replaces this in a later milestone.
+Order of checks (cheapest first, nothing biometric before all of them pass):
+1. guest search allowed (dev only until a liveness adapter exists);
+2. the caller is a guest of the event and holds no staff role (invariant 5);
+3. adult age answer and a current face-search consent;
+4. the event is searchable;
+5. per-user and per-event hourly limits (search_attempts in PostgreSQL; the attempt is
+   counted before any processing).
+Then every frame (3-5, in memory only) must show exactly one face; the frames must agree on
+one cluster. The guest's matches are replaced with the released photo ids. The response and
+the audit row never contain selfie data, vectors or scores.
 """
 
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from app.core.context import AppContext
-from app.core.errors import ConflictError, NotFoundError, UnprocessableError
+from fastapi import HTTPException
+from sqlalchemy import delete, func, select
+
+from app.core.auth import CurrentUser
+from app.core.context import AppContext, guest_search_allowed
+from app.core.deps import STAFF_ROLES, require_role
+from app.core.errors import ConflictError, TooManyRequestsError, UnprocessableError
 from app.db.event_scope import event_transaction
 from app.modules.audit.service import record
+from app.modules.consent.service import FACE_SEARCH, active_consent, notice_for
 from app.modules.events import repository as events_repo
 from app.modules.events.service import data_key
+from app.modules.identity.models import User
+from app.modules.matching.models import Match, SearchAttempt
 from app.modules.vision_pipeline import repository
-from app.ports.face_analyzer import ImageRejectedError, MatchBands, SelfieRejectedError
+from app.ports.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejectedError
 
 
-def dev_match(ctx: AppContext, event_id: UUID, selfie: bytes, actor: str) -> MatchBands:
-    """
-    Purpose: match a selfie against one searchable event.
-    Inputs: event id, selfie bytes (memory only), actor for the audit row.
-    Outputs: MatchBands. Raises NotFoundError, ConflictError (not searchable or models
-        changed) or UnprocessableError (not one face / not an image).
-    Side effects: reads and decrypts the event model; writes an audit row with counts only.
-    """
+@dataclass(frozen=True, slots=True)
+class SearchResult:
+    """Released photo ids and the 'some photos missing?' hint. Nothing else."""
+
+    release: list[UUID]
+    some_photos_missing: bool
+
+
+def _check_and_count(ctx: AppContext, user: CurrentUser, event_id: UUID) -> None:
+    """Purpose: run checks 2-5 and record the attempt. Raises HTTP errors (no data)."""
+    notice = notice_for(ctx)
+    now = datetime.now(UTC)
+    hour_ago = now - timedelta(hours=1)
     with event_transaction(ctx.sessions, event_id) as session:
+        roles = require_role(session, event_id, user.user_id, ("guest",))
+        if roles & set(STAFF_ROLES):
+            raise HTTPException(status_code=403, detail="staff_cannot_search")
+        account = session.get(User, user.user_id)
+        if account is None or account.age_answered_at is None:
+            raise HTTPException(status_code=403, detail="age_question_required")
+        if account.is_minor:
+            raise HTTPException(status_code=403, detail="minor_guardian_consent_required")
+        consent = active_consent(session, event_id, user.user_id, FACE_SEARCH)
+        if consent is None or consent.notice_version != notice.version:
+            raise HTTPException(status_code=403, detail="consent_required")
         event = events_repo.get_event(session, event_id)
-        if event is None:
-            raise NotFoundError("event not found")
-        if event.status != "searchable":
-            raise ConflictError(f"event is not searchable (status {event.status})")
+        if event is None or event.status != "searchable":
+            raise ConflictError("this event's photos are not ready yet")
+        mine = session.scalar(
+            select(func.count())
+            .select_from(SearchAttempt)
+            .where(SearchAttempt.user_id == user.user_id, SearchAttempt.created_at > hour_ago)
+        )
+        everyone = session.scalar(
+            select(func.count())
+            .select_from(SearchAttempt)
+            .where(SearchAttempt.event_id == event_id, SearchAttempt.created_at > hour_ago)
+        )
+        if int(mine or 0) >= ctx.settings.search_per_user_per_hour:
+            raise TooManyRequestsError("too many searches; try again later")
+        if int(everyone or 0) >= ctx.settings.search_per_event_per_hour:
+            raise TooManyRequestsError("this event is busy; try again later")
+        session.add(SearchAttempt(event_id=event_id, user_id=user.user_id))
+
+
+def guest_search(
+    ctx: AppContext, user: CurrentUser, event_id: UUID, frames: list[bytes]
+) -> SearchResult:
+    """
+    Purpose: search one event with the guest's live selfie frames.
+    Inputs: 3-5 encoded frames (memory only). Outputs: SearchResult.
+    Side effects: inserts search_attempts; replaces the guest's matches; audit row.
+    """
+    if not guest_search_allowed(ctx.settings):
+        raise HTTPException(status_code=403, detail="search_disabled_without_liveness")
+    settings = ctx.settings
+    if not settings.search_min_frames <= len(frames) <= settings.search_max_frames:
+        raise UnprocessableError(
+            f"send {settings.search_min_frames} to {settings.search_max_frames} selfie frames"
+        )
+    _check_and_count(ctx, user, event_id)
+    queries: list[SelfieQuery] = []
     try:
-        query = ctx.analyzer.selfie_query(selfie)
-    except SelfieRejectedError as exc:
-        raise UnprocessableError(str(exc)) from exc
-    except ImageRejectedError as exc:
-        raise UnprocessableError(f"selfie: {exc}") from exc
+        for number, frame in enumerate(frames, start=1):
+            try:
+                queries.append(ctx.analyzer.selfie_query(frame))
+            except SelfieRejectedError as exc:
+                raise UnprocessableError(
+                    f"frame {number}: the selfie must show exactly one face; found {exc.face_count}"
+                ) from exc
+            except ImageRejectedError as exc:
+                raise UnprocessableError(f"frame {number} is not a usable image") from exc
     finally:
-        del selfie
+        frames.clear()  # drop the frame bytes as soon as they are embedded
     with event_transaction(ctx.sessions, event_id) as session:
-        key, _version = data_key(session, ctx.keys, event_id)
+        key, _ = data_key(session, ctx.keys, event_id)
         faces, clusters, calibration, versions = repository.load_event_model(session, event_id, key)
         current = ctx.analyzer.engine_versions
         if any(versions.get(k) != v for k, v in current.items() if k in ("auraface", "sface")):
-            raise ConflictError("event was indexed with other model versions; re-index it")
-        bands = ctx.analyzer.match(faces, clusters, calibration, query)
+            raise ConflictError("this event is being re-indexed; try again later")
+        result = ctx.analyzer.match_frames(faces, clusters, calibration, queries)
+        session.execute(
+            delete(Match).where(Match.event_id == event_id, Match.user_id == user.user_id)
+        )
+        now = datetime.now(UTC)
+        for photo_id in result.release:
+            session.add(
+                Match(
+                    event_id=event_id,
+                    user_id=user.user_id,
+                    photo_id=photo_id,
+                    score_band="release",
+                    released_at=now,
+                )
+            )
         record(
             session,
             event_id=event_id,
-            actor=actor,
-            action="match.dev",
-            details={"release": len(bands.release), "borderline": len(bands.borderline)},
+            actor=user.actor,
+            action="search",
+            details={
+                "frames": len(queries),
+                "released": len(result.release),
+                "some_photos_missing": result.some_photos_missing,
+                "frames_agree": result.frames_agree,
+            },
         )
-    return bands
+    return SearchResult(release=result.release, some_photos_missing=result.some_photos_missing)

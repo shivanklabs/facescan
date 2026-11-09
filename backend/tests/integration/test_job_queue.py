@@ -6,8 +6,8 @@ import uuid
 
 from app.core.context import AppContext
 from app.db.event_scope import DISPATCH_SCOPE, event_transaction, scoped_transaction
-from app.modules.events.service import create_event
 from sqlalchemy import text
+from tests.helpers import quick_event
 
 
 def drain(ctx: AppContext) -> None:
@@ -17,7 +17,7 @@ def drain(ctx: AppContext) -> None:
 
 
 def enqueue(ctx: AppContext, n: int, job_type: str = "noop") -> tuple[uuid.UUID, list[uuid.UUID]]:
-    event_id = create_event(ctx, "Jobs", "IN", "test").event_id
+    event_id = quick_event(ctx, "Jobs")
     with event_transaction(ctx.sessions, event_id) as s:
         ids = [ctx.queue.enqueue(s, event_id, job_type, {"n": i}) for i in range(n)]
     return event_id, ids
@@ -103,7 +103,7 @@ def test_payloads_may_hold_only_ids(ctx: AppContext) -> None:
     ):
         with pytest.raises(InvalidJobPayloadError):
             validate_payload(bad)
-    event_id = create_event(ctx, "Payload", "IN", "test").event_id
+    event_id = quick_event(ctx, "Payload")
     with pytest.raises(InvalidJobPayloadError), event_transaction(ctx.sessions, event_id) as s:
         ctx.queue.enqueue(s, event_id, "noop", {"email": "guest@example.com"})
 

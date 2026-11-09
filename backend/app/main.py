@@ -13,9 +13,10 @@ from app.adapters.storage.local_filesystem_download import (
 )
 from app.core.config import Settings, get_settings
 from app.core.context import AppContext, build_context
+from app.core.deps import same_origin_guard
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
-from app.core.security import check_dev_token_allowed, dev_token_enabled
+from app.core.rate_limit import RateLimitStore
 
 
 class HealthResponse(BaseModel):
@@ -29,19 +30,16 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     """
     Purpose: build the FastAPI application.
     Inputs: optional Settings (tests inject their own); optional AppContext (tests inject one
-        with a test schema and a fake face analyzer); defaults come from the environment.
+        with a test schema, a fake face analyzer and a captured email sender).
     Outputs: a configured FastAPI instance.
-    Side effects: configures root logging (with the redaction filter); mounts the signed
-        storage download route when FACESCAN_STORAGE_SIGNING_KEY is set; mounts the TEMPORARY
-        dev-only event/upload/match routes when FACESCAN_DEV_ADMIN_TOKEN is set in dev.
-    Raises DevTokenNotAllowedError (refuses to start) if the dev token is set outside dev.
+    Side effects: configures root logging (with the redaction filter); builds the application
+        context when FACESCAN_DB_URL is set; mounts the signed storage download route when
+        FACESCAN_STORAGE_SIGNING_KEY is set; adds the same-origin guard for state changes.
     """
     settings = settings or get_settings()
-    check_dev_token_allowed(settings)
     configure_logging(settings.log_level)
     is_prod = settings.env == "prod"
-    dev_routes = dev_token_enabled(settings)
-    if dev_routes and ctx is None:
+    if ctx is None and settings.db_url is not None:
         ctx = build_context(settings)
 
     @asynccontextmanager
@@ -61,7 +59,9 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     )
     app.state.settings = settings
     app.state.ctx = ctx
+    app.state.rate_limits = RateLimitStore()
     register_error_handlers(app)
+    app.middleware("http")(same_origin_guard(settings.auth_rp_origin))
 
     @app.get("/health", response_model=HealthResponse, tags=["ops"])
     def health() -> HealthResponse:
@@ -72,15 +72,20 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     if settings.storage_signing_key is not None:
         app.include_router(create_download_router(build_local_storage(settings)))
 
-    # TEMPORARY DEV-ONLY routes (dev admin token) until login is built.
-    if dev_routes:
-        from app.modules.events.router import router as events_router
-        from app.modules.ingest.router import router as ingest_router
-        from app.modules.matching.router import router as matching_router
+    from app.modules.consent.router import router as consent_router
+    from app.modules.events.router import router as events_router
+    from app.modules.gallery.router import router as gallery_router
+    from app.modules.identity.router import router as identity_router
+    from app.modules.ingest.router import router as ingest_router
+    from app.modules.matching.router import router as matching_router
 
-        app.include_router(events_router)
-        app.include_router(ingest_router)
-        app.include_router(matching_router)
-
-    # TODO: include module routers (identity, gallery, consent, admin, ...) with login.
+    for router in (
+        identity_router,
+        events_router,
+        ingest_router,
+        consent_router,
+        matching_router,
+        gallery_router,
+    ):
+        app.include_router(router)
     return app

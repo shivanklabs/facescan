@@ -35,7 +35,9 @@ Notes
 | psycopg | LGPL-3.0 (dynamically linked, unmodified) |
 | boto3 | Apache-2.0 |
 | PyYAML | MIT |
-| webauthn (py_webauthn) | BSD-3-Clause |
+| webauthn (py_webauthn 3.0.1; verified 2026-11-09) | BSD-3-Clause |
+| py_webauthn dependencies: cbor2 (MIT), pyasn1 and pyasn1-modules (BSD-2-Clause), pyOpenSSL (Apache-2.0) | as listed |
+| @simplewebauthn/browser (14.0.0, no dependencies; verified 2026-11-09) | MIT |
 | onnxruntime | MIT |
 | opencv-python-headless | Apache-2.0 (OpenCV) / MIT (wheel) |
 | numpy, scikit-learn | BSD-3-Clause |

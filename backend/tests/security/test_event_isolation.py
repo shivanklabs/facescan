@@ -15,14 +15,14 @@ from app.db.event_scope import (
     scoped_transaction,
 )
 from app.db.models import EVENT_SCOPED_TABLES
-from app.modules.events.service import create_event
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, ProgrammingError
+from tests.helpers import quick_event
 
 
 def two_events_with_data(ctx: AppContext) -> tuple[uuid.UUID, uuid.UUID]:
-    a = create_event(ctx, "Event A", "IN", "test").event_id
-    b = create_event(ctx, "Event B", "IN", "test").event_id
+    a = quick_event(ctx, "Event A")
+    b = quick_event(ctx, "Event B")
     for event_id in (a, b):
         with event_transaction(ctx.sessions, event_id) as s:
             s.execute(
@@ -142,7 +142,11 @@ def test_rls_cannot_be_switched_off(ctx: AppContext) -> None:
 
 
 def test_audit_log_is_append_only(ctx: AppContext) -> None:
+    from app.modules.audit.service import record
+
     a, _ = two_events_with_data(ctx)
+    with event_transaction(ctx.sessions, a) as s:
+        record(s, event_id=a, actor="test", action="test.row")
     with pytest.raises(DBAPIError, match="append-only"), event_transaction(ctx.sessions, a) as s:
         s.execute(text("UPDATE audit_log SET action = 'tampered'"))
     with pytest.raises(DBAPIError, match="append-only"), event_transaction(ctx.sessions, a) as s:

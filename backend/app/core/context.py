@@ -14,6 +14,7 @@ from app.adapters.queue.postgres_job_queue import PostgresJobQueue
 from app.adapters.storage.local_filesystem_download import build_local_storage
 from app.core.config import Settings
 from app.db.session import make_engine, make_session_factory
+from app.ports.email_sender import EmailSender
 from app.ports.face_analyzer import FaceAnalyzer
 from app.ports.job_queue import JobQueue
 from app.ports.key_manager import KeyManager
@@ -35,17 +36,19 @@ class AppContext:
     keys: KeyManager
     queue: JobQueue
     analyzer: FaceAnalyzer
+    email: EmailSender
 
 
 def build_context(
     settings: Settings,
     analyzer: FaceAnalyzer | None = None,
     search_path: str | None = None,
+    email: EmailSender | None = None,
 ) -> AppContext:
     """
     Purpose: build the adapters from settings (adapters.yaml defaults: local storage,
         env master key, Postgres queue, facescan_ai).
-    Inputs: settings; optional analyzer (tests); optional schema search path (tests).
+    Inputs: settings; optional analyzer, schema search path and email sender (tests).
     Outputs: AppContext. Side effects: creates a DB engine (no connection yet).
     Raises ContextConfigError naming the missing setting.
     """
@@ -55,6 +58,14 @@ def build_context(
         raise ContextConfigError("FACESCAN_KEYS_MASTER_KEY is not set")
     if settings.storage_signing_key is None:
         raise ContextConfigError("FACESCAN_STORAGE_SIGNING_KEY is not set")
+    if email is None:
+        if settings.email_adapter == "console" and settings.env != "dev":
+            raise ContextConfigError(
+                "the console email adapter only runs in dev; configure an email service"
+            )
+        from app.adapters.email.console_email import ConsoleEmailSender
+
+        email = ConsoleEmailSender()
     try:
         master = parse_master_key(settings.keys_master_key.get_secret_value())
     except ValueError as exc:
@@ -78,4 +89,13 @@ def build_context(
             lock_timeout_seconds=settings.job_lock_timeout_seconds,
         ),
         analyzer=analyzer,
+        email=email,
     )
+
+
+def guest_search_allowed(settings: Settings) -> bool:
+    """
+    Purpose: guest face search runs only in dev until a liveness adapter exists (none is
+        implemented yet, so liveness_adapter can only be empty). Side effects: none.
+    """
+    return settings.env == "dev" or settings.liveness_adapter != ""

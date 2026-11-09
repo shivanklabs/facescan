@@ -1,10 +1,10 @@
-"""Event and upload API (dev token): validation, quarantine, approval, indexing, dev match.
+"""Event and upload API (organiser and photographer, passkey sessions): validation, quarantine,
+approval and indexing.
 
 Also checks that no API response ever contains vectors or scores (invariant 4).
 """
 
 import io
-import json
 import uuid
 from pathlib import Path
 
@@ -17,7 +17,22 @@ from PIL import Image
 from sqlalchemy import text
 from tests.conftest import make_png
 
-FORBIDDEN_KEYS = {"embedding", "embeddings", "vector", "vectors", "prototype", "score", "scores"}
+FORBIDDEN_KEYS = {
+    "embedding",
+    "embeddings",
+    "vector",
+    "vectors",
+    "prototype",
+    "score",
+    "scores",
+    "borderline",
+}
+
+
+@pytest.fixture
+def api(organiser: TestClient) -> TestClient:
+    """The signed-in organiser (organisers may also upload)."""
+    return organiser
 
 
 def assert_no_biometrics(payload: object) -> None:
@@ -90,12 +105,13 @@ def test_upload_rejects_by_content_size_pixels_and_count(api: TestClient, ctx: A
         assert s.execute(text("SELECT count(*) FROM photos")).scalar() == 0
 
 
-def test_full_flow_index_and_match(api: TestClient, ctx: AppContext, tmp_path: Path) -> None:
+def test_approve_indexes_and_makes_web_copies(
+    api: TestClient, ctx: AppContext, tmp_path: Path
+) -> None:
     from tests.integration.test_job_queue import drain
 
     drain(ctx)
     event_id = new_event(api)
-    # Person 1 in photos 0-3, person 2 in photos 4-6; each photo also has one stranger.
     photos = [make_png(1, 2, (64 + i, 48)) for i in range(4)] + [
         make_png(2, 2, (80 + i, 48)) for i in range(3)
     ]
@@ -103,24 +119,14 @@ def test_full_flow_index_and_match(api: TestClient, ctx: AppContext, tmp_path: P
     approve = api.post(f"/events/{event_id}/collections/{body['collection_id']}/approve")
     assert approve.status_code == 200 and approve.json()["approved_photos"] == 7
     assert_no_biometrics(approve.json())
-    assert (
-        api.post(f"/events/{event_id}/collections/{body['collection_id']}/approve").status_code
-        == 409
-    )
-    # Not searchable before the worker ran.
-    early = api.post(
-        f"/events/{event_id}/match", content=make_png(1, 1), headers={"Content-Type": "image/png"}
-    )
-    assert early.status_code == 409
-
+    again = api.post(f"/events/{event_id}/collections/{body['collection_id']}/approve")
+    assert again.status_code == 409
     while run_one(ctx, "test-worker"):
         pass
     detail = api.get(f"/events/{event_id}").json()
     assert_no_biometrics(detail)
     assert detail["status"] == "searchable"
     assert detail["counts"]["faces"] == 14 and detail["counts"]["clusters"] >= 2
-
-    # Originals left quarantine; web copies exist and carry no EXIF.
     root = tmp_path / "storage"
     assert not list((root / ctx.settings.storage_bucket_quarantine / event_id).glob("*"))
     assert len(list((root / ctx.settings.storage_bucket_photos / event_id).glob("*"))) == 7
@@ -128,46 +134,16 @@ def test_full_flow_index_and_match(api: TestClient, ctx: AppContext, tmp_path: P
     assert len(web) == 7
     with Image.open(io.BytesIO(web[0].read_bytes())) as img:
         assert not img.getexif() and "exif" not in img.info
-
-    ids = body["photo_ids"]
-    match = api.post(
-        f"/events/{event_id}/match", content=make_png(1, 1), headers={"Content-Type": "image/png"}
-    )
-    assert match.status_code == 200
-    result = match.json()
-    assert_no_biometrics(result)
-    assert set(result) == {"event_id", "release", "borderline"}
-    assert set(result["release"]) <= set(ids[:4]) and result["release"]
-    assert not set(result["release"]) & set(ids[4:])
-
-    two_faces = api.post(
-        f"/events/{event_id}/match", content=make_png(1, 2), headers={"Content-Type": "image/png"}
-    )
-    assert two_faces.status_code == 422 and "found 2" in two_faces.json()["detail"]
-    no_face = api.post(
-        f"/events/{event_id}/match", content=make_png(1, 0), headers={"Content-Type": "image/png"}
-    )
-    assert no_face.status_code == 422 and "found 0" in no_face.json()["detail"]
-    wrong_type = api.post(
-        f"/events/{event_id}/match", content=b"x", headers={"Content-Type": "text/plain"}
-    )
-    assert wrong_type.status_code == 422
-
-    listing = api.get("/events").json()
-    assert_no_biometrics(listing)
-    assert event_id in {e["event_id"] for e in listing["events"]}
-
+    collections = api.get(f"/events/{event_id}/collections").json()["collections"]
+    assert collections[0]["photos"] == 7 and len(collections[0]["previews"]) == 7
     with event_transaction(ctx.sessions, uuid.UUID(event_id)) as s:
         actions = [r[0] for r in s.execute(text("SELECT action FROM audit_log ORDER BY id"))]
-        details = json.dumps([r[0] for r in s.execute(text("SELECT details FROM audit_log"))])
     assert actions[:4] == [
         "event.created",
         "photos.uploaded",
         "collection.approved",
         "event.indexed",
     ]
-    assert "match.dev" in actions
-    assert "." not in details.replace("event.", "")  # counts only, no floats or file names
 
 
 def test_openapi_schema_exposes_no_vector_fields(api: TestClient) -> None:
@@ -191,12 +167,17 @@ def test_openapi_schema_exposes_no_vector_fields(api: TestClient) -> None:
     assert not names & FORBIDDEN_KEYS
 
 
-@pytest.mark.parametrize("path", ["/events", "/events/00000000-0000-0000-0000-000000000000"])
-def test_dev_routes_need_the_token(api: TestClient, path: str) -> None:
-    anonymous = TestClient(api.app)
-    assert anonymous.get(path).status_code == 401
-    wrong = TestClient(api.app, headers={"Authorization": "Bearer " + "x" * 40})
-    assert wrong.get(path).status_code == 401
+def test_staff_routes_need_sign_in_and_a_passkey(api: TestClient, ctx: AppContext) -> None:
+    from tests.helpers import magic_sign_in, new_client
+
+    event_id = new_event(api)
+    anonymous = new_client(ctx)
+    assert anonymous.get("/events").status_code == 401
+    assert anonymous.post("/events", json={"name": "x", "country": "IN"}).status_code == 401
+    magic_only = new_client(ctx)
+    magic_sign_in(magic_only, ctx, "organiser@example.test")
+    assert magic_only.post("/events", json={"name": "x", "country": "IN"}).status_code == 403
+    assert upload(magic_only, event_id, [make_png(1, 1)]).status_code == 403
 
 
 def big_png() -> bytes:

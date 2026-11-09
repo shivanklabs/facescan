@@ -30,6 +30,13 @@ class KeyManager(Protocol):
         """
         ...
 
+    def derive_key(self, purpose: str) -> bytes:
+        """
+        Purpose: a stable 32-byte key for one non-event purpose (e.g. email hashing), derived
+        from the master key so no extra secret is needed. Side effects: none.
+        """
+        ...
+
     def unwrap(self, event_id: UUID, wrapped: bytes) -> bytes:
         """
         Purpose: recover an event's data key. Outputs: 32 bytes. Side effects: none.

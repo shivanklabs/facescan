@@ -1,3 +1,108 @@
 {
-  "app": { "name": "FaceScan" }
+  "app": { "name": "FaceScan", "tagline": "Find your own photos from an event." },
+  "common": {
+    "loading": "Loading…",
+    "error": "Something went wrong. Please try again.",
+    "signOut": "Sign out",
+    "signOutEverywhere": "Sign out on all devices",
+    "privacy": "Privacy settings",
+    "home": "Home",
+    "language": "हिन्दी",
+    "signedOut": "You are signed out."
+  },
+  "signIn": {
+    "title": "Sign in",
+    "email": "Email address",
+    "sendLink": "Email me a sign-in link",
+    "linkSent": "If this address can sign in, a link is on its way. It works once and expires in 15 minutes.",
+    "devHint": "Development: the link is printed in the API terminal.",
+    "orPasskey": "Or sign in with a passkey",
+    "passkey": "Sign in with passkey",
+    "checking": "Signing you in…",
+    "linkInvalid": "This sign-in link is invalid or has expired. Please request a new one."
+  },
+  "passkey": {
+    "offerTitle": "Sign in faster next time",
+    "offerText": "Add a passkey on this device. No password needed.",
+    "add": "Add a passkey",
+    "added": "Passkey added.",
+    "staffRequired": "Organisers and photographers must use a passkey.",
+    "useIt": "Sign in with your passkey"
+  },
+  "landing": {
+    "invalid": "This invite link is invalid or has expired. Ask the organiser for a new one.",
+    "intro": "You are invited to find your photos from",
+    "signInToContinue": "Sign in with your email to continue.",
+    "continue": "Continue",
+    "notReady": "Photos are still being prepared. Please check back later."
+  },
+  "consent": {
+    "yes": "Yes",
+    "no": "No",
+    "submit": "I agree, continue",
+    "outdated": "The notice was updated. Please read it again."
+  },
+  "selfie": {
+    "title": "Take a selfie",
+    "devBanner": "Development: liveness not active.",
+    "disabled": "Face search is not available yet.",
+    "instructions": "Look at the camera, alone in the frame. We take a few pictures over two seconds. They are not saved.",
+    "start": "Start camera",
+    "capture": "Find my photos",
+    "capturing": "Hold still…",
+    "searching": "Searching…",
+    "cameraError": "The camera could not be opened. Allow camera access and try again.",
+    "tooMany": "Too many searches. Please try again later."
+  },
+  "gallery": {
+    "title": "Your photos",
+    "empty": "No photos found yet.",
+    "download": "Download",
+    "missing": "Some photos missing? We only show photos we are sure about. Claims are coming soon.",
+    "searchAgain": "Search again"
+  },
+  "privacy": {
+    "title": "Privacy settings",
+    "none": "You have not consented to face search for any event.",
+    "active": "Face search allowed",
+    "withdrawnOn": "Withdrawn",
+    "withdraw": "Withdraw consent",
+    "confirm": "Withdraw? Your matches for this event are deleted and you are signed out of it.",
+    "done": "Consent withdrawn. Your matches were deleted."
+  },
+  "organiser": {
+    "title": "Your events",
+    "create": "Create event",
+    "name": "Event name",
+    "country": "Country code",
+    "roles": "Your roles",
+    "invites": "Guest invite links",
+    "createInvite": "Create invite link",
+    "inviteOnce": "Copy this link now; it is shown only once:",
+    "expires": "Expires",
+    "revoke": "Revoke",
+    "revoked": "Revoked",
+    "addPhotographer": "Add a photographer",
+    "photographerEmail": "Photographer's email",
+    "add": "Add",
+    "added": "Added. They can sign in with their email and must add a passkey.",
+    "approval": "Review and approve uploads",
+    "upload": "Upload photos",
+    "status": "Status"
+  },
+  "approval": {
+    "title": "Approve uploads",
+    "collection": "Upload batch",
+    "photos": "photos",
+    "approve": "Approve",
+    "approved": "Approved",
+    "indexing": "Approved. Photos are being indexed."
+  },
+  "upload": {
+    "title": "Upload photos",
+    "choose": "Choose photos",
+    "send": "Upload",
+    "done": "Uploaded. The organiser will review them.",
+    "sending": "Uploading…"
+  }
 }

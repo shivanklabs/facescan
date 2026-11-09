@@ -18,8 +18,22 @@ from app.core.config import Settings, get_settings
 from app.core.context import AppContext, ContextConfigError, build_context
 from app.core.logging import configure_logging
 from app.jobs.handlers import ON_FINAL_FAILURE, dispatch
+from app.ports.capabilities import Capabilities
 
 logger = logging.getLogger("facescan.worker")
+
+
+class NoEmailSender:
+    """The worker never sends email; this keeps it independent of the email adapter."""
+
+    @property
+    def capabilities(self) -> Capabilities:
+        """Static description."""
+        return Capabilities(adapter_name="none")
+
+    def send_sign_in_link(self, to_address: str, link: str, expires_minutes: int) -> None:
+        """Purpose: refuse (the worker has no reason to send sign-in links)."""
+        raise RuntimeError("the worker does not send email")
 
 
 def worker_id() -> str:
@@ -98,7 +112,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
     try:
-        ctx: AppContext | None = build_context(settings)
+        ctx: AppContext | None = build_context(settings, email=NoEmailSender())
     except ContextConfigError as exc:
         logger.warning("database features disabled: %s", exc)
         ctx = None

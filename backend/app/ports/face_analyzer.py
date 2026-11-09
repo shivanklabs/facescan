@@ -111,6 +111,16 @@ class MatchBands:
     borderline: list[UUID]
 
 
+@dataclass(frozen=True, slots=True)
+class FramesMatch:
+    """Result of a multi-frame selfie search: released photo ids, and whether some photos
+    may be missing (borderline matches, or frames that did not agree on one person)."""
+
+    release: list[UUID]
+    some_photos_missing: bool
+    frames_agree: bool
+
+
 class FaceAnalyzer(Protocol):
     """Face library operations used by ingest, indexing and matching."""
 
@@ -136,6 +146,10 @@ class FaceAnalyzer(Protocol):
         """Purpose: upright JPEG at most max_side pixels, with no EXIF or other metadata."""
         ...
 
+    def full_copy(self, data: bytes) -> bytes:
+        """Purpose: upright full-resolution JPEG with all metadata stripped (downloads)."""
+        ...
+
     def selfie_query(self, data: bytes) -> SelfieQuery:
         """Purpose: embed a selfie in memory. Raises SelfieRejectedError unless one face."""
         ...
@@ -152,4 +166,17 @@ class FaceAnalyzer(Protocol):
         query: SelfieQuery,
     ) -> MatchBands:
         """Purpose: match one selfie against one event. Outputs: photo ids per band."""
+        ...
+
+    def match_frames(
+        self,
+        faces: list[StoredFace],
+        clusters: list[BuiltCluster],
+        calibration: dict[str, dict[str, float | int | bool | None]],
+        frames: list[SelfieQuery],
+    ) -> FramesMatch:
+        """
+        Purpose: match a multi-frame selfie. Every frame must pick the same cluster, otherwise
+            nothing is released (borderline). Outputs: FramesMatch (no scores, no vectors).
+        """
         ...

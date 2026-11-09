@@ -1,4 +1,102 @@
-"""Business logic for gallery.
+"""Guest gallery: the guest's own released photos only.
 
-TODO: implement. Scaffold placeholder only.
+Signed URLs (web-size copies, EXIF-free) are issued only after the permission check: the
+caller is a guest of the event with a current consent, and the photo is one of *their*
+matches. Downloads go through the same check and return a full-resolution copy with all
+metadata stripped, re-encoded in memory. Organisers and photographers have no route to
+anyone's matches (they never see who matched which photo).
 """
+
+from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.auth import CurrentUser
+from app.core.context import AppContext
+from app.core.deps import require_role
+from app.core.errors import NotFoundError
+from app.db.event_scope import event_transaction
+from app.modules.audit.service import record
+from app.modules.consent.service import FACE_SEARCH, active_consent
+from app.modules.ingest.models import Photo
+from app.modules.matching.models import Match
+
+
+@dataclass(frozen=True, slots=True)
+class GalleryItem:
+    """One released photo: a short-lived signed URL of its web copy."""
+
+    photo_id: UUID
+    url: str
+    expires_at: datetime
+
+
+def _guest_with_consent(session: Session, event_id: UUID, user: CurrentUser) -> None:
+    """Purpose: the permission check shared by gallery and download. Raises 403/404."""
+    require_role(session, event_id, user.user_id, ("guest",))
+    if active_consent(session, event_id, user.user_id, FACE_SEARCH) is None:
+        raise HTTPException(status_code=403, detail="consent_required")
+
+
+def gallery(ctx: AppContext, user: CurrentUser, event_id: UUID) -> list[GalleryItem]:
+    """Purpose: the guest's released photos as signed web-copy URLs. Side effects: audit."""
+    bucket = ctx.settings.storage_bucket_derivatives
+    with event_transaction(ctx.sessions, event_id) as session:
+        _guest_with_consent(session, event_id, user)
+        rows = session.execute(
+            select(Photo.id, Photo.web_object_key)
+            .join(Match, Match.photo_id == Photo.id)
+            .where(
+                Match.event_id == event_id,
+                Match.user_id == user.user_id,
+                Match.score_band == "release",
+                Photo.web_object_key.is_not(None),
+            )
+            .order_by(Photo.created_at)
+        ).all()
+        items = []
+        for photo_id, web_key in rows:
+            signed = ctx.storage.create_signed_download_url(bucket, event_id, str(web_key))
+            items.append(GalleryItem(photo_id, signed.url, signed.expires_at))
+        record(
+            session,
+            event_id=event_id,
+            actor=user.actor,
+            action="gallery.viewed",
+            details={"photos": len(items)},
+        )
+        return items
+
+
+def download(ctx: AppContext, user: CurrentUser, event_id: UUID, photo_id: UUID) -> bytes:
+    """
+    Purpose: full-resolution, metadata-free copy of one of the guest's released photos.
+    Raises 404 unless the photo is the caller's own match. Side effects: audit row.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        _guest_with_consent(session, event_id, user)
+        row = session.execute(
+            select(Photo.bucket, Photo.object_key)
+            .join(Match, Match.photo_id == Photo.id)
+            .where(
+                Match.event_id == event_id,
+                Match.user_id == user.user_id,
+                Match.photo_id == photo_id,
+                Match.score_band == "release",
+            )
+        ).first()
+        if row is None:
+            raise NotFoundError("photo not found")
+        record(
+            session,
+            event_id=event_id,
+            actor=user.actor,
+            action="gallery.downloaded",
+            target=str(photo_id),
+        )
+        bucket, key = row
+    return ctx.analyzer.full_copy(ctx.storage.get_object(bucket, event_id, key))

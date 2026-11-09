@@ -1,6 +1,7 @@
-"""API models for events (no personal data, no vectors)."""
+"""API models for events, staff and invites (no personal data, no vectors)."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,7 +16,7 @@ class CreateEventRequest(BaseModel):
 
 
 class EventResponse(BaseModel):
-    """An event's metadata."""
+    """An event's metadata and the caller's roles in it."""
 
     event_id: UUID
     name: str
@@ -23,15 +24,62 @@ class EventResponse(BaseModel):
     status: str
     created_at: datetime
     indexed_at: datetime | None
+    roles: list[str]
 
 
 class EventDetailResponse(EventResponse):
-    """An event with counts."""
+    """An event with counts (staff only; null for guests)."""
 
-    counts: dict[str, int]
+    counts: dict[str, int] | None
 
 
 class EventListResponse(BaseModel):
-    """All events (dev admin view)."""
+    """The caller's events."""
 
     events: list[EventResponse]
+
+
+class AddStaffRequest(BaseModel):
+    """Body: add a photographer or co-organiser by email."""
+
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(min_length=3, max_length=254)
+    role: Literal["organiser", "photographer"]
+
+
+class CreateInviteRequest(BaseModel):
+    """Body: create an invite link."""
+
+    model_config = ConfigDict(extra="forbid")
+    days: int | None = Field(default=None, ge=1, le=90)
+
+
+class InviteResponse(BaseModel):
+    """An invite link. url (with the secret) is returned only when it is created."""
+
+    invite_id: UUID
+    created_at: datetime
+    expires_at: datetime
+    revoked: bool
+    url: str | None = None
+
+
+class InviteListResponse(BaseModel):
+    """An event's invite links (no secrets)."""
+
+    invites: list[InviteResponse]
+
+
+class InviteKey(BaseModel):
+    """Body: the secret from an invite link."""
+
+    model_config = ConfigDict(extra="forbid")
+    key: str = Field(min_length=20, max_length=100)
+
+
+class PublicEventResponse(BaseModel):
+    """What an invite link shows before sign-in."""
+
+    event_id: UUID
+    name: str
+    status: str

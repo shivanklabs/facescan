@@ -1,4 +1,4 @@
-"""Tables: events, event_members, event_sections, event_keys, collections."""
+"""Tables: events, event_members, event_sections, event_keys, collections, event_invites."""
 
 import uuid
 from datetime import datetime
@@ -103,3 +103,20 @@ class Collection(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="open")
     created_at: Mapped[datetime] = created_at()
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EventInvite(Base):
+    """A gated invite link for guests (mode A). Only the SHA-256 of its secret is stored; the
+    link carries the event id and the secret. Revocable and expiring."""
+
+    __tablename__ = "event_invites"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    event_id: Mapped[uuid.UUID] = event_fk()
+    secret_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

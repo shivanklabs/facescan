@@ -1,13 +1,12 @@
-"""API models for the TEMPORARY dev match endpoint: photo ids per band, nothing else."""
+"""API models for guest search: released photo ids only (never vectors, scores or borderline)."""
 
 from uuid import UUID
 
 from pydantic import BaseModel
 
 
-class MatchBandsResponse(BaseModel):
-    """Photo ids per band. Never vectors, never scores (invariant 4)."""
+class SearchResponse(BaseModel):
+    """The release band and a hint that some photos may be missing."""
 
-    event_id: UUID
     release: list[UUID]
-    borderline: list[UUID]
+    some_photos_missing: bool

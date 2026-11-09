@@ -49,9 +49,28 @@ class Settings(BaseSettings):
     # ends). Must be under var/ (git-ignored). Selfies never spool.
     upload_spool_dir: str = "var/tmp/uploads"
 
-    # TEMPORARY DEV-ONLY ACCESS (stand-in until login is built): a single admin bearer token.
-    # Accepted only when env == "dev"; the API refuses to start if it is set anywhere else.
-    dev_admin_token: SecretStr | None = Field(default=None, min_length=32)
+    # Sign-in: email magic links + passkeys (WebAuthn); server-side sessions in PostgreSQL.
+    auth_rp_id: str = "localhost"
+    auth_rp_name: str = "FaceScan"
+    auth_rp_origin: str = "http://localhost:5173"  # the web app's origin (also the CSRF check)
+    auth_session_hours: int = Field(default=12, ge=1, le=24 * 30)
+    auth_magic_link_minutes: int = Field(default=15, ge=1, le=60)
+    auth_magic_links_per_hour: int = Field(default=5, ge=1, le=50)
+    auth_cookie_secure: bool = True
+    # Who may create events (comma-separated emails). Organisers must use a passkey.
+    auth_organiser_emails: str = ""
+    # Magic-link delivery. "console" prints links to the API terminal and only runs in dev.
+    email_adapter: Literal["console"] = "console"
+
+    # Event access and guest search.
+    invite_default_days: int = Field(default=14, ge=1, le=90)
+    search_per_user_per_hour: int = Field(default=10, ge=1, le=1000)
+    search_per_event_per_hour: int = Field(default=500, ge=1, le=100_000)
+    search_min_frames: int = Field(default=3, ge=1, le=10)
+    search_max_frames: int = Field(default=5, ge=1, le=10)
+    # No liveness adapter exists yet: guest search runs only when env == "dev".
+    liveness_adapter: Literal[""] = ""
+    consent_notice_path: str = "config/consent/face_search_notice.yaml"
 
     worker_poll_interval_seconds: float = Field(default=2.0, gt=0, le=60)
     job_max_attempts: int = Field(default=3, ge=1, le=20)

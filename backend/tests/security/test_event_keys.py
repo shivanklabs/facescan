@@ -59,24 +59,16 @@ def test_sealed_data_is_bound_to_event_table_and_row() -> None:
         open_sealed(secrets.token_bytes(32), sealed, aad(e, "faces", r))
 
 
-def index_one_event(api: TestClient, ctx: AppContext) -> uuid.UUID:
-    from app.worker import run_one
-
-    event_id = uuid.UUID(
-        api.post("/events", json={"name": "Keys", "country": "IN"}).json()["event_id"]
-    )
-    files = [("files", (f"p{i}.png", make_png(1, 2), "image/png")) for i in range(3)]
-    up = api.post(f"/events/{event_id}/photos", files=files).json()
-    api.post(f"/events/{event_id}/collections/{up['collection_id']}/approve")
-    while run_one(ctx, "test-worker"):
-        pass
-    return event_id
-
-
 def test_destroying_the_key_makes_faces_prototypes_and_calibration_unreadable(
-    api: TestClient, ctx: AppContext
+    organiser: TestClient, ctx: AppContext
 ) -> None:
-    event_id = index_one_event(api, ctx)
+    from tests.helpers import FRAMES_HEADERS, frames_body, guest_client, searchable_event
+
+    event_id_text, invite, _ = searchable_event(
+        ctx, organiser, [make_png(1, 2, (64 + i, 48)) for i in range(3)]
+    )
+    event_id = uuid.UUID(event_id_text)
+    guest = guest_client(ctx, "guest-keys@example.test", event_id_text, invite)
     with event_transaction(ctx.sessions, event_id) as s:
         key, _ = data_key(s, ctx.keys, event_id)
         faces, clusters, calibration, _ = repository.load_event_model(s, event_id, key)
@@ -96,7 +88,6 @@ def test_destroying_the_key_makes_faces_prototypes_and_calibration_unreadable(
         assert s.execute(text("SELECT count(*) FROM faces")).scalar() == len(faces)
         with pytest.raises(DecryptionError):
             repository.load_faces(s, event_id, secrets.token_bytes(32))
-    response = api.post(
-        f"/events/{event_id}/match", content=make_png(1, 1), headers={"Content-Type": "image/png"}
-    )
-    assert response.status_code == 409  # event closed, nothing can be matched
+    frames = frames_body(*[make_png(1, 1, (60 + i, 40)) for i in range(3)])
+    response = guest.post(f"/events/{event_id}/search", content=frames, headers=FRAMES_HEADERS)
+    assert response.status_code == 409  # event closed: nothing can be searched

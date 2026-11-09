@@ -1,5 +1,5 @@
-"""Invariants 3 and 7: a selfie sent to /match is never written to disk, storage or logs, and
-neither are its vectors."""
+"""Invariants 3 and 7: selfie frames sent to /search are never written to disk, storage or
+logs, and neither are their vectors; guest responses hold no vectors or scores."""
 
 import base64
 import builtins
@@ -8,16 +8,15 @@ import logging
 import os
 import re
 import tempfile
-import uuid
 from collections.abc import Callable
 from pathlib import Path
 
 import cv2
 import pytest
 from app.core.context import AppContext
-from app.worker import run_one
 from fastapi.testclient import TestClient
 from tests.conftest import REPO, make_png, person_vector
+from tests.helpers import FRAMES_HEADERS, frames_body, guest_client, searchable_event
 
 FLOAT_RUN = re.compile(r"(-?\d+\.\d{3,}[,\s]+){8,}")
 
@@ -38,24 +37,20 @@ def snapshot(roots: list[Path]) -> dict[str, tuple[int, int]]:
     return state
 
 
-def test_match_keeps_the_selfie_in_memory_only(
-    api: TestClient,
+def test_search_keeps_selfie_frames_in_memory_only(
+    organiser: TestClient,
     ctx: AppContext,
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tests.integration.test_job_queue import drain
+    event_id, invite, _ = searchable_event(
+        ctx, organiser, [make_png(1, 1, (70 + i, 50)) for i in range(3)], name="Privacy"
+    )
+    guest = guest_client(ctx, "guest-privacy@example.test", event_id, invite)
+    frames = [make_png(1, 1, (333 + i, 222)) for i in range(3)]  # unique bytes
+    body = frames_body(*frames)
 
-    drain(ctx)
-    event_id = api.post("/events", json={"name": "Privacy", "country": "IN"}).json()["event_id"]
-    files = [("files", (f"p{i}.png", make_png(1, 1, (70 + i, 50)), "image/png")) for i in range(3)]
-    body = api.post(f"/events/{event_id}/photos", files=files).json()
-    api.post(f"/events/{event_id}/collections/{body['collection_id']}/approve")
-    while run_one(ctx, "test-worker"):
-        pass
-
-    selfie = make_png(1, 1, (333, 222))  # unique bytes
     temp = tmp_path / "temp"
     temp.mkdir()
     for var in ("TMP", "TEMP", "TMPDIR"):
@@ -79,20 +74,18 @@ def test_match_keeps_the_selfie_in_memory_only(
     monkeypatch.setattr(io, "open", guarded_open)
     monkeypatch.setattr(cv2, "imwrite", no_imwrite)
     caplog.set_level(logging.DEBUG)
-    response = api.post(
-        f"/events/{event_id}/match", content=selfie, headers={"Content-Type": "image/png"}
-    )
+    response = guest.post(f"/events/{event_id}/search", content=body, headers=FRAMES_HEADERS)
     monkeypatch.undo()
     after = snapshot(roots)
 
     assert response.status_code == 200, response.text
+    assert set(response.json()) == {"release", "some_photos_missing"}
     assert writes == []
     assert after == before
     text = caplog.text + response.text
     assert not FLOAT_RUN.search(text)
-    assert base64.b64encode(selfie[20:60]).decode() not in text
-    assert selfie[20:60].hex() not in text
-    vector = person_vector(1, "auraface", 99)
-    for value in vector[:16]:
+    for frame in frames:
+        assert base64.b64encode(frame[20:60]).decode() not in text
+        assert frame[20:60].hex() not in text
+    for value in person_vector(1, "auraface", 99)[:16]:
         assert f"{float(value):.6f}" not in text
-    assert uuid.UUID(response.json()["event_id"])

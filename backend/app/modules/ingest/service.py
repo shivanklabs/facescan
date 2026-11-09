@@ -12,7 +12,9 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.core.auth import CurrentUser
 from app.core.context import AppContext
+from app.core.deps import require_role
 from app.core.errors import ConflictError, NotFoundError, PayloadTooLargeError, UnprocessableError
 from app.db.event_scope import event_transaction
 from app.modules.audit.service import record
@@ -54,11 +56,16 @@ def validate_files(ctx: AppContext, files: list[bytes]) -> list[ImageInfo]:
 
 
 def upload_photos(
-    ctx: AppContext, event_id: UUID, files: list[bytes], collection_id: UUID | None, actor: str
+    ctx: AppContext,
+    event_id: UUID,
+    files: list[bytes],
+    collection_id: UUID | None,
+    user: CurrentUser,
 ) -> UploadResult:
     """
     Purpose: validate and store photos in quarantine for one event.
-    Inputs: event, file contents, optional open collection to add to (else a new one).
+    Inputs: event, file contents, optional open collection to add to (else a new one), the
+        signed-in photographer or organiser.
     Side effects: writes objects to the quarantine bucket; inserts collections/photos/audit
         rows. Objects are removed again if the database transaction fails.
     """
@@ -67,6 +74,7 @@ def upload_photos(
     stored: list[str] = []
     try:
         with event_transaction(ctx.sessions, event_id) as session:
+            require_role(session, event_id, user.user_id, ("photographer", "organiser"))
             event = events_repo.get_event(session, event_id)
             if event is None:
                 raise NotFoundError("event not found")
@@ -103,7 +111,7 @@ def upload_photos(
             record(
                 session,
                 event_id=event_id,
-                actor=actor,
+                actor=user.actor,
                 action="photos.uploaded",
                 target=str(collection.id),
                 details={"count": len(photo_ids)},
@@ -115,7 +123,9 @@ def upload_photos(
         raise
 
 
-def approve_collection(ctx: AppContext, event_id: UUID, collection_id: UUID, actor: str) -> int:
+def approve_collection(
+    ctx: AppContext, event_id: UUID, collection_id: UUID, user: CurrentUser
+) -> int:
     """
     Purpose: release a collection for indexing: move its photos out of quarantine and queue
         index_event. Outputs: number of photos approved.
@@ -127,6 +137,7 @@ def approve_collection(ctx: AppContext, event_id: UUID, collection_id: UUID, act
     new_keys: list[str] = []
     try:
         with event_transaction(ctx.sessions, event_id) as session:
+            require_role(session, event_id, user.user_id, ("organiser",))
             event = events_repo.get_event(session, event_id)
             collection = session.get(Collection, collection_id)
             if event is None or collection is None or collection.event_id != event_id:
@@ -153,7 +164,7 @@ def approve_collection(ctx: AppContext, event_id: UUID, collection_id: UUID, act
             record(
                 session,
                 event_id=event_id,
-                actor=actor,
+                actor=user.actor,
                 action="collection.approved",
                 target=str(collection_id),
                 details={"photos": len(photos)},
@@ -165,3 +176,46 @@ def approve_collection(ctx: AppContext, event_id: UUID, collection_id: UUID, act
     for bucket, key in moved:
         ctx.storage.delete_object(bucket, event_id, key)
     return len(moved)
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionView:
+    """A collection with its photo count and short-lived preview links (organiser only)."""
+
+    collection_id: UUID
+    status: str
+    photos: int
+    previews: list[str]
+
+
+PREVIEWS_PER_COLLECTION = 12
+
+
+def list_collections(ctx: AppContext, event_id: UUID, user: CurrentUser) -> list[CollectionView]:
+    """
+    Purpose: collections for the approval page, each with signed preview URLs of its photos
+        (issued only after the organiser check; they expire after a few minutes).
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, user.user_id, ("organiser",))
+        result = []
+        for collection in session.scalars(
+            select(Collection)
+            .where(Collection.event_id == event_id)
+            .order_by(Collection.created_at.desc())
+        ):
+            photos = list(
+                session.scalars(
+                    select(Photo)
+                    .where(Photo.collection_id == collection.id)
+                    .order_by(Photo.created_at)
+                )
+            )
+            previews = []
+            for photo in photos[:PREVIEWS_PER_COLLECTION]:
+                bucket, key = photo.bucket, photo.object_key
+                if photo.web_object_key is not None:
+                    bucket, key = ctx.settings.storage_bucket_derivatives, photo.web_object_key
+                previews.append(ctx.storage.create_signed_download_url(bucket, event_id, key).url)
+            result.append(CollectionView(collection.id, collection.status, len(photos), previews))
+        return result

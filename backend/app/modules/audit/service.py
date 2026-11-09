@@ -1,12 +1,13 @@
 """Audit trail writer. Details hold counts and ids only: never images, vectors, emails or tokens."""
 
+from collections.abc import Mapping
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.modules.audit.models import AuditLog
 
-AuditDetails = dict[str, int | str | bool | None]
+AuditDetails = Mapping[str, int | str | bool | None]
 
 
 def record(

@@ -19,7 +19,18 @@ export default defineConfig({
     alias: [{ find: /^@\//, replacement: '/src/' }],
   },
   // Dev server listens on this machine only (not the local network).
-  server: { host: '127.0.0.1', port: 5173, strictPort: true },
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
+    // Same-origin API: /api/* goes to the FastAPI process, so the session cookie is first-party.
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],

@@ -1,5 +1,8 @@
-// Route table for the app shell. Pages render titles only for now.
-import { createBrowserRouter, Link, Outlet } from 'react-router-dom';
+// Route table. Guest flow: /e/:eventId?k=… → sign-in → consent → selfie → gallery.
+import { createBrowserRouter } from 'react-router-dom';
+import { AppLayout } from '@/components/ui/AppLayout';
+import HomePage from '@/pages/HomePage';
+import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import EventLandingPage from '@/pages/guest/EventLandingPage';
 import ConsentPage from '@/pages/guest/ConsentPage';
 import SelfieCapturePage from '@/pages/guest/SelfieCapturePage';
@@ -13,24 +16,6 @@ import CollectionApprovalPage from '@/pages/organiser/CollectionApprovalPage';
 import ClaimQueuePage from '@/pages/organiser/ClaimQueuePage';
 import AdminDashboardPage from '@/pages/admin/AdminDashboardPage';
 
-function Layout() {
-  return (
-    <main>
-      <Outlet />
-    </main>
-  );
-}
-
-function HomePage() {
-  return (
-    <>
-      <h1>FaceScan</h1>
-      <p>Open your event link to find your photos.</p>
-      <Link to="/privacy">Privacy settings</Link>
-    </>
-  );
-}
-
 function NotFoundPage() {
   return <h1>Page not found</h1>;
 }
@@ -38,10 +23,11 @@ function NotFoundPage() {
 export const routes = [
   {
     path: '/',
-    element: <Layout />,
+    element: <AppLayout />,
     children: [
       { index: true, element: <HomePage /> },
-      { path: 'events/:eventId', element: <EventLandingPage /> },
+      { path: 'auth/callback', element: <AuthCallbackPage /> },
+      { path: 'e/:eventId', element: <EventLandingPage /> },
       { path: 'events/:eventId/consent', element: <ConsentPage /> },
       { path: 'events/:eventId/selfie', element: <SelfieCapturePage /> },
       { path: 'events/:eventId/gallery', element: <GalleryPage /> },
@@ -49,7 +35,7 @@ export const routes = [
       { path: 'privacy', element: <PrivacySettingsPage /> },
       { path: 'photographer/events/:eventId/upload', element: <UploadPage /> },
       { path: 'photographer/events/:eventId/status', element: <ProcessingStatusPage /> },
-      { path: 'organiser/events/new', element: <EventSetupPage /> },
+      { path: 'organiser', element: <EventSetupPage /> },
       { path: 'organiser/events/:eventId/approval', element: <CollectionApprovalPage /> },
       { path: 'organiser/events/:eventId/claims', element: <ClaimQueuePage /> },
       { path: 'admin', element: <AdminDashboardPage /> },

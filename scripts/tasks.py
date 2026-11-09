@@ -128,7 +128,6 @@ def _random_value(key: str) -> str:
     if key in (
         "FACESCAN_STORAGE_SIGNING_KEY",
         "FACESCAN_AUTH_SESSION_SECRET",
-        "FACESCAN_DEV_ADMIN_TOKEN",
     ):
         return secrets.token_urlsafe(48)
     return secrets.token_urlsafe(24)

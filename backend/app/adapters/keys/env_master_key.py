@@ -11,7 +11,9 @@ import secrets
 from uuid import UUID
 
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from app.ports.capabilities import Capabilities
 from app.ports.key_manager import KeyUnwrapError
@@ -43,6 +45,7 @@ class EnvMasterKeyManager:
         if len(master_key) != KEY_BYTES:
             raise ValueError("master key must be 32 bytes")
         self._aead = AESGCM(master_key)
+        self._master = master_key
         # Public id: a short hash, so rotation can be tracked without revealing the key.
         self._id = "env:" + hashlib.sha256(b"facescan-master-key-id|" + master_key).hexdigest()[:16]
 
@@ -62,6 +65,17 @@ class EnvMasterKeyManager:
             raise ValueError("data key must be 32 bytes")
         nonce = secrets.token_bytes(NONCE_BYTES)
         return MAGIC + nonce + self._aead.encrypt(nonce, data_key, _aad(event_id))
+
+    def derive_key(self, purpose: str) -> bytes:
+        """Purpose: HKDF-SHA256 sub-key of the master key for one purpose. No side effects."""
+        if not purpose or len(purpose) > 64:
+            raise ValueError("purpose must be 1-64 characters")
+        return HKDF(
+            algorithm=hashes.SHA256(),
+            length=KEY_BYTES,
+            salt=None,
+            info=b"facescan-derived-key|v1|" + purpose.encode("ascii"),
+        ).derive(self._master)
 
     def unwrap(self, event_id: UUID, wrapped: bytes) -> bytes:
         """Purpose: unwrap a data key. Raises KeyUnwrapError on any mismatch."""

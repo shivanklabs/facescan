@@ -18,3 +18,18 @@ class ApproveResponse(BaseModel):
     collection_id: UUID
     approved_photos: int
     status: str
+
+
+class CollectionResponse(BaseModel):
+    """A collection for the approval page."""
+
+    collection_id: UUID
+    status: str
+    photos: int
+    previews: list[str]
+
+
+class CollectionListResponse(BaseModel):
+    """An event's collections."""
+
+    collections: list[CollectionResponse]

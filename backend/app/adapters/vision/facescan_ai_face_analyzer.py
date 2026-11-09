@@ -29,6 +29,7 @@ from app.ports.face_analyzer import (
     AnalysedFace,
     BuiltCluster,
     BuiltEvent,
+    FramesMatch,
     ImageInfo,
     ImageRejectedError,
     MatchBands,
@@ -174,6 +175,14 @@ class FacescanAiFaceAnalyzer:
             raise ImageRejectedError("could not encode web copy")
         return bytes(encoded.tobytes())
 
+    def full_copy(self, data: bytes) -> bytes:
+        """Purpose: upright full-resolution JPEG; OpenCV writes no EXIF or other metadata."""
+        image = decode_image(data)
+        ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        if not ok:
+            raise ImageRejectedError("could not encode download copy")
+        return bytes(encoded.tobytes())
+
     def selfie_query(self, data: bytes) -> SelfieQuery:
         """Purpose: one-face selfie embeddings in memory. Raises SelfieRejectedError."""
         try:
@@ -228,6 +237,59 @@ class FacescanAiFaceAnalyzer:
                 "weak_faces": summary.weak_faces,
                 "clusters": summary.clusters,
             },
+        )
+
+    def _event_index(
+        self,
+        faces: list[StoredFace],
+        clusters: list[BuiltCluster],
+        calibration: dict[str, dict[str, float | int | bool | None]],
+    ) -> EventIndex:
+        """Purpose: facescan_ai EventIndex with clusters and calibration from storage."""
+        index = self._index(faces, {})
+        row_of = {f.face_id: i for i, f in enumerate(faces)}
+        index.clusters = [
+            EventCluster(
+                cluster_id=k,
+                members=[row_of[m] for m in c.members if m in row_of],
+                attached_weak=[row_of[m] for m in c.attached_weak if m in row_of],
+                prototypes=c.prototypes,
+            )
+            for k, c in enumerate(clusters)
+            if PRIMARY in c.prototypes
+        ]
+        index.calibration = {k: _calibration_from_dict(k, v) for k, v in calibration.items()}
+        return index
+
+    def match_frames(
+        self,
+        faces: list[StoredFace],
+        clusters: list[BuiltCluster],
+        calibration: dict[str, dict[str, float | int | bool | None]],
+        frames: list[SelfieQuery],
+    ) -> FramesMatch:
+        """
+        Purpose: per-frame matching must agree on one cluster; the release decision is then
+            made on the mean of the frames' embeddings (re-normalised). Disagreement releases
+            nothing and reports that photos may be missing.
+        """
+        if not frames:
+            raise ValueError("at least one frame is required")
+        index = self._event_index(faces, clusters, calibration)
+        config = MatchConfig()
+        winners = {match_event(index, f.vectors, f.strong, config).cluster_id for f in frames}
+        agree = len(winners) == 1 and None not in winners
+        combined = {}
+        for engine in frames[0].vectors:
+            mean = np.mean([f.vectors[engine] for f in frames], axis=0)
+            combined[engine] = (mean / max(float(np.linalg.norm(mean)), 1e-12)).astype(np.float32)
+        result = match_event(index, combined, all(f.strong for f in frames), config)
+        if not agree:
+            return FramesMatch(release=[], some_photos_missing=True, frames_agree=False)
+        return FramesMatch(
+            release=[UUID(p) for p in result.release_photos],
+            some_photos_missing=bool(result.borderline_photos),
+            frames_agree=True,
         )
 
     def match(

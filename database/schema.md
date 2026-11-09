@@ -1,4 +1,4 @@
-# Schema (migrations 0001-0002)
+# Schema (migrations 0001-0003)
 
 All IDs are UUIDs (audit_log uses a bigint sequence). Timestamps are `timestamptz`.
 Every table except `users` and `passkeys` has `event_id` with row-level security ENABLED and
@@ -10,7 +10,12 @@ no BYPASSRLS). Models: `backend/app/**/models.py`; migration:
 |---|---|---|
 | events | an event | id, event_id (= id, checked), name, country, status (draft/indexing/searchable/failed/closed), indexed_at |
 | event_members | role of a user in an event | event_id, user_id, role (organiser/photographer/guest) |
-| users | person account (global) | id, email_hash, email_encrypted, created_at, is_minor |
+| users | person account (global) | id, email_hash (HMAC), email_encrypted, is_minor, age_answered_at |
+| sessions | server-side sessions (global) | id, token_hash, user_id, event_id (when opened from an invite), auth_method, expires_at, revoked_at |
+| magic_links | single-use sign-in links (global) | id, token_hash, email_hash, email_encrypted, next_path, expires_at, used_at |
+| auth_challenges | WebAuthn challenges (global) | id, challenge, purpose, user_id, expires_at, used_at |
+| event_invites | guest invite links (mode A) | id, event_id, secret_hash, created_by, expires_at, revoked_at |
+| search_attempts | guest search limits | id, event_id, user_id, created_at |
 | passkeys | WebAuthn credentials (global) | id, user_id, credential_id, public_key, sign_count |
 | event_sections | sub-areas/days of an event | id, event_id, name |
 | collections | an upload batch; approval releases it for indexing | id, event_id, status (open/approved), approved_at |
@@ -20,7 +25,7 @@ no BYPASSRLS). Models: `backend/app/**/models.py`; migration:
 | event_calibrations | per-event thresholds and engine versions | id, event_id, payload_encrypted, key_version |
 | matches | guest-to-photo candidate matches | id, event_id, user_id, photo_id, score_band, released_at |
 | claims | guest claims a photo | id, event_id, user_id, photo_id, status, reviewed_by |
-| consents | DPDP consent records | id, event_id, user_id, purpose, granted_at, withdrawn_at, guardian_user_id |
+| consents | DPDP consent records ('notice', 'face_search') | id, event_id, user_id, purpose, notice_version, language, granted_at, withdrawn_at, guardian_user_id |
 | user_templates | guest search template (opt-in) | id, event_id, user_id, embedding_encrypted, expires_at |
 | event_keys | wrapped per-event data keys | id, event_id, key_version, wrapped_key (NULL = destroyed), master_key_id, destroyed_at |
 | audit_log | append-only audit trail | id, event_id (NULL only for non-event actions), actor, action, target, details, at |
@@ -36,7 +41,9 @@ nothing is visible. Three narrow extra policies:
 - `events`: SELECT in the `admin` scope (list event metadata only);
 - `audit_log`: rows without an event, in the `admin` scope;
 - `jobs`: SELECT/UPDATE in the `dispatch` scope (the worker claims jobs).
-No scope other than the event's own can see photos, faces, clusters, keys or calibration.
+- user scope (`app.user_id`): SELECT of the user's own event_members rows and consents, and the
+  events they belong to ("my events", privacy settings).
+No scope other than the event's own can see photos, faces, clusters, matches, keys or calibration.
 `audit_log` is append-only (trigger). `SET row_security = off` fails for the app role.
 
 ## Encryption

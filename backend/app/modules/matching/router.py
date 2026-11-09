@@ -1,59 +1,74 @@
-"""TEMPORARY DEV-ONLY match endpoint (dev admin token). Real guest search comes with login.
+"""Guest face search.
 
-POST /events/{event_id}/match takes the selfie as the raw request body (Content-Type
-image/jpeg, image/png or image/webp), read straight into memory with a size cap, so it is
-never spooled to a temporary file (invariant 3).
+POST /events/{event_id}/search takes 3-5 live selfie frames as one raw body
+(Content-Type application/x-facescan-frames): each frame is a 4-byte big-endian length
+followed by that many bytes of JPEG/PNG/WebP. The body is read straight into memory with size
+caps, so frames are never spooled to a temporary file (invariant 3).
 """
 
-from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
+from app.core.deps import Ctx, User
 from app.core.errors import PayloadTooLargeError, UnprocessableError
 from app.core.rate_limit import RateLimiter
-from app.core.security import require_dev_admin
-from app.modules.events.router import Ctx
 from app.modules.matching import service
-from app.modules.matching.schemas import MatchBandsResponse
+from app.modules.matching.schemas import SearchResponse
 
-router = APIRouter(prefix="/events/{event_id}", tags=["match (dev token)"])
-Actor = Annotated[str, Depends(require_dev_admin)]
-match_limiter = RateLimiter("match", limit=10, window_seconds=60)
-SELFIE_TYPES = ("image/jpeg", "image/png", "image/webp")
+router = APIRouter(prefix="/events/{event_id}", tags=["guest search"])
+search_limiter = RateLimiter("search", limit=30, window_seconds=60)
+FRAMES_CONTENT_TYPE = "application/x-facescan-frames"
+LENGTH_BYTES = 4
 
 
-async def read_selfie(request: Request, max_bytes: int) -> bytes:
+def split_frames(body: bytes, max_frames: int, max_frame_bytes: int) -> list[bytes]:
     """
-    Purpose: read the raw selfie body into memory, never more than max_bytes.
-    Raises PayloadTooLargeError or UnprocessableError. Side effects: reads the body.
+    Purpose: parse the length-prefixed frames. Raises UnprocessableError or
+        PayloadTooLargeError. Side effects: none.
     """
+    frames: list[bytes] = []
+    offset = 0
+    while offset < len(body):
+        if len(frames) >= max_frames:
+            raise UnprocessableError(f"at most {max_frames} frames")
+        if offset + LENGTH_BYTES > len(body):
+            raise UnprocessableError("malformed frames body")
+        size = int.from_bytes(body[offset : offset + LENGTH_BYTES], "big")
+        offset += LENGTH_BYTES
+        if size == 0 or size > max_frame_bytes:
+            raise PayloadTooLargeError("a frame is empty or larger than allowed")
+        if offset + size > len(body):
+            raise UnprocessableError("malformed frames body")
+        frames.append(body[offset : offset + size])
+        offset += size
+    return frames
+
+
+async def read_frames(request: Request, max_frames: int, max_frame_bytes: int) -> list[bytes]:
+    """Purpose: read the raw body into memory (size-capped) and split it into frames."""
     content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
-    if content_type not in SELFIE_TYPES:
-        raise UnprocessableError("send the selfie as image/jpeg, image/png or image/webp")
+    if content_type != FRAMES_CONTENT_TYPE:
+        raise UnprocessableError(f"send the frames as {FRAMES_CONTENT_TYPE}")
+    limit = max_frames * (max_frame_bytes + LENGTH_BYTES)
     length = request.headers.get("content-length")
-    if length is not None and length.isdigit() and int(length) > max_bytes:
-        raise PayloadTooLargeError("selfie is larger than allowed")
+    if length is not None and length.isdigit() and int(length) > limit:
+        raise PayloadTooLargeError("selfie frames are larger than allowed")
     chunks: list[bytes] = []
     size = 0
     async for chunk in request.stream():
         size += len(chunk)
-        if size > max_bytes:
-            raise PayloadTooLargeError("selfie is larger than allowed")
+        if size > limit:
+            raise PayloadTooLargeError("selfie frames are larger than allowed")
         chunks.append(chunk)
-    if size == 0:
-        raise UnprocessableError("empty selfie")
-    return b"".join(chunks)
+    return split_frames(b"".join(chunks), max_frames, max_frame_bytes)
 
 
-@router.post(
-    "/match",
-    response_model=MatchBandsResponse,
-    dependencies=[Depends(match_limiter)],
-)
-async def match(event_id: UUID, request: Request, actor: Actor, ctx: Ctx) -> MatchBandsResponse:
-    """Purpose: photo ids per band for a one-face selfie (dev only)."""
-    selfie = await read_selfie(request, ctx.settings.selfie_max_bytes)
-    bands = service.dev_match(ctx, event_id, selfie, actor)
-    del selfie
-    return MatchBandsResponse(event_id=event_id, release=bands.release, borderline=bands.borderline)
+@router.post("/search", response_model=SearchResponse, dependencies=[Depends(search_limiter)])
+async def search(event_id: UUID, request: Request, user: User, ctx: Ctx) -> SearchResponse:
+    """Purpose: the guest's photos in this event (release band only)."""
+    frames = await read_frames(
+        request, ctx.settings.search_max_frames, ctx.settings.selfie_max_bytes
+    )
+    result = service.guest_search(ctx, user, event_id, frames)
+    return SearchResponse(release=result.release, some_photos_missing=result.some_photos_missing)
