@@ -28,6 +28,11 @@
         }
       }
     },
+    "complete_photos": {
+      "description": "Photos whose faces are all labelled; only these count in the benchmark.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "labeler_state": {
       "description": "Labeler view state for one index build (merged clusters, faces removed from clusters).",
       "type": "object",

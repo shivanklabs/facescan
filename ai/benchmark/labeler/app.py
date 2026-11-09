@@ -1,8 +1,9 @@
 """Local labelling page for one benchmark event (dev tool; binds to 127.0.0.1 only).
 
 Shows the event's clusters, every unclustered face and a per-photo view, and lets the owner of
-the photos name clusters with opaque person ids, remove wrong faces, merge clusters and mark
-faces unknown. Labels are saved to datasets/<event>/labels.json after every change.
+the photos name clusters with opaque person ids, remove wrong faces, merge clusters, mark
+faces unknown and mark photos fully labelled (only those count in the benchmark). Every change
+can be undone (last UNDO_LIMIT steps) and is saved to datasets/<event>/labels.json.
 
 Face thumbnails and photo previews are cropped, scaled and JPEG-encoded in memory and served
 from memory; nothing image-related is written to disk. Requests are accepted only for the
@@ -10,6 +11,7 @@ loopback host names (DNS-rebinding guard) and, for changes, only as JSON from th
 origin, so other websites cannot drive the labeler.
 """
 
+import copy
 import threading
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
@@ -38,19 +40,20 @@ PREVIEW_MAX_SIDE = 1400
 PHOTO_CACHE_SIZE = 6
 NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 PERSON_PATTERN = r"^[a-z0-9][a-z0-9_-]{0,31}$"
+UNDO_LIMIT = 50
 
 
 class NameBody(BaseModel):
     """Body: name a cluster."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
     person_id: str = Field(pattern=PERSON_PATTERN)
 
 
 class MergeBody(BaseModel):
     """Body: merge cluster `source` into cluster `target`."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
     source: int = Field(ge=0)
     target: int = Field(ge=0)
 
@@ -58,8 +61,15 @@ class MergeBody(BaseModel):
 class LabelBody(BaseModel):
     """Body: label one face with a person id or 'unknown', or clear it (null)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
     label: str | None = Field(default=None, pattern=r"^([a-z0-9][a-z0-9_-]{0,31}|unknown)$")
+
+
+class CompleteBody(BaseModel):
+    """Body: mark a photo fully labelled (or not)."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    complete: bool
 
 
 class LabelerState:
@@ -84,6 +94,7 @@ class LabelerState:
         self.selfies = selfies
         self.lock = threading.Lock()
         self._photos: OrderedDict[str, ImageBGR] = OrderedDict()
+        self._undo: list[Labels] = []
         labels.reset_view_if_stale(index)
 
     # ---- view model -------------------------------------------------------------------
@@ -115,6 +126,10 @@ class LabelerState:
         face = self.index.faces[row]
         return self.labels.label_for(face.photo_id, face.bbox)
 
+    def photo_ids(self) -> list[str]:
+        """Purpose: photos that have at least one detected face, in a stable order."""
+        return sorted({f.photo_id for f in self.index.faces})
+
     def state(self) -> dict[str, object]:
         """Purpose: everything the page needs (ids, boxes, labels; no vectors)."""
         clusters = self.view_clusters()
@@ -139,9 +154,19 @@ class LabelerState:
             "clusters": cluster_list,
             "unclustered": [r for r in range(len(self.index.faces)) if r not in clustered],
             "photos": [
-                {"index": i, "photo_id": photo, "faces": rows}
+                {
+                    "index": i,
+                    "photo_id": photo,
+                    "faces": rows,
+                    "complete": photo in self.labels.complete_photos,
+                }
                 for i, (photo, rows) in enumerate(sorted(photos.items()))
             ],
+            "progress": {
+                "complete": sum(1 for p in photos if p in self.labels.complete_photos),
+                "total": len(photos),
+            },
+            "undo_steps": len(self._undo),
             "faces": [
                 {
                     "row": row,
@@ -160,12 +185,36 @@ class LabelerState:
         """Purpose: persist labels.json. Side effects: writes one file."""
         save_labels(self.labels, self.labels_path)
 
+    def _checkpoint(self) -> None:
+        """Purpose: remember the labels before a change, for undo (bounded)."""
+        self._undo.append(copy.deepcopy(self.labels))
+        del self._undo[:-UNDO_LIMIT]
+
+    def undo(self) -> bool:
+        """Purpose: restore the labels before the last change. Outputs: False if none left."""
+        if not self._undo:
+            return False
+        self.labels = self._undo.pop()
+        self._save()
+        return True
+
+    def set_complete(self, photo_index: int, complete: bool) -> None:
+        """Purpose: mark a photo fully labelled or not. Raises IndexError for a bad index."""
+        photo_id = self.photo_ids()[photo_index]
+        self._checkpoint()
+        if complete:
+            self.labels.complete_photos.add(photo_id)
+        else:
+            self.labels.complete_photos.discard(photo_id)
+        self._save()
+
     def name_cluster(self, cluster_id: int, person_id: str) -> None:
         """Purpose: label every face in a view cluster. Side effects: saves labels."""
         rows = self.view_clusters().get(cluster_id)
         if rows is None:
             raise KeyError(cluster_id)
         validate_person_id(person_id)
+        self._checkpoint()
         for row in rows:
             face = self.index.faces[row]
             self.labels.set_label(face.photo_id, face.bbox, person_id)
@@ -176,12 +225,14 @@ class LabelerState:
         clusters = self.view_clusters()
         if source not in clusters or target not in clusters or source == target:
             raise KeyError(source)
+        self._checkpoint()
         self.labels.merged[source] = target
         self._save()
 
     def remove_face(self, row: int) -> None:
         """Purpose: take a face out of its cluster view and clear its label."""
         face = self.index.faces[row]
+        self._checkpoint()
         self.labels.removed.add(self.key(row))
         self.labels.set_label(face.photo_id, face.bbox, None)
         self._save()
@@ -191,6 +242,7 @@ class LabelerState:
         if label is not None and label != UNKNOWN:
             validate_person_id(label)
         face = self.index.faces[row]
+        self._checkpoint()
         self.labels.set_label(face.photo_id, face.bbox, label)
         self._save()
 
@@ -230,8 +282,7 @@ class LabelerState:
 
     def preview(self, photo_index: int) -> bytes:
         """Purpose: scaled photo with numbered face boxes (in memory). No disk writes."""
-        photos = sorted({f.photo_id for f in self.index.faces})
-        photo_id = photos[photo_index]
+        photo_id = self.photo_ids()[photo_index]
         image = self.photo(photo_id).copy()
         for row, face in enumerate(self.index.faces):
             if face.photo_id != photo_id:
@@ -348,6 +399,24 @@ def create_app(state: LabelerState) -> FastAPI:
         with state.lock:
             state.label_face(check_row(row), body.label)
         return {"ok": True}
+
+    @app.post("/api/photos/{photo_index}/complete")
+    def complete(
+        photo_index: Annotated[int, PathParam(ge=0)], body: CompleteBody
+    ) -> dict[str, bool]:
+        """Purpose: mark a photo fully labelled (counts in the benchmark) or not."""
+        with state.lock:
+            try:
+                state.set_complete(photo_index, body.complete)
+            except IndexError as exc:
+                raise HTTPException(status_code=404, detail="no such photo") from exc
+        return {"ok": True}
+
+    @app.post("/api/undo")
+    def undo() -> dict[str, bool]:
+        """Purpose: undo the last change."""
+        with state.lock:
+            return {"ok": state.undo()}
 
     @app.get("/api/faces/{row}/thumb")
     def thumb(row: face_row) -> Response:

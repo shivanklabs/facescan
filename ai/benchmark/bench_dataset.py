@@ -8,8 +8,10 @@ labels.json (format 1):
     {"format": 1, "event": "...", "updated_at": "...",
      "persons": {"p001": ["photo1.jpg", ...]},          photo-level ground truth (derived)
      "faces": [{"photo_id": "...", "bbox": [x, y, w, h], "label": "p001" | "unknown"}],
+     "complete_photos": ["photo1.jpg", ...],            photos whose faces are all labelled
      "labeler_state": {"index_created_at": "...", "merged": {"5": 2}, "removed": ["<face key>"]}}
-person ids are opaque (e.g. p001), never names.
+person ids are opaque (e.g. p001), never names. The benchmark counts only photos listed in
+complete_photos, so an unlabelled face can never be scored as a false release.
 """
 
 import json
@@ -116,11 +118,15 @@ class Labels:
     merged: dict[int, int] = field(default_factory=dict)
     removed: set[str] = field(default_factory=set)
     updated_at: str = ""
+    complete_photos: set[str] = field(default_factory=set)
 
-    def persons(self) -> dict[str, list[str]]:
-        """Photo-level ground truth: person id -> sorted photo ids."""
+    def persons(self, complete_only: bool = False) -> dict[str, list[str]]:
+        """Photo-level ground truth: person id -> sorted photo ids (optionally only photos
+        marked fully labelled)."""
         result: dict[str, set[str]] = {}
         for f in self.faces:
+            if complete_only and f.photo_id not in self.complete_photos:
+                continue
             if f.label != UNKNOWN:
                 result.setdefault(f.label, set()).add(f.photo_id)
         return {p: sorted(photos) for p, photos in sorted(result.items())}
@@ -183,6 +189,7 @@ def load_labels(path: Path, event: str) -> Labels:
             merged={int(k): int(v) for k, v in state.get("merged", {}).items()},
             removed={str(k) for k in state.get("removed", [])},
             updated_at=str(raw.get("updated_at", "")),
+            complete_photos={str(p) for p in raw.get("complete_photos", [])},
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise LabelsError(f"labels.json is malformed: {type(exc).__name__}") from exc
@@ -212,6 +219,7 @@ def save_labels(labels: Labels, path: Path) -> None:
             }
             for f in sorted(labels.faces, key=lambda f: (f.photo_id, f.bbox.x, f.bbox.y))
         ],
+        "complete_photos": sorted(labels.complete_photos),
         "labeler_state": {
             "index_created_at": labels.index_created_at,
             "merged": {str(k): v for k, v in sorted(labels.merged.items())},

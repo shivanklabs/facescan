@@ -195,3 +195,51 @@ def test_port_is_free_after_shutdown() -> None:
     with socket.socket() as s:  # sanity: loopback sockets are available on this machine
         s.bind(("127.0.0.1", 0))
         assert s.getsockname()[0] == "127.0.0.1"
+
+
+def test_undo_restores_previous_labels(tmp_path: Path) -> None:
+    state = make_state(tmp_path)
+    client = client_for(state)
+    data = client.get("/api/state").json()
+    assert data["undo_steps"] == 0
+    cid = data["clusters"][0]["id"]
+    row = data["clusters"][0]["faces"][0]
+    client.post(f"/api/clusters/{cid}/name", json={"person_id": "p000"})
+    client.post(f"/api/faces/{row}/label", json={"label": "unknown"})
+    assert client.get("/api/state").json()["faces"][row]["label"] == "unknown"
+    assert client.post("/api/undo").json() == {"ok": True}
+    assert client.get("/api/state").json()["faces"][row]["label"] == "p000"
+    assert client.post("/api/undo").json() == {"ok": True}
+    assert client.get("/api/state").json()["faces"][row]["label"] is None
+    assert client.post("/api/undo").json() == {"ok": False}  # nothing left
+    assert load_labels(state.labels_path, "lab").faces == []  # undo is saved too
+
+
+def test_photo_complete_flag_and_progress(tmp_path: Path) -> None:
+    state = make_state(tmp_path)
+    client = client_for(state)
+    data = client.get("/api/state").json()
+    total = len(data["photos"])
+    assert data["progress"] == {"complete": 0, "total": total}
+    assert client.post("/api/photos/0/complete", json={"complete": True}).status_code == 200
+    data = client.get("/api/state").json()
+    assert data["progress"]["complete"] == 1 and data["photos"][0]["complete"] is True
+    saved = load_labels(state.labels_path, "lab")
+    assert saved.complete_photos == {data["photos"][0]["photo_id"]}
+    client.post("/api/undo")
+    assert client.get("/api/state").json()["progress"]["complete"] == 0
+    assert client.post(f"/api/photos/{total}/complete", json={"complete": True}).status_code == 404
+    assert client.post("/api/photos/0/complete", json={"complete": "yes"}).status_code == 422
+
+
+def test_page_lists_keyboard_shortcuts(tmp_path: Path) -> None:
+    html = client_for(make_state(tmp_path)).get("/").text
+    for key in (
+        "<kbd>n</kbd>",
+        "<kbd>x</kbd>",
+        "<kbd>u</kbd>",
+        "<kbd>j</kbd>",
+        "<kbd>k</kbd>",
+        "<kbd>z</kbd>",
+    ):
+        assert key in html

@@ -24,8 +24,13 @@ uv run --env-file .env facescan-ai bench <event>
 ```
 The labeler binds to 127.0.0.1 only. It shows clusters, unclustered faces and a per-photo view,
 so faces the clustering missed can be labelled too. Thumbnails are cropped in memory and never
-written to disk. Label every face of every labelled person: an unlabelled face of a person
-counts as a false release when that photo is released for them.
+written to disk. Keyboard shortcuts are listed on the page (`n` name, `x` remove, `u` unknown,
+`j`/`k` next/previous, `h`/`l` faces, `c` photo fully labelled, `z` undo); the last 50 changes
+can be undone.
+
+When every face in a photo is labelled, mark the photo fully labelled (`c` in the Photos view).
+`bench` counts only fully labelled photos and reports how many photos and releases it
+excluded, so an unlabelled face never counts as a false release. The header shows progress.
 
 `bench` reports precision, recall and false releases overall and per person, recall by face
 size and quality, borderline counts, and the 95% upper bound on the false-release rate

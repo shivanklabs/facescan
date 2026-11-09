@@ -152,3 +152,39 @@ def test_labels_round_trip_and_persons(tmp_path: Path) -> None:
     assert len(raw["faces"]) == 3
     with pytest.raises(ValueError):
         labels.set_label("a.jpg", BBox(0, 0, 50, 50), "Alice Smith")
+
+
+def test_only_fully_labelled_photos_count() -> None:
+    event = make_synthetic_event(event="partial", people=6, photos=80, seed=11)
+    build_event(event.index, EventBuildConfig())
+    labels = event.labels
+    full = evaluate(event.index, labels, event.selfies, MatchConfig())
+    assert full.photos_excluded == 0 and full.releases_excluded == 0
+
+    # Pick a correctly released photo and forget the label of that person's face in it.
+    person = next(p for p in full.persons if p.counts.true_releases > 0).person_id
+    released = next(
+        r["released_true"][0] for r in full.debug if r["person_id"] == person and r["released_true"]
+    )
+    labels.faces = [f for f in labels.faces if not (f.photo_id == released and f.label == person)]
+    still_complete = evaluate(event.index, labels, event.selfies, MatchConfig())
+    assert still_complete.total.false_releases == full.total.false_releases + 1
+
+    # Not marked fully labelled: excluded, so the unlabelled face is not a false release.
+    labels.complete_photos.discard(released)
+    excluded = evaluate(event.index, labels, event.selfies, MatchConfig())
+    assert excluded.total.false_releases == full.total.false_releases
+    assert excluded.photos_excluded == 1
+    assert excluded.releases_excluded >= 1
+    data = report_json(excluded)
+    assert data["photos_excluded_not_fully_labelled"] == 1
+    assert "excluded (not fully labelled): 1" in report_markdown(excluded)
+
+
+def test_nothing_counts_without_complete_photos() -> None:
+    event = make_synthetic_event(event="none", people=3, photos=20, seed=2)
+    build_event(event.index, EventBuildConfig())
+    event.labels.complete_photos = set()
+    result = evaluate(event.index, event.labels, event.selfies, MatchConfig())
+    assert result.total.released == 0 and result.photos_counted == 0
+    assert any("fully labelled" in s for s in result.skipped)

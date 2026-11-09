@@ -58,7 +58,7 @@ def make_synthetic_event(
     identities: dict[str, dict[str, NDArray[np.float64]]] = {}
     for pid in person_ids + [f"s{i:04d}" for i in range(stranger_count)]:
         identities[pid] = {e: rng.normal(size=d) / np.sqrt(d) for e, d in DIMS.items()}
-    for a, b in zip(person_ids[0:6:2], person_ids[1:6:2], strict=True):  # look-alike pairs
+    for a, b in zip(person_ids[0:6:2], person_ids[1:6:2], strict=False):  # look-alike pairs
         for engine in DIMS:
             identities[b][engine] = 0.55 * identities[a][engine] + 0.45 * identities[b][engine]
 
@@ -103,6 +103,7 @@ def make_synthetic_event(
         )
         for pid in person_ids
     }
+    labels.complete_photos = set(photo_ids)  # synthetic labels are exact and complete
     index = EventIndex(
         event=event,
         engine_versions={"auraface": "synthetic", "sface": "synthetic"},

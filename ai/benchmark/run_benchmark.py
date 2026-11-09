@@ -2,7 +2,9 @@
 
 For each person with a selfie (datasets/<event>/selfies/<person_id>.jpg) the selfie is matched
 with the same code as `facescan-ai match`, and the released photos are compared with
-labels.json. Reports (aggregate figures and person ids only, no names, no photos, no vectors)
+labels.json. Only photos marked fully labelled count: releases of other photos and their
+faces are excluded (and reported), so an unlabelled face can never be scored as a false
+release. Reports (aggregate figures and person ids only, no names, no photos, no vectors)
 go to ai/benchmark/reports/<event>_<timestamp>.md and .json. Per-photo debug output goes only to
 the git-ignored ai/benchmark/work/.
 """
@@ -63,6 +65,9 @@ class BenchResult:
     recall_by_quality: dict[str, tuple[int, int]]
     skipped: list[str]
     calibration: list[str]
+    photos_counted: int
+    photos_excluded: int
+    releases_excluded: int
     index_summary: dict[str, int]
     debug: list[dict[str, object]] = field(default_factory=list)
 
@@ -78,7 +83,9 @@ def evaluate(
     Inputs: built event index, labels, person id -> selfie query, match config.
     Outputs: BenchResult (aggregates plus per-photo debug rows). Side effects: none.
     """
-    truth = labels.persons()
+    complete = labels.complete_photos & set(index.photos)
+    truth = labels.persons(complete_only=True)
+    releases_excluded = 0
     persons: list[PersonReport] = []
     skipped: list[str] = []
     size_hits: dict[str, list[int]] = {name: [0, 0] for name, _, _ in SIZE_BUCKETS}
@@ -87,10 +94,12 @@ def evaluate(
     total = Counts(0, 0, 0)
     for person_id, selfie in sorted(selfies.items()):
         if person_id not in truth:
-            skipped.append(f"{person_id}: selfie but no labelled photos")
+            skipped.append(f"{person_id}: selfie but no labelled faces in fully labelled photos")
             continue
         result = match_event(index, selfie.vectors, selfie.strong, config)
-        released = set(result.release_photos)
+        released = set(result.release_photos) & complete
+        releases_excluded += len(set(result.release_photos) - complete)
+        borderline_counted = set(result.borderline_photos) & complete
         true_photos = set(truth[person_id])
         counts = compare(released, true_photos)
         total = total + counts
@@ -98,13 +107,15 @@ def evaluate(
             PersonReport(
                 person_id=person_id,
                 counts=counts,
-                borderline=len(result.borderline_photos),
-                borderline_true=len(set(result.borderline_photos) & true_photos),
+                borderline=len(borderline_counted),
+                borderline_true=len(borderline_counted & true_photos),
                 selfie_strong=selfie.strong,
                 cluster_margin_ok=result.margin_ok,
             )
         )
         for face in index.faces:
+            if face.photo_id not in complete:
+                continue
             if labels.label_for(face.photo_id, face.bbox) != person_id:
                 continue
             hit = 1 if face.photo_id in released else 0
@@ -126,11 +137,16 @@ def evaluate(
                 "released_true": sorted(released & true_photos),
                 "released_false": sorted(released - true_photos),
                 "missed": sorted(true_photos - released),
-                "borderline": result.borderline_photos,
+                "borderline": sorted(borderline_counted),
+                "excluded_releases_not_fully_labelled": sorted(
+                    set(result.release_photos) - complete
+                ),
             }
         )
     for person_id in sorted(set(truth) - set(selfies)):
         skipped.append(f"{person_id}: labelled but no selfie")
+    if not complete:
+        skipped.append("no photo is marked fully labelled: nothing was counted")
     return BenchResult(
         event=index.event,
         created_at=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
@@ -142,6 +158,9 @@ def evaluate(
         recall_by_quality={k: (v[0], v[1]) for k, v in quality_hits.items()},
         skipped=skipped,
         calibration=[c.describe() for c in index.calibration.values()],
+        photos_counted=len(complete),
+        photos_excluded=len(set(index.photos) - complete),
+        releases_excluded=releases_excluded,
         index_summary={
             "photos": len(index.photos),
             "faces": len(index.faces),
@@ -170,6 +189,9 @@ def report_json(result: BenchResult) -> dict[str, object]:
         "created_at": result.created_at,
         "index": result.index_summary,
         "calibration": result.calibration,
+        "photos_counted_fully_labelled": result.photos_counted,
+        "photos_excluded_not_fully_labelled": result.photos_excluded,
+        "releases_excluded_not_fully_labelled": result.releases_excluded,
         "total": {
             "released": result.total.released,
             "true_releases": result.total.true_releases,
@@ -226,6 +248,9 @@ def report_markdown(result: BenchResult) -> str:
         *[f"- {line}" for line in result.calibration],
         "",
         "## Overall",
+        f"- photos counted (fully labelled): {result.photos_counted}; "
+        f"excluded (not fully labelled): {result.photos_excluded}",
+        f"- releases excluded because the photo is not fully labelled: {result.releases_excluded}",
         f"- released photos: {t.released}",
         f"- precision: {_pct(t.precision)} ({t.true_releases} true, {t.false_releases} false)",
         f"- recall: {_pct(t.recall)} ({t.true_releases} of {t.truth}; {t.missed} missed)",

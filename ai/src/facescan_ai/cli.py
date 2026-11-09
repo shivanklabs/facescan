@@ -380,6 +380,10 @@ def bench(
             raise _fail(str(exc)) from exc
         if not labels.faces:
             raise _fail(f"no labels yet; run: facescan-ai label {event}")
+        if not labels.complete_photos:
+            raise _fail(
+                "no photo is marked fully labelled; mark photos in the labeler (key c) first"
+            )
         event_index = _load_event(event)
         pipeline = _pipeline(_DEFAULTS.min_face_px, _DEFAULTS.score_threshold, threads)
         _check_engines(event_index, pipeline)
@@ -398,6 +402,10 @@ def bench(
     md, js, dbg = write_reports(result, DEFAULT_REPORTS_DIR, work_dir(), prefix)
     t = result.total
     typer.echo(f"persons evaluated: {len(result.persons)}")
+    typer.echo(
+        f"photos counted (fully labelled): {result.photos_counted}; excluded: "
+        f"{result.photos_excluded}; releases excluded: {result.releases_excluded}"
+    )
     typer.echo(
         f"released {t.released}, true {t.true_releases}, false {t.false_releases}, "
         f"missed {t.missed}"

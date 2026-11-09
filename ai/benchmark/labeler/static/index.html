@@ -14,10 +14,17 @@
     <p class="hint">Use opaque person ids (e.g. p001), never names. Selfies found:
       <span id="selfies"></span></p>
     <nav>
-      <button data-view="clusters" class="active">Clusters</button>
-      <button data-view="unclustered">Unclustered faces</button>
-      <button data-view="photos">Photos</button>
+      <button data-view="clusters" class="active">Clusters (1)</button>
+      <button data-view="unclustered">Unclustered faces (2)</button>
+      <button data-view="photos">Photos (3)</button>
+      <button id="undo" title="Undo the last change (z)">Undo (z)</button>
+      <strong id="progress"></strong>
     </nav>
+    <p class="keys">Keys: <kbd>j</kbd>/<kbd>k</kbd> next/previous cluster or photo,
+      <kbd>h</kbd>/<kbd>l</kbd> previous/next face, <kbd>n</kbd> name cluster (or label face),
+      <kbd>x</kbd> remove face from cluster, <kbd>u</kbd> mark face unknown,
+      <kbd>c</kbd> toggle "photo fully labelled", <kbd>z</kbd> undo, <kbd>1</kbd>-<kbd>3</kbd> views.
+      Only fully labelled photos count in the benchmark.</p>
     <p id="status" role="status"></p>
   </header>
   <main id="main"></main>

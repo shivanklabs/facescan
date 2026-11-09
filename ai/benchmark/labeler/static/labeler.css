@@ -22,3 +22,8 @@ main { padding: 16px; }
 .face input { width: 60px; }
 .preview { max-width: 100%; height: auto; border: 1px solid var(--line); }
 input { padding: 3px 5px; }
+.keys { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--card); font: 11px ui-monospace, monospace; }
+#progress { margin-left: 12px; }
+.card.current { outline: 2px solid #3b6fd8; }
+.face.current { outline: 3px solid #3b6fd8; }
