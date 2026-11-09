@@ -31,6 +31,8 @@ ai/models/weights/
 ai/benchmark/datasets/*
 !ai/benchmark/datasets/README.md
 ai/tests/fixtures/local/
+# Encrypted benchmark indexes (facescan-ai index)
+ai/benchmark/work/
 uploads/
 var/
 *.jpg

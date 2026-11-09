@@ -39,5 +39,8 @@ Notes
 | onnxruntime | MIT |
 | opencv-python-headless | Apache-2.0 (OpenCV) / MIT (wheel) |
 | numpy, scikit-learn | BSD-3-Clause |
+| Pillow | MIT-CMU (HPND) |
+| typer (and its dependencies rich, markdown-it-py, mdurl: MIT; shellingham: ISC) | MIT |
+| cryptography | Apache-2.0 OR BSD-3-Clause |
 | React, React Router, Vite, vite-plugin-pwa, i18next | MIT |
 | PostgreSQL | PostgreSQL licence |

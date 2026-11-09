@@ -8,7 +8,13 @@ dependencies = [
     "opencv-python-headless==5.0.0.93",
     "numpy==2.5.4",
     "scikit-learn==1.9.1",
+    "pillow==13.0.0",
+    "typer==0.27.3",
+    "cryptography==50.0.2",
 ]
+
+[project.scripts]
+facescan-ai = "facescan_ai.cli:main"
 
 [build-system]
 requires = ["hatchling"]

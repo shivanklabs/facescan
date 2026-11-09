@@ -36,6 +36,8 @@ PATH_VARS = (
     "FACESCAN_CONFIG_POLICIES_DIR",
     "FACESCAN_STORAGE_ROOT",
 )
+# .env secrets that are AES-256 keys: 32 random bytes, base64-encoded.
+AES_256_KEY_VARS = ("FACESCAN_KEYS_MASTER_KEY", "FACESCAN_BENCH_KEY")
 MIN_PSQL_MAJOR = 15
 STOP_GRACE_SECONDS = 5.0
 IS_WINDOWS = sys.platform == "win32"
@@ -119,20 +121,57 @@ def npm() -> str:
 
 def _random_value(key: str) -> str:
     """Purpose: a random dev secret suited to the variable. Inputs: env var name."""
-    if key == "FACESCAN_KEYS_MASTER_KEY":
+    if key in AES_256_KEY_VARS:
         return base64.b64encode(secrets.token_bytes(32)).decode("ascii")
     if key in ("FACESCAN_STORAGE_SIGNING_KEY", "FACESCAN_AUTH_SESSION_SECRET"):
         return secrets.token_urlsafe(48)
     return secrets.token_urlsafe(24)
 
 
+def add_missing_env_keys() -> None:
+    """
+    Purpose: bring an existing .env up to date with keys added to .env.example later.
+        Missing keys are appended (secrets get random values, others the example value);
+        existing lines are never changed. DB password/URL are not generated here because they
+        must match the role created by db-init.
+    Side effects: may append lines to .env; prints key names only, never values.
+    """
+    existing = load_env_file(ENV_FILE)
+    added: list[str] = []
+    manual: list[str] = []
+    for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.partition("=")
+        key = key.strip()
+        if not sep or line.lstrip().startswith("#") or key in existing:
+            continue
+        if key in ("FACESCAN_DB_PASSWORD", "FACESCAN_DB_URL"):
+            manual.append(key)
+        elif "CHANGE_ME" in value:
+            added.append(f"{key}={_random_value(key)}")
+        else:
+            added.append(f"{key}={value}")
+    if added:
+        text = ENV_FILE.read_text(encoding="utf-8")
+        prefix = "" if text.endswith("\n") or not text else "\n"
+        with ENV_FILE.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(prefix + "\n".join(added) + "\n")
+        names = ", ".join(entry.partition("=")[0] for entry in added)
+        print(f".env exists; added missing keys: {names}")
+    else:
+        print(".env exists and has every key; leaving it unchanged.")
+    if manual:
+        print(f"Set these in .env by hand (must match db-init): {', '.join(manual)}")
+
+
 def create_env_file() -> None:
     """
-    Purpose: create .env from .env.example with random dev secrets in place of CHANGE_ME.
-    Side effects: writes .env if it does not exist (never overwrites, never prints secrets).
+    Purpose: create .env from .env.example with random dev secrets in place of CHANGE_ME;
+        if .env already exists, only append keys it is missing (add_missing_env_keys).
+    Side effects: writes or appends to .env (never changes existing values, never prints
+        secrets).
     """
     if ENV_FILE.exists():
-        print(".env exists; leaving it unchanged.")
+        add_missing_env_keys()
         return
     db_password = secrets.token_urlsafe(24)
     lines: list[str] = []
