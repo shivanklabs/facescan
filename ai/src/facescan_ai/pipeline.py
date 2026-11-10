@@ -105,22 +105,25 @@ class FacePipeline:
         versions["quality"] = self.quality.name
         return versions
 
+    def _analyse_face(self, image: ImageBGR, face: Face) -> AnalysedFace:
+        """
+        Purpose: align a detected face, extract embeddings, and assess quality.
+        Inputs: BGR image and detected Face. Outputs: AnalysedFace.
+        Side effects: none (in memory only).
+        """
+        aligned = align_face(image, face)
+        embeddings = {e.engine: e.embed(aligned) for e in self.embedders}
+        return AnalysedFace(
+            face=face, quality=self.quality.assess(face, aligned), embeddings=embeddings
+        )
+
     def analyse(self, image: ImageBGR) -> list[AnalysedFace]:
         """
         Purpose: detect every face and compute quality and both embeddings.
         Inputs: BGR image. Outputs: one AnalysedFace per detected face.
         Side effects: none (in memory only).
         """
-        results = []
-        for face in self.detector.detect(image):
-            aligned = align_face(image, face)
-            embeddings = {e.engine: e.embed(aligned) for e in self.embedders}
-            results.append(
-                AnalysedFace(
-                    face=face, quality=self.quality.assess(face, aligned), embeddings=embeddings
-                )
-            )
-        return results
+        return [self._analyse_face(image, face) for face in self.detector.detect(image)]
 
     def analyse_selfie(self, image: ImageBGR) -> AnalysedFace:
         """
@@ -129,11 +132,7 @@ class FacePipeline:
         Raises SelfieFaceCountError unless exactly one face is found.
         """
         face = require_single_face(self.detector.detect(image))
-        aligned = align_face(image, face)
-        embeddings = {e.engine: e.embed(aligned) for e in self.embedders}
-        return AnalysedFace(
-            face=face, quality=self.quality.assess(face, aligned), embeddings=embeddings
-        )
+        return self._analyse_face(image, face)
 
     def analyse_selfie_frames(self, frames: list[ImageBGR], gate: QualityGateConfig) -> SelfieQuery:
         """
