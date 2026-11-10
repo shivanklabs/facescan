@@ -32,7 +32,21 @@ DIMS = {"auraface": 512, "sface": 128}
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(_env_file=None, env="test", worker_poll_interval_seconds=0.01)
+    """
+    Purpose: produce application settings for unit tests with env-file loading disabled,
+        db_url set to None, and a freshly generated random master key.
+    Inputs: none.
+    Outputs: Settings instance.
+    Side effects: none.
+    """
+    master_key = base64.b64encode(secrets.token_bytes(32)).decode()
+    return Settings(
+        _env_file=None,
+        env="test",
+        db_url=None,
+        keys_master_key=SecretStr(master_key),
+        worker_poll_interval_seconds=0.01,
+    )
 
 
 @pytest.fixture
@@ -101,7 +115,13 @@ class FakeFaceAnalyzer(FacescanAiFaceAnalyzer):
 
 
 def _repo_settings(**overrides: object) -> Settings:
-    return Settings(_env_file=REPO / ".env", **overrides)
+    """
+    Purpose: produce settings for database/integration tests with env-file loading disabled.
+    Inputs: arbitrary keyword overrides.
+    Outputs: Settings instance.
+    Side effects: none.
+    """
+    return Settings(_env_file=None, **overrides)
 
 
 @pytest.fixture(scope="module")
@@ -141,10 +161,17 @@ def db_schema() -> Iterator[str]:
 
 @pytest.fixture
 def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
-    """Application context on the test schema: local storage under tmp_path, captured email,
-    one allow-listed organiser."""
+    """
+    Purpose: application context on the test schema with local storage under tmp_path,
+        captured email, one allow-listed organiser, and freshly generated random keys.
+    Inputs: db_schema, tmp_path.
+    Outputs: Iterator yielding AppContext.
+    Side effects: creates database tables; disposes engine on teardown.
+    """
     from tests.helpers import ORGANISER_EMAIL, ORIGIN, MemoryEmailSender
 
+    signing_key = secrets.token_hex(32)
+    master_key = base64.b64encode(secrets.token_bytes(32)).decode()
     settings = _repo_settings(
         env="dev",
         auth_rp_id="localhost",
@@ -152,8 +179,8 @@ def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
         auth_organiser_emails=ORGANISER_EMAIL,
         storage_root=str(tmp_path / "storage"),
         upload_spool_dir=str(tmp_path / "spool"),
-        storage_signing_key=SecretStr("s" * 48),
-        keys_master_key=SecretStr(base64.b64encode(secrets.token_bytes(32)).decode()),
+        storage_signing_key=SecretStr(signing_key),
+        keys_master_key=SecretStr(master_key),
         job_retry_base_seconds=0.01,
         worker_poll_interval_seconds=0.01,
     )

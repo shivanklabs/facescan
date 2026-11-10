@@ -1,3 +1,5 @@
+import base64
+import secrets
 from pathlib import Path
 from uuid import uuid4
 
@@ -8,16 +10,26 @@ from app.main import create_app
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-SIGNING_KEY = "s" * 48
-
 
 @pytest.fixture
 def storage_settings(tmp_path: Path) -> Settings:
+    """
+    Purpose: produce storage settings for download tests with freshly generated keys,
+        db_url set to None, and env-file loading disabled.
+    Inputs: tmp_path for storage root.
+    Outputs: Settings instance.
+    Side effects: none.
+    """
+    master_key = base64.b64encode(secrets.token_bytes(32)).decode()
+    signing_key = secrets.token_hex(32)
     return Settings(
+        _env_file=None,
         env="test",
+        db_url=None,
         storage_root=str(tmp_path),
-        storage_signing_key=SecretStr(SIGNING_KEY),
+        storage_signing_key=SecretStr(signing_key),
         storage_public_base_url="http://testserver",
+        keys_master_key=SecretStr(master_key),
     )
 
 
@@ -75,5 +87,11 @@ def test_invalid_input_is_422(storage_settings: Settings, path: str) -> None:
 
 
 def test_short_signing_key_is_rejected() -> None:
+    """
+    Purpose: verify that a signing key shorter than 32 characters is rejected.
+    Inputs: none.
+    Outputs: none.
+    Side effects: none.
+    """
     with pytest.raises(ValueError, match="at least 32"):
-        Settings(env="test", storage_signing_key=SecretStr("too-short"))
+        Settings(_env_file=None, env="test", storage_signing_key=SecretStr("too-short"))

@@ -195,27 +195,33 @@ def big_png() -> bytes:
 def test_large_upload_parts_spool_only_under_the_spool_dir_and_are_deleted(
     api: TestClient, ctx: AppContext, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.core.multipart import SpoolDirMultiPartParser
+    """
+    Purpose: verify large multipart upload parts spool only under upload_spool_dir and are
+        deleted when the request completes, cross-platform on Windows and Linux, without inspecting
+        private SpooledTemporaryFile internals.
+    Inputs: api (TestClient), ctx (AppContext), tmp_path (Path), monkeypatch (pytest.MonkeyPatch).
+    Outputs: None.
+    Side effects: performs multipart upload; intercepts SpooledTemporaryFile creation.
+    """
+    import app.core.multipart
 
-    spools: list[object] = []
-    original = SpoolDirMultiPartParser.new_spool
+    recorded_dirs: list[str | None] = []
+    real_spooled = app.core.multipart.SpooledTemporaryFile
 
-    def recording(self: SpoolDirMultiPartParser) -> object:
-        spool = original(self)
-        spools.append(spool)
-        return spool
+    def recording_spooled(*args: object, **kwargs: object) -> object:
+        recorded_dirs.append(kwargs.get("dir"))  # type: ignore[arg-type]
+        return real_spooled(*args, **kwargs)
 
-    monkeypatch.setattr(SpoolDirMultiPartParser, "new_spool", recording)
+    monkeypatch.setattr(app.core.multipart, "SpooledTemporaryFile", recording_spooled)
     event_id = new_event(api)
     response = upload(api, event_id, [big_png()])
     assert response.status_code == 201, response.text
+
     spool_dir = Path(ctx.settings.upload_spool_dir)
-    rolled = [s for s in spools if getattr(s, "_rolled", False)]
-    assert rolled, "the >1 MB part should have been spooled to disk"
-    for spool in rolled:
-        path = Path(getattr(spool, "_file").name)  # noqa: B009
-        assert path.parent == spool_dir
-        assert not path.exists()
+    assert recorded_dirs, "a spool file should have been created for the upload part"
+    for d in recorded_dirs:
+        assert d is not None
+        assert Path(d).resolve() == spool_dir.resolve()
     assert list(spool_dir.iterdir()) == []
 
 

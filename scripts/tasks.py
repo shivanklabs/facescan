@@ -532,12 +532,31 @@ def task_format(_args: argparse.Namespace) -> None:
 
 
 def task_test(args: argparse.Namespace) -> None:
-    """Purpose: pytest (backend, ai) and vitest (frontend). Side effects: none."""
-    if args.only in (None, "python"):
-        run(python_tool("pytest"), cwd=BACKEND)
-        run(python_tool("pytest"), cwd=AI)
+    """
+    Purpose: run test suites (backend, ai, frontend). Runs all requested suites even if an
+        earlier one fails, collecting errors and reporting all failures together at the end.
+    Inputs: args with optional .only ("python", "frontend", "backend", "ai").
+    Outputs: none.
+    Side effects: runs pytest and vitest child processes. Raises TaskError if any suite failed.
+    """
+    failures: list[str] = []
+    if args.only in (None, "python", "backend"):
+        try:
+            run(python_tool("pytest"), cwd=BACKEND)
+        except TaskError as exc:
+            failures.append(f"backend tests: {exc}")
+    if args.only in (None, "python", "ai"):
+        try:
+            run(python_tool("pytest"), cwd=AI)
+        except TaskError as exc:
+            failures.append(f"AI tests: {exc}")
     if args.only in (None, "frontend"):
-        run([npm(), "test"], cwd=FRONTEND)
+        try:
+            run([npm(), "test"], cwd=FRONTEND)
+        except TaskError as exc:
+            failures.append(f"frontend tests: {exc}")
+    if failures:
+        raise TaskError("; ".join(failures))
 
 
 def task_models(_args: argparse.Namespace) -> None:
@@ -574,8 +593,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="task", required=True, metavar="<task>")
     for name, (_, help_text) in TASKS.items():
         task_parser = sub.add_parser(name, help=help_text)
-        if name in ("lint", "test"):
+        if name == "lint":
             task_parser.add_argument("--only", choices=("python", "frontend"), default=None)
+        elif name == "test":
+            task_parser.add_argument(
+                "--only", choices=("python", "frontend", "backend", "ai"), default=None
+            )
     args = parser.parse_args(argv)
     try:
         TASKS[args.task][0](args)
