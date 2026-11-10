@@ -57,34 +57,41 @@ class LivenessResult:
 
 def _crop_scaled_patch(image: ImageBGR, bbox: BBox, scale: float) -> ImageBGR:
     """
-    Purpose: crop scaled bounding box centered on face, padding if out of bounds.
+    Purpose: crop scaled bounding box centered on face matching upstream Silent-Face logic.
     Inputs: BGR image, face BBox, scale factor.
-    Outputs: cropped BGR patch.
+    Outputs: cropped BGR patch of size (80, 80).
     Side effects: none.
     """
-    img_h, img_w = image.shape[:2]
-    cx = bbox.x + bbox.width / 2.0
-    cy = bbox.y + bbox.height / 2.0
-    crop_w = bbox.width * scale
-    crop_h = bbox.height * scale
-    x1 = int(round(cx - crop_w / 2.0))
-    y1 = int(round(cy - crop_h / 2.0))
-    x2 = int(round(cx + crop_w / 2.0))
-    y2 = int(round(cy + crop_h / 2.0))
+    src_h, src_w = image.shape[:2]
+    box_w = bbox.width
+    box_h = bbox.height
+    scale = min((src_h - 1) / max(1, box_h), min((src_w - 1) / max(1, box_w), scale))
+    new_width = box_w * scale
+    new_height = box_h * scale
+    center_x = box_w / 2.0 + bbox.x
+    center_y = box_h / 2.0 + bbox.y
 
-    pad_left = max(0, -x1)
-    pad_top = max(0, -y1)
-    pad_right = max(0, x2 - img_w)
-    pad_bottom = max(0, y2 - img_h)
+    left_top_x = center_x - new_width / 2.0
+    left_top_y = center_y - new_height / 2.0
+    right_bottom_x = center_x + new_width / 2.0
+    right_bottom_y = center_y + new_height / 2.0
 
-    if pad_left > 0 or pad_top > 0 or pad_right > 0 or pad_bottom > 0:
-        padded = cv2.copyMakeBorder(
-            image, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_CONSTANT, value=0
-        )
-        crop = padded[y1 + pad_top : y2 + pad_top, x1 + pad_left : x2 + pad_left]
-    else:
-        crop = image[y1:y2, x1:x2]
+    if left_top_x < 0:
+        right_bottom_x -= left_top_x
+        left_top_x = 0
+    if left_top_y < 0:
+        right_bottom_y -= left_top_y
+        left_top_y = 0
+    if right_bottom_x > src_w - 1:
+        left_top_x -= right_bottom_x - src_w + 1
+        right_bottom_x = src_w - 1
+    if right_bottom_y > src_h - 1:
+        left_top_y -= right_bottom_y - src_h + 1
+        right_bottom_y = src_h - 1
 
+    crop = image[
+        int(left_top_y) : int(right_bottom_y) + 1, int(left_top_x) : int(right_bottom_x) + 1
+    ]
     if crop.size == 0 or crop.shape[0] == 0 or crop.shape[1] == 0:
         return np.zeros((80, 80, 3), dtype=np.uint8)
     return np.asarray(cv2.resize(crop, (80, 80)), dtype=np.uint8)
@@ -119,7 +126,7 @@ class SilentFaceDetector:
         Side effects: none.
         """
         patch = _crop_scaled_patch(image, bbox, scale)
-        blob = (patch.astype(np.float32) / 255.0).transpose((2, 0, 1))[np.newaxis, :]
+        blob = patch.astype(np.float32).transpose((2, 0, 1))[np.newaxis, :]
         outputs = session.run(["output"], {"input": blob})[0]
         # Silent-Face output: 3 classes [spoof, real, spoof]. Class 1 is real.
         return float(outputs[0, 1])

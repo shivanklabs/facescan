@@ -1,7 +1,24 @@
 """Convert Silent-Face Anti-Spoofing PyTorch models to ONNX.
 
+Upstream: https://github.com/minivision-ai/Silent-Face-Anti-Spoofing
+Commit: b6d5f04ad78778917853b25c778acef6d5626d15 (2020-08-05)
+PyTorch version: 2.6.0
+ONNX opset: 17
+
+Upstream .pth SHA-256 digests:
+- 2.7_80x80_MiniFASNetV2.pth:
+  a5eb02e1843f19b5386b953cc4c9f011c3f985d0ee2bb9819eea9a142099bec0
+- 4_0_0_80x80_MiniFASNetV1SE.pth:
+  84ee1d37d96894d5e82de5a57df044ef80a58be2b218b5ed7cdfd875ec2f5990
+
+Exported ONNX SHA-256 digests:
+- 2.7_80x80_MiniFASNetV2.onnx:
+  39397b412ac2a3f39dde90cb45fb8525b8cf8018355ec2f1a402b24b01d9c7f8
+- 4_0_0_80x80_MiniFASNetV1SE.onnx:
+  4238cb5bc78f225644ed3f6078a46463884696e2d9fd5efb1cbfc15ef723ce06
+
 Run once with:
-uv run --with "torch==2.6.0" python ai/scripts/convert_silent_face_onnx.py
+uv run --with "torch==2.6.0" --with "onnx==1.17.0" python ai/scripts/convert_silent_face_onnx.py
 """
 
 import hashlib
@@ -582,13 +599,13 @@ def convert_model(pth_file: str, onnx_file: str, arch: str) -> None:
     pth_path = download_pth(pth_file)
     model = build_model(arch)
 
-    state_dict = torch.load(pth_path, map_location="cpu")
+    state_dict = torch.load(pth_path, map_location="cpu", weights_only=True)
     cleaned_dict: OrderedDict[str, torch.Tensor] = OrderedDict()
     for k, v in state_dict.items():
         name = k[7:] if k.startswith("module.") else k
         cleaned_dict[name] = v
 
-    model.load_state_dict(cleaned_dict)
+    model.load_state_dict(cleaned_dict, strict=True)
     model.eval()
 
     dummy_input = torch.randn(1, 3, 80, 80, dtype=torch.float32)
