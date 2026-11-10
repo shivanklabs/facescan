@@ -22,7 +22,7 @@ from facescan_ai.matching.quality_gate import QualityGateConfig
 from facescan_ai.model_registry import ModelRegistry
 from facescan_ai.pipeline import FacePipeline, SelfieFaceCountError
 from facescan_ai.types import BBox
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.ports.capabilities import Capabilities
 from app.ports.face_analyzer import (
@@ -115,8 +115,11 @@ class FacescanAiFaceAnalyzer:
     def inspect_image(self, data: bytes, max_pixels: int) -> ImageInfo:
         """
         Purpose: allow only real JPEG/PNG/WebP images within the pixel limit.
-        Checks: magic bytes, the decoder agrees on the type, pixel count from the header
-        before decoding, then a full decode. Raises ImageRejectedError.
+        Checks: magic bytes, the decoder agrees on the type, pixel count from the header,
+        and oriented dimensions via EXIF transpose. Raises ImageRejectedError.
+        Inputs: raw image bytes, maximum allowed pixels.
+        Outputs: ImageInfo (content_type, width, height).
+        Side effects: none (in memory only).
         """
         content_type = sniff_content_type(data)
         if content_type is None:
@@ -127,7 +130,12 @@ class FacescanAiFaceAnalyzer:
                 with Image.open(io.BytesIO(data)) as img:
                     if img.format != _PIL_FORMATS[content_type]:
                         raise ImageRejectedError("image content does not match its type")
-                    width, height = img.size
+                    if img.width * img.height > max_pixels:
+                        raise ImageRejectedError("image has too many pixels")
+                    oriented = ImageOps.exif_transpose(img)
+                    width, height = oriented.size
+        except ImageRejectedError:
+            raise
         except (
             UnidentifiedImageError,
             OSError,
@@ -136,13 +144,6 @@ class FacescanAiFaceAnalyzer:
             Image.DecompressionBombError,
         ) as exc:
             raise ImageRejectedError("image cannot be read") from exc
-        if width * height > max_pixels:
-            raise ImageRejectedError("image has too many pixels")
-        try:
-            decoded = decode_image(data)
-        except ImageDecodeError as exc:
-            raise ImageRejectedError("image cannot be decoded") from exc
-        height, width = decoded.shape[:2]  # after EXIF orientation
         return ImageInfo(content_type=content_type, width=int(width), height=int(height))
 
     def analyse_photo(self, data: bytes) -> list[AnalysedFace]:
