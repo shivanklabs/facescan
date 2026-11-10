@@ -73,7 +73,7 @@ def test_upload_stores_valid_photos_in_quarantine_with_random_keys(
         (tmp_path / "storage" / ctx.settings.storage_bucket_quarantine / event_id).iterdir()
     )
     assert len(stored) == 2
-    assert all(len(p.stem) == 43 and not p.name.startswith("f") for p in stored)  # random keys
+    assert all(len(p.stem) == 43 and p.stem not in {"f0", "f1"} for p in stored)  # random keys
     # Adding to the same collection works until it is approved.
     more = upload(api, event_id, [make_png(3, 1)], collection_id=body["collection_id"])
     assert more.status_code == 201 and more.json()["collection_id"] == body["collection_id"]

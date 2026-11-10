@@ -92,6 +92,7 @@ def test_api_startup_cleans_spool_files(tmp_path: Path) -> None:
     os.utime(recent_file, (now - 60, now - 60))
 
     master_key = base64.b64encode(secrets.token_bytes(32)).decode()
+    signing_key = base64.b64encode(secrets.token_bytes(32)).decode()
     settings = Settings(
         _env_file=None,
         upload_spool_dir=str(spool_dir),
@@ -99,6 +100,7 @@ def test_api_startup_cleans_spool_files(tmp_path: Path) -> None:
         env="dev",
         auth_rp_origin="http://localhost:5173",
         keys_master_key=SecretStr(master_key),
+        storage_signing_key=SecretStr(signing_key),
     )
 
     app = create_app(settings)
