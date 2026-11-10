@@ -2,10 +2,8 @@ import cv2
 import numpy as np
 import pytest
 from facescan_ai.alignment.align_5point import ARCFACE_TEMPLATE
-from facescan_ai.index_store import EventIndex, IndexedFace
 from facescan_ai.privacy.face_blur import blur_faces
 from facescan_ai.quality.basic_quality import BasicFaceQuality, pose_components
-from facescan_ai.search import rank_photos
 from facescan_ai.types import BBox, Face
 
 
@@ -63,41 +61,3 @@ def test_blur_changes_face_region_only_and_copies() -> None:
 def test_blur_validates_margin() -> None:
     with pytest.raises(ValueError):
         blur_faces(np.zeros((10, 10, 3), np.uint8), [], margin=-0.1)
-
-
-def vec(values: list[float]) -> np.ndarray:
-    a = np.array(values, dtype=np.float32)
-    return a / np.linalg.norm(a)
-
-
-def indexed(photo: str, aura: list[float], sface: list[float], quality: float) -> IndexedFace:
-    return IndexedFace(
-        photo_id=photo,
-        bbox=BBox(0, 0, 50, 50),
-        landmarks=((0, 0),) * 5,
-        detector_score=0.9,
-        quality=quality,
-        embeddings={"auraface": vec(aura), "sface": vec(sface)},
-    )
-
-
-def test_rank_photos_best_face_per_photo() -> None:
-    index = EventIndex(
-        event="e1",
-        engine_versions={},
-        photos=["a.jpg", "b.jpg", "c.jpg"],
-        faces=[
-            indexed("a.jpg", [1, 0.1], [1, 0], 0.8),
-            indexed("a.jpg", [0, 1], [0, 1], 0.9),
-            indexed("b.jpg", [1, 1], [1, 1], 0.7),
-            indexed("c.jpg", [-1, 0], [-1, 0], 0.6),
-        ],
-    )
-    query = {"auraface": vec([1, 0]), "sface": vec([1, 0])}
-    matches = rank_photos(index, query, "auraface", "sface", top=2)
-    assert [m.photo_id for m in matches] == ["a.jpg", "b.jpg"]
-    assert matches[0].face_quality == 0.8  # the matching face, not the other face in a.jpg
-    assert matches[0].second_score == pytest.approx(1.0)
-    assert rank_photos(EventIndex("e", {}), query, "auraface", "sface", 5) == []
-    with pytest.raises(ValueError):
-        rank_photos(index, query, "auraface", "sface", top=0)

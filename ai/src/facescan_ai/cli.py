@@ -1,8 +1,7 @@
 """facescan-ai: offline face pipeline and matching engine on the command line (CPU only).
 
     uv run --env-file .env facescan-ai index <photos_dir> --event <name>
-    uv run --env-file .env facescan-ai match <selfie.jpg> --event <name>
-    uv run --env-file .env facescan-ai search <selfie.jpg> --event <name> --top 20
+    uv run --env-file .env facescan-ai match <selfie.jpg> --event <name> [--debug-scores]
     uv run --env-file .env facescan-ai label <event>
     uv run --env-file .env facescan-ai bench <event> [--synthetic]
     uv run facescan-ai blur <photo> <out>
@@ -18,6 +17,7 @@ from pathlib import Path
 from typing import Annotated
 
 import cv2
+import numpy as np
 import typer
 
 from facescan_ai.config import DetectorConfig
@@ -46,7 +46,6 @@ from facescan_ai.pipeline import (
     SelfieQuery,
 )
 from facescan_ai.privacy.face_blur import blur_faces
-from facescan_ai.search import all_finite, rank_photos
 
 BENCHMARK_DIR = Path(__file__).resolve().parents[2] / "benchmark"
 
@@ -123,7 +122,7 @@ def _selfie_query(pipeline: FacePipeline, selfie: Path) -> SelfieQuery:
     except (ImageDecodeError, OSError) as exc:
         raise _fail(f"selfie: {exc}") from exc
     del frames  # selfie pixels are not needed after embedding
-    if not all_finite(query.vectors):
+    if not all(bool(np.all(np.isfinite(v))) for v in query.vectors.values()):
         raise _fail("selfie embedding is invalid")
     return query
 
@@ -229,6 +228,13 @@ def match(
     margin: Annotated[
         float, typer.Option("--margin", min=0.0, max=0.99, help="Best-vs-second cluster margin.")
     ] = MatchConfig().min_margin,
+    debug_scores: Annotated[
+        bool,
+        typer.Option(
+            "--debug-scores",
+            help="Dev-only: print raw AuraFace and SFace scores using the matcher's own code.",
+        ),
+    ] = False,
     min_face: MinFaceOption = _DEFAULTS.min_face_px,
     score: ScoreOption = _DEFAULTS.score_threshold,
     threads: ThreadsOption = 0,
@@ -262,46 +268,20 @@ def match(
         f"second {result.second_score:.3f}, margin {result.margin:.3f} "
         f"({'ok' if result.margin_ok else 'too small'})"
     )
+    if debug_scores:
+        typer.echo(f"debug scores ({len(result.faces)} faces evaluated in candidate cluster):")
+        typer.echo(f"{'photo':<20}  {PRIMARY_ENGINE:>10}  {SECOND_ENGINE:>8}  {'weak':>5}  band")
+        for d in sorted(result.faces, key=lambda f: -f.primary_score):
+            typer.echo(
+                f"{d.photo_id:<20}  {d.primary_score:>10.4f}  {d.second_score:>8.4f}  "
+                f"{str(d.weak):>5}  {d.band.name}"
+            )
     typer.echo(f"RELEASE ({len(result.release_photos)} photos):")
     for photo in result.release_photos:
         typer.echo(f"  {photo}")
     typer.echo(f"debug, borderline, not released ({len(result.borderline_photos)} photos):")
     for photo in result.borderline_photos:
         typer.echo(f"  {photo}")
-
-
-@app.command()
-def search(
-    selfie: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
-    event: EventOption,
-    top: Annotated[int, typer.Option("--top", min=1, max=1000)] = 20,
-    min_face: MinFaceOption = _DEFAULTS.min_face_px,
-    score: ScoreOption = _DEFAULTS.score_threshold,
-    threads: ThreadsOption = 0,
-) -> None:
-    """
-    Raw debug ranking of an event's photos against a single-face selfie (no release rules).
-
-    Purpose: inspect raw cosine scores. Use `match` for release decisions.
-    Side effects: reads the selfie into memory and the encrypted index; writes nothing.
-    """
-    event = _event(event)
-    event_index = _load_event(event)
-    pipeline = _pipeline(min_face, score, threads)
-    _check_engines(event_index, pipeline)
-    query = _selfie_query(pipeline, selfie)
-    matches = rank_photos(event_index, query.vectors, PRIMARY_ENGINE, SECOND_ENGINE, top)
-    typer.echo(f"selfie quality: {query.quality.value:.3f} {query.quality.components}")
-    typer.echo(
-        f"event {event}: {len(event_index.photos)} photos, {len(event_index.faces)} faces "
-        "(raw scores, not release decisions)"
-    )
-    typer.echo(f"{'rank':>4}  {PRIMARY_ENGINE:>8}  {SECOND_ENGINE:>6}  {'quality':>7}  photo")
-    for rank, m in enumerate(matches, start=1):
-        typer.echo(
-            f"{rank:>4}  {m.primary_score:>8.4f}  {m.second_score:>6.4f}  "
-            f"{m.face_quality:>7.3f}  {m.photo_id}"
-        )
 
 
 @app.command()

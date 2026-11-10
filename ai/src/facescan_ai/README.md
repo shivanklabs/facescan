@@ -15,5 +15,4 @@ Library package. No web, database, storage or network code.
 | `event_builder.py` | gate -> calibrate -> cluster an indexed event |
 | `evaluation.py` | precision/recall and the false-release upper bound |
 | `index_store.py` | encrypted per-event index (benchmark use) |
-| `search.py` | rank one event's photos against one selfie |
 | `cli.py` | `facescan-ai` command |

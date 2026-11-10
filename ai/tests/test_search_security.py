@@ -82,7 +82,7 @@ def bench_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     yield work
 
 
-@pytest.mark.parametrize("command", ["search", "match"])
+@pytest.mark.parametrize("command", ["match"])
 def test_search_writes_nothing_and_logs_no_biometrics(
     command: str,
     single_face_selfie,

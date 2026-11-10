@@ -180,3 +180,16 @@ def test_match_weak_selfie_never_releases_and_empty_index() -> None:
     assert match_event(index, query, False, MatchConfig()).release_photos == []
     empty = EventIndex("e", {})
     assert match_event(empty, query, True, MatchConfig()).cluster_id is None
+
+
+def test_match_debug_scores_present_on_evaluated_faces() -> None:
+    index = make_index(unit([0, 0, 1, 0]))
+    query = {"auraface": unit([1, 0, 0, 0]), "sface": unit([1, 0, 0, 0])}
+    result = match_event(index, query, True, MatchConfig(0.08))
+    assert result.faces
+    for face in result.faces:
+        assert isinstance(face.primary_score, float)
+        assert isinstance(face.second_score, float)
+        assert -1.0 <= face.primary_score <= 1.0
+        assert -1.0 <= face.second_score <= 1.0
+        assert face.band in (Band.RELEASE, Band.BORDERLINE, Band.NONE)

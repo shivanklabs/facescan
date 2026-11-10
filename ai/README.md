@@ -27,13 +27,13 @@ Detect (YuNet, tiled image pyramid) -> align (5-point, 112x112) -> quality (basi
 ```
 uv run tasks models                                             # download + verify weights
 uv run --env-file .env facescan-ai index <photos_dir> --event <name>
-uv run --env-file .env facescan-ai search <selfie.jpg> --event <name> --top 20
+uv run --env-file .env facescan-ai match <selfie.jpg> --event <name> --debug-scores
 uv run facescan-ai blur <photo> <out.jpg>
 uv run facescan-ai clean --event <name>
 ```
 - `index` writes `benchmark/work/<event>.fsidx` (git-ignored), AES-256-GCM encrypted with
   `FACESCAN_BENCH_KEY` from `.env` (created by `uv run tasks setup`). No face crops are stored.
-- A selfie must show exactly one face; `search` and `match` refuse zero or several faces.
-  The selfie and its embedding stay in memory only. `search` prints raw cosine scores.
+- A selfie must show exactly one face; `match` refuses zero or several faces.
+  The selfie and its embedding stay in memory only. `--debug-scores` prints raw cosine scores.
 - `blur` uses a permissive detector ("when unsure, blur") and writes no EXIF.
 - Options: `--min-face` (pixels, default 20), `--score` (default 0.7), `--threads`.
