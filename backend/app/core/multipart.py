@@ -7,6 +7,9 @@ deleted when the form is closed at the end of the request. Selfies never use mul
 are read as a raw body into memory (app/modules/matching/router.py).
 """
 
+import logging
+import os
+import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from tempfile import SpooledTemporaryFile
@@ -15,6 +18,7 @@ from typing import BinaryIO, cast
 from starlette.datastructures import FormData, Headers
 from starlette.formparsers import MultiPartException, MultiPartParser
 
+logger = logging.getLogger("facescan.uploads")
 SPOOL_IN_MEMORY_BYTES = 1024 * 1024
 
 
@@ -88,4 +92,47 @@ async def parse_upload_form(
     return await parser.parse()
 
 
-__all__ = ["MultiPartException", "SpoolDirMultiPartParser", "parse_upload_form"]
+def clean_orphaned_spool_files(
+    spool_dir: Path | str,
+    max_age_seconds: int = 3600,
+    *,
+    now: float | None = None,
+) -> int:
+    """
+    Purpose: delete files in the upload spool directory older than max_age_seconds.
+        Touches only this folder: never follows symlinks, never deletes subfolders or
+        anything outside it. Logs only the number of files removed (no names).
+    Inputs: spool_dir path, max_age_seconds (int), optional current timestamp (tests).
+    Outputs: number of files deleted (int).
+    Side effects: deletes orphaned spool files; logs count of deleted files.
+    """
+    path = Path(spool_dir)
+    if not path.is_dir() or path.is_symlink():
+        return 0
+    current_time = time.time() if now is None else now
+    cutoff = current_time - max_age_seconds
+    removed = 0
+    with os.scandir(path) as it:
+        for entry in it:
+            try:
+                if entry.is_symlink():
+                    continue
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                stat = entry.stat(follow_symlinks=False)
+                if stat.st_mtime < cutoff:
+                    os.unlink(entry.path)
+                    removed += 1
+            except OSError:
+                continue
+    if removed > 0:
+        logger.info("cleaned %d orphaned upload spool file(s)", removed)
+    return removed
+
+
+__all__ = [
+    "MultiPartException",
+    "SpoolDirMultiPartParser",
+    "clean_orphaned_spool_files",
+    "parse_upload_form",
+]

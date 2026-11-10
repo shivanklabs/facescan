@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Event-photo upload parts over 1 MB spool here while a request is parsed (deleted when it
     # ends). Must be under var/ (git-ignored). Selfies never spool.
     upload_spool_dir: str = "var/tmp/uploads"
+    upload_spool_max_age_seconds: int = Field(default=3600, ge=60)
 
     # Sign-in: email magic links + passkeys (WebAuthn); server-side sessions in PostgreSQL.
     auth_rp_id: str = "localhost"

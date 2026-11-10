@@ -16,6 +16,7 @@ from app.core.context import AppContext, build_context
 from app.core.deps import same_origin_guard
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
+from app.core.multipart import clean_orphaned_spool_files
 from app.core.rate_limit import RateLimitStore
 
 
@@ -44,7 +45,11 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        """Purpose: release database connections on shutdown."""
+        """Purpose: cleanup orphaned upload spool files on startup and release DB on shutdown."""
+        clean_orphaned_spool_files(
+            settings.upload_spool_dir,
+            max_age_seconds=settings.upload_spool_max_age_seconds,
+        )
         yield
         if ctx is not None:
             ctx.engine.dispose()
