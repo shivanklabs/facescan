@@ -64,5 +64,6 @@ def test_repo_settings_uses_test_db_url_env_var(monkeypatch: pytest.MonkeyPatch)
     assert repo_s.db_url.get_secret_value() == test_url
 
     # Verify standard unit test Settings(_env_file=None) remains unaffected
+    monkeypatch.delenv("FACESCAN_DB_URL", raising=False)
     unit_settings = Settings(_env_file=None)
     assert unit_settings.db_url is None

@@ -1,6 +1,8 @@
 """Tests for startup cleanup of orphaned upload spool files."""
 
+import base64
 import os
+import secrets
 import time
 from pathlib import Path
 
@@ -8,6 +10,7 @@ from app.core.config import Settings
 from app.core.multipart import clean_orphaned_spool_files
 from app.main import create_app
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 
 def test_clean_orphaned_spool_files(tmp_path: Path) -> None:
@@ -88,12 +91,14 @@ def test_api_startup_cleans_spool_files(tmp_path: Path) -> None:
     recent_file.write_bytes(b"active-data")
     os.utime(recent_file, (now - 60, now - 60))
 
+    master_key = base64.b64encode(secrets.token_bytes(32)).decode()
     settings = Settings(
         _env_file=None,
         upload_spool_dir=str(spool_dir),
         upload_spool_max_age_seconds=3600,
         env="dev",
         auth_rp_origin="http://localhost:5173",
+        keys_master_key=SecretStr(master_key),
     )
 
     app = create_app(settings)
