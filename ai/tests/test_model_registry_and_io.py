@@ -58,12 +58,21 @@ def test_registry_verifies_checksums(tmp_path: Path) -> None:
         registry.read_verified_bytes("buffalo_l")
 
 
-def test_real_lock_marks_liveness_and_ofiq_unverified() -> None:
+def test_real_lock_marks_liveness_pinned_and_ofiq_unverified() -> None:
+    """
+    Purpose: verify that minifasnet models are pinned while ofiq remains unverified.
+    Inputs: none. Outputs: none. Side effects: none.
+    """
     registry = ModelRegistry()
-    assert {n for n, s in registry.specs.items() if s.is_pinned} == {"yunet", "sface", "auraface"}
-    for name in ("minifasnet_v2", "minifasnet_v1se", "ofiq"):
-        with pytest.raises(UnverifiedModelError):
-            registry.spec(name)
+    assert {n for n, s in registry.specs.items() if s.is_pinned} == {
+        "yunet",
+        "sface",
+        "auraface",
+        "minifasnet_v2",
+        "minifasnet_v1se",
+    }
+    with pytest.raises(UnverifiedModelError):
+        registry.spec("ofiq")
 
 
 def encode(img: Image.Image, fmt: str = "PNG", **kwargs: object) -> bytes:

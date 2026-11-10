@@ -68,8 +68,9 @@ class Settings(BaseSettings):
     search_per_event_per_hour: int = Field(default=500, ge=1, le=100_000)
     search_min_frames: int = Field(default=3, ge=1, le=10)
     search_max_frames: int = Field(default=5, ge=1, le=10)
-    # No liveness adapter exists yet: guest search runs only when env == "dev".
-    liveness_adapter: Literal[""] = ""
+    # Liveness adapter: silent_face (default) or empty (dev only).
+    liveness_adapter: Literal["", "silent_face"] = "silent_face"
+    search_front_only_threshold_offset: float = Field(default=0.03, ge=0.0, le=0.2)
     consent_notice_path: str = "config/consent/face_search_notice.yaml"
 
     worker_poll_interval_seconds: float = Field(default=2.0, gt=0, le=60)

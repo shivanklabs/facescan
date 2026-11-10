@@ -156,9 +156,13 @@ class FaceAnalyzer(Protocol):
         clusters: list[BuiltCluster],
         calibration: dict[str, dict[str, float | int | bool | None]],
         frames: list[SelfieQuery],
+        front_only: bool = False,
+        threshold_offset: float = 0.0,
     ) -> FramesMatch:
         """
-        Purpose: match a multi-frame selfie. Every frame must pick the same cluster, otherwise
-            nothing is released (borderline). Outputs: FramesMatch (no scores, no vectors).
+        Purpose: match a multi-frame selfie. In guided scan, front and side frames are matched
+            separately; release requires agreement on the cluster and front release. In front-only
+            fallback, stricter calibrated release rules are enforced.
+        Outputs: FramesMatch (no scores, no vectors).
         """
         ...

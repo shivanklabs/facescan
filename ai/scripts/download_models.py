@@ -38,6 +38,10 @@ def main() -> int:
             continue
         target = MODELS_DIR / name
         if not target.exists():
+            if url.endswith(".pth"):
+                print(f"run ai/scripts/convert_silent_face_onnx.py to generate {entry['name']}")
+                failed = True
+                continue
             print(f"download {entry['name']}")
             with urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as resp:  # noqa: S310
                 target.write_bytes(resp.read())

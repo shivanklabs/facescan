@@ -80,11 +80,15 @@ def _check_and_count(ctx: AppContext, user: CurrentUser, event_id: UUID) -> None
 
 
 def guest_search(
-    ctx: AppContext, user: CurrentUser, event_id: UUID, frames: list[bytes]
+    ctx: AppContext,
+    user: CurrentUser,
+    event_id: UUID,
+    frames: list[bytes],
+    front_only: bool = False,
 ) -> SearchResult:
     """
     Purpose: search one event with the guest's live selfie frames.
-    Inputs: 3-5 encoded frames (memory only). Outputs: SearchResult.
+    Inputs: 3-5 encoded frames (memory only), front_only flag. Outputs: SearchResult.
     Side effects: inserts search_attempts; replaces the guest's matches; audit row.
     """
     if not guest_search_allowed(ctx.settings):
@@ -95,6 +99,13 @@ def guest_search(
             f"send {settings.search_min_frames} to {settings.search_max_frames} selfie frames"
         )
     _check_and_count(ctx, user, event_id)
+
+    if ctx.liveness is not None:
+        verdict = ctx.liveness.verify_liveness(frames, front_only=front_only)
+        if not verdict.passed:
+            reasons = ", ".join(verdict.reasons) if verdict.reasons else "liveness_failed"
+            raise UnprocessableError(f"liveness check failed: {reasons}")
+
     queries: list[SelfieQuery] = []
     try:
         for number, frame in enumerate(frames, start=1):
@@ -114,7 +125,14 @@ def guest_search(
         current = ctx.analyzer.engine_versions
         if any(versions.get(k) != v for k, v in current.items() if k in ("auraface", "sface")):
             raise ConflictError("this event is being re-indexed; try again later")
-        result = ctx.analyzer.match_frames(faces, clusters, calibration, queries)
+        result = ctx.analyzer.match_frames(
+            faces,
+            clusters,
+            calibration,
+            queries,
+            front_only=front_only,
+            threshold_offset=settings.search_front_only_threshold_offset,
+        )
         session.execute(
             delete(Match).where(Match.event_id == event_id, Match.user_id == user.user_id)
         )
@@ -139,6 +157,7 @@ def guest_search(
                 "released": len(result.release),
                 "some_photos_missing": result.some_photos_missing,
                 "frames_agree": result.frames_agree,
+                "front_only": front_only,
             },
         )
     return SearchResult(release=result.release, some_photos_missing=result.some_photos_missing)

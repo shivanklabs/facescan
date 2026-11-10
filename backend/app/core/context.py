@@ -18,6 +18,7 @@ from app.ports.email_sender import EmailSender
 from app.ports.face_analyzer import FaceAnalyzer
 from app.ports.job_queue import JobQueue
 from app.ports.key_manager import KeyManager
+from app.ports.liveness import Liveness
 from app.ports.object_storage import ObjectStorage
 
 
@@ -37,6 +38,7 @@ class AppContext:
     queue: JobQueue
     analyzer: FaceAnalyzer
     email: EmailSender
+    liveness: Liveness | None = None
 
 
 def build_context(
@@ -44,6 +46,7 @@ def build_context(
     analyzer: FaceAnalyzer | None = None,
     search_path: str | None = None,
     email: EmailSender | None = None,
+    liveness: Liveness | None = None,
 ) -> AppContext:
     """
     Purpose: build the adapters from settings (adapters.yaml defaults: local storage,
@@ -76,6 +79,10 @@ def build_context(
         from app.adapters.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
 
         analyzer = FacescanAiFaceAnalyzer()
+    if liveness is None and settings.liveness_adapter == "silent_face":
+        from app.adapters.liveness.silent_face_liveness import SilentFaceLiveness
+
+        liveness = SilentFaceLiveness()
     return AppContext(
         settings=settings,
         engine=engine,
@@ -90,12 +97,15 @@ def build_context(
         ),
         analyzer=analyzer,
         email=email,
+        liveness=liveness,
     )
 
 
 def guest_search_allowed(settings: Settings) -> bool:
     """
-    Purpose: guest face search runs only in dev until a liveness adapter exists (none is
-        implemented yet, so liveness_adapter can only be empty). Side effects: none.
+    Purpose: guest face search runs in dev or when an active liveness adapter (silent_face)
+        is configured. Note: this mitigates presentation attacks (screens, paper prints);
+        it does not stop injection attacks (direct synthetic API frame submission).
+    Inputs: Settings. Outputs: bool. Side effects: none.
     """
-    return settings.env == "dev" or settings.liveness_adapter != ""
+    return settings.env == "dev" or settings.liveness_adapter == "silent_face"

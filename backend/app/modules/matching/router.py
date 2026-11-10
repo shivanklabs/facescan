@@ -6,9 +6,10 @@ followed by that many bytes of JPEG/PNG/WebP. The body is read straight into mem
 caps, so frames are never spooled to a temporary file (invariant 3).
 """
 
+from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.deps import Ctx, User
 from app.core.errors import PayloadTooLargeError, UnprocessableError
@@ -65,10 +66,16 @@ async def read_frames(request: Request, max_frames: int, max_frame_bytes: int) -
 
 
 @router.post("/search", response_model=SearchResponse, dependencies=[Depends(search_limiter)])
-async def search(event_id: UUID, request: Request, user: User, ctx: Ctx) -> SearchResponse:
+async def search(
+    event_id: UUID,
+    request: Request,
+    user: User,
+    ctx: Ctx,
+    mode: Literal["guided", "front-only"] = Query(default="guided"),
+) -> SearchResponse:
     """Purpose: the guest's photos in this event (release band only)."""
     frames = await read_frames(
         request, ctx.settings.search_max_frames, ctx.settings.selfie_max_bytes
     )
-    result = service.guest_search(ctx, user, event_id, frames)
+    result = service.guest_search(ctx, user, event_id, frames, front_only=(mode == "front-only"))
     return SearchResponse(release=result.release, some_photos_missing=result.some_photos_missing)

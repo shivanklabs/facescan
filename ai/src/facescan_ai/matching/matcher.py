@@ -32,11 +32,14 @@ class MatchConfig:
     """Matching settings."""
 
     min_margin: float = 0.08
+    threshold_offset: float = 0.0
 
     def __post_init__(self) -> None:
         """Purpose: reject invalid values. Side effects: none."""
         if not 0.0 <= self.min_margin < 1.0:
             raise ValueError("min_margin must be in [0, 1)")
+        if not 0.0 <= self.threshold_offset < 1.0:
+            raise ValueError("threshold_offset must be in [0, 1)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,18 +71,19 @@ class MatchResult:
     faces: list[FaceDecision]
 
 
-def thresholds_for(index: EventIndex) -> Thresholds:
+def thresholds_for(index: EventIndex, offset: float = 0.0) -> Thresholds:
     """
-    Purpose: release/borderline thresholds from the event's calibration (defaults if absent).
+    Purpose: release/borderline thresholds from the event's calibration (defaults if absent),
+        with an optional offset (used by stricter front-only matching).
     Side effects: none.
     """
 
     def pick(engine: str) -> tuple[float, float]:
         cal = index.calibration.get(engine)
         if cal is not None:
-            return cal.release_threshold, cal.borderline_threshold
+            return cal.release_threshold + offset, cal.borderline_threshold + offset
         d = DEFAULT_THRESHOLDS[engine]
-        return d.release, d.borderline
+        return d.release + offset, d.borderline + offset
 
     p_rel, p_bord = pick(PRIMARY_ENGINE)
     s_rel, s_bord = pick(SECOND_ENGINE)
@@ -98,7 +102,7 @@ def match_event(
         passed the quality gate, config.
     Outputs: MatchResult with released and borderline photo ids. Side effects: none.
     """
-    thresholds = thresholds_for(index)
+    thresholds = thresholds_for(index, config.threshold_offset)
     empty = MatchResult(
         [], [], None, Band.NONE, -1.0, -1.0, 0.0, False, selfie_strong, thresholds, []
     )

@@ -1,11 +1,17 @@
-// SelfieCapturePage: camera only (getUserMedia), no file upload. Captures 4 frames over about
-// two seconds into memory and sends them as raw bytes. Nothing is stored in the browser.
+// SelfieCapturePage: camera only (getUserMedia), no file upload. Guided face scan
+// (look straight, blink, turn left, turn right) or front-only fallback into memory and
+// sent as raw bytes. Nothing is stored in the browser.
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useGuestStatus } from '@/features/consent/useGuestStatus';
 import { api, ApiError } from '@/lib/apiClient';
-import { captureFrames, framesBody, FRAMES_CONTENT_TYPE } from '@/lib/frames';
+import {
+  captureGuidedFrames,
+  framesBody,
+  FRAMES_CONTENT_TYPE,
+  ScanStep,
+} from '@/lib/frames';
 
 type Phase = 'idle' | 'ready' | 'capturing' | 'searching';
 
@@ -17,6 +23,8 @@ export default function SelfieCapturePage() {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
+  const [currentStep, setCurrentStep] = useState<ScanStep['key'] | null>(null);
+  const [frontOnly, setFrontOnly] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(
@@ -43,27 +51,60 @@ export default function SelfieCapturePage() {
     }
   }
 
+  function formatError(detail: string): string {
+    const d = detail.toLowerCase();
+    if (d.includes('blurry')) return t('selfie.errBlurry');
+    if (d.includes('too_dark')) return t('selfie.errDark');
+    if (d.includes('overexposed') || d.includes('too_bright')) return t('selfie.errBright');
+    if (d.includes('blink')) return t('selfie.errBlink');
+    if (d.includes('turn') || d.includes('head_turn')) return t('selfie.errTurn');
+    if (d.includes('face') || d.includes('sunglasses') || d.includes('mask')) {
+      return t('selfie.errFaceCount');
+    }
+    return detail;
+  }
+
   async function capture() {
     if (!video.current) return;
     setPhase('capturing');
+    setMessage('');
     try {
-      const frames = await captureFrames(video.current);
+      const frames = await captureGuidedFrames(
+        video.current,
+        (step) => setCurrentStep(step),
+        frontOnly,
+      );
       setPhase('searching');
       const body = await framesBody(frames);
-      const result = await api<{ release: string[]; some_photos_missing: boolean }>(
-        `/events/${eventId}/search`,
-        { body, headers: { 'Content-Type': FRAMES_CONTENT_TYPE }, timeoutMs: 120_000 },
-      );
+      const url = `/events/${eventId}/search${frontOnly ? '?mode=front-only' : '?mode=guided'}`;
+      const result = await api<{ release: string[]; some_photos_missing: boolean }>(url, {
+        body,
+        headers: { 'Content-Type': FRAMES_CONTENT_TYPE },
+        timeoutMs: 120_000,
+      });
       stream.current?.getTracks().forEach((track) => track.stop());
       navigate(`/events/${eventId}/gallery`, {
         state: { someMissing: result.some_photos_missing },
       });
     } catch (error) {
       setPhase('ready');
-      if (error instanceof ApiError && error.status === 429) setMessage(t('selfie.tooMany'));
-      else if (error instanceof ApiError && error.status === 422) setMessage(error.detail);
-      else setMessage(t('common.error'));
+      setCurrentStep(null);
+      if (error instanceof ApiError && error.status === 429) {
+        setMessage(t('selfie.tooMany'));
+      } else if (error instanceof ApiError && error.status === 422) {
+        setMessage(formatError(error.detail));
+      } else {
+        setMessage(t('common.error'));
+      }
     }
+  }
+
+  function stepInstruction(step: ScanStep['key'] | null): string {
+    if (step === 'lookStraight') return t('selfie.stepLookStraight');
+    if (step === 'blink') return t('selfie.stepBlink');
+    if (step === 'turnLeft') return t('selfie.stepTurnLeft');
+    if (step === 'turnRight') return t('selfie.stepTurnRight');
+    return t('selfie.capturing');
   }
 
   return (
@@ -73,18 +114,44 @@ export default function SelfieCapturePage() {
       {status && !status.search_enabled && <p role="alert">{t('selfie.disabled')}</p>}
       {status && !status.event_searchable && <p role="status">{t('landing.notReady')}</p>}
       <p>{t('selfie.instructions')}</p>
+
+      <div className="guidance-box" role="region" aria-label={t('selfie.guidanceTitle')}>
+        <strong>{t('selfie.guidanceTitle')}</strong>
+        <ul>
+          <li>{t('selfie.guidanceLighting')}</li>
+          <li>{t('selfie.guidanceFace')}</li>
+        </ul>
+      </div>
+
       <video ref={video} className="camera" playsInline muted aria-label={t('selfie.title')} />
+
+      {phase === 'capturing' && (
+        <div className="banner step-prompt" role="status" aria-live="assertive">
+          <strong>{stepInstruction(currentStep)}</strong>
+        </div>
+      )}
+
       {phase === 'idle' && (
         <button type="button" onClick={() => void startCamera()}>
           {t('selfie.start')}
         </button>
       )}
+
       {phase === 'ready' && (
-        <button type="button" onClick={() => void capture()} disabled={!status?.search_enabled}>
-          {t('selfie.capture')}
-        </button>
+        <div className="actions">
+          <button type="button" onClick={() => void capture()} disabled={!status?.search_enabled}>
+            {t('selfie.capture')}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setFrontOnly((prev) => !prev)}
+          >
+            {frontOnly ? t('selfie.guidedOption') : t('selfie.frontOnlyOption')}
+          </button>
+        </div>
       )}
-      {phase === 'capturing' && <p role="status">{t('selfie.capturing')}</p>}
+
       {phase === 'searching' && <p role="status">{t('selfie.searching')}</p>}
       {message && <p role="alert">{message}</p>}
     </>

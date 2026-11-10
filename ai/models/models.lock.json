@@ -28,16 +28,16 @@
       "name": "minifasnet_v2",
       "version": "2.7_80x80",
       "file": "2.7_80x80_MiniFASNetV2.onnx",
-      "source_url": "TODO: in-house ONNX export of https://raw.githubusercontent.com/minivision-ai/Silent-Face-Anti-Spoofing/master/resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth",
-      "sha256": "TODO",
+      "source_url": "https://raw.githubusercontent.com/minivision-ai/Silent-Face-Anti-Spoofing/master/resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth",
+      "sha256": "39397b412ac2a3f39dde90cb45fb8525b8cf8018355ec2f1a402b24b01d9c7f8",
       "licence": "Apache-2.0"
     },
     {
       "name": "minifasnet_v1se",
       "version": "4_0_0_80x80",
       "file": "4_0_0_80x80_MiniFASNetV1SE.onnx",
-      "source_url": "TODO: in-house ONNX export of https://raw.githubusercontent.com/minivision-ai/Silent-Face-Anti-Spoofing/master/resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth",
-      "sha256": "TODO",
+      "source_url": "https://raw.githubusercontent.com/minivision-ai/Silent-Face-Anti-Spoofing/master/resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth",
+      "sha256": "4238cb5bc78f225644ed3f6078a46463884696e2d9fd5efb1cbfc15ef723ce06",
       "licence": "Apache-2.0"
     },
     {

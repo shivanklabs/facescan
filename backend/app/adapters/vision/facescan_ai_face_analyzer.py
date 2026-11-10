@@ -16,6 +16,7 @@ from facescan_ai.clustering.hdbscan_clusterer import EventCluster
 from facescan_ai.event_builder import EventBuildConfig, build_event
 from facescan_ai.image_io import ImageDecodeError, decode_image
 from facescan_ai.index_store import EventIndex, IndexedFace
+from facescan_ai.matching.bands import Band
 from facescan_ai.matching.calibration import EngineCalibration
 from facescan_ai.matching.matcher import MatchConfig, match_event
 from facescan_ai.matching.quality_gate import QualityGateConfig
@@ -251,27 +252,70 @@ class FacescanAiFaceAnalyzer:
         clusters: list[BuiltCluster],
         calibration: dict[str, dict[str, float | int | bool | None]],
         frames: list[SelfieQuery],
+        front_only: bool = False,
+        threshold_offset: float = 0.0,
     ) -> FramesMatch:
         """
-        Purpose: per-frame matching must agree on one cluster; the release decision is then
-            made on the mean of the frames' embeddings (re-normalised). Disagreement releases
-            nothing and reports that photos may be missing.
+        Purpose: match multi-frame selfie. In guided scan, front and side frames are matched
+            separately; a photo is released only when frames agree on the same cluster and
+            front-frame verdict releases. Side frames can find side-angle photos in the cluster.
+            In front-only fallback, stricter calibrated release rules and margin are enforced.
+        Inputs: stored faces, clusters, calibration, frames, front_only flag, threshold_offset.
+        Outputs: FramesMatch. Side effects: none.
         """
         if not frames:
             raise ValueError("at least one frame is required")
         index = self._event_index(faces, clusters, calibration)
-        config = MatchConfig()
-        winners = {match_event(index, f.vectors, f.strong, config).cluster_id for f in frames}
-        agree = len(winners) == 1 and None not in winners
-        combined = {}
+
+        if front_only:
+            config = MatchConfig(min_margin=0.12, threshold_offset=threshold_offset)
+            winners = {match_event(index, f.vectors, f.strong, config).cluster_id for f in frames}
+            agree = len(winners) == 1 and None not in winners
+            if not agree:
+                return FramesMatch(release=[], some_photos_missing=True, frames_agree=False)
+            combined = {}
+            for engine in frames[0].vectors:
+                mean = np.mean([f.vectors[engine] for f in frames], axis=0)
+                norm = max(float(np.linalg.norm(mean)), 1e-12)
+                combined[engine] = (mean / norm).astype(np.float32)
+            result = match_event(index, combined, all(f.strong for f in frames), config)
+            return FramesMatch(
+                release=[UUID(p) for p in result.release_photos],
+                some_photos_missing=bool(result.borderline_photos),
+                frames_agree=True,
+            )
+
+        config = MatchConfig(min_margin=0.08, threshold_offset=0.0)
+        front_frames = frames[:2] if len(frames) >= 2 else frames
+        side_frames = frames[2:] if len(frames) > 2 else []
+
+        front_combined = {}
         for engine in frames[0].vectors:
-            mean = np.mean([f.vectors[engine] for f in frames], axis=0)
-            combined[engine] = (mean / max(float(np.linalg.norm(mean)), 1e-12)).astype(np.float32)
-        result = match_event(index, combined, all(f.strong for f in frames), config)
-        if not agree:
+            mean = np.mean([f.vectors[engine] for f in front_frames], axis=0)
+            norm = max(float(np.linalg.norm(mean)), 1e-12)
+            front_combined[engine] = (mean / norm).astype(np.float32)
+        front_result = match_event(
+            index, front_combined, all(f.strong for f in front_frames), config
+        )
+        front_cluster = front_result.cluster_id
+
+        if front_cluster is None or not front_result.release_photos:
             return FramesMatch(release=[], some_photos_missing=True, frames_agree=False)
+
+        released_photos = set(front_result.release_photos)
+        has_borderline = bool(front_result.borderline_photos)
+
+        for side_f in side_frames:
+            side_res = match_event(index, side_f.vectors, side_f.strong, config)
+            if side_res.cluster_id != front_cluster or side_res.cluster_band is Band.NONE:
+                return FramesMatch(release=[], some_photos_missing=True, frames_agree=False)
+            for photo_id in side_res.release_photos:
+                released_photos.add(photo_id)
+            if side_res.borderline_photos:
+                has_borderline = True
+
         return FramesMatch(
-            release=[UUID(p) for p in result.release_photos],
-            some_photos_missing=bool(result.borderline_photos),
+            release=[UUID(p) for p in released_photos],
+            some_photos_missing=has_borderline,
             frames_agree=True,
         )
