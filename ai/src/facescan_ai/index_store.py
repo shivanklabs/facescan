@@ -133,14 +133,24 @@ def index_path(event: str, directory: Path) -> Path:
     return directory / f"{validate_event_name(event)}{FILE_SUFFIX}"
 
 
-def _encode_vector(vector: FloatArray) -> str:
-    """Purpose: float32 little-endian bytes as base64 text."""
+def encode_vector(vector: FloatArray) -> str:
+    """
+    Purpose: float32 little-endian bytes as base64 text.
+    Inputs: FloatArray vector. Outputs: base64 string. Side effects: none.
+    """
     return base64.b64encode(np.asarray(vector, dtype="<f4").tobytes()).decode("ascii")
 
 
-def _decode_vector(text: str) -> FloatArray:
-    """Purpose: inverse of _encode_vector."""
+def decode_vector(text: str) -> FloatArray:
+    """
+    Purpose: inverse of encode_vector (reconstruct float32 array).
+    Inputs: base64 string. Outputs: FloatArray. Side effects: none.
+    """
     return np.frombuffer(base64.b64decode(text, validate=True), dtype="<f4").astype(np.float32)
+
+
+_encode_vector = encode_vector
+_decode_vector = decode_vector
 
 
 def serialise(index: EventIndex) -> bytes:
@@ -159,7 +169,7 @@ def serialise(index: EventIndex) -> bytes:
                 "detector_score": f.detector_score,
                 "quality": f.quality,
                 "weak": f.weak,
-                "embeddings": {k: _encode_vector(v) for k, v in f.embeddings.items()},
+                "embeddings": {k: encode_vector(v) for k, v in f.embeddings.items()},
             }
             for f in index.faces
         ],
@@ -168,21 +178,11 @@ def serialise(index: EventIndex) -> bytes:
                 "cluster_id": c.cluster_id,
                 "members": c.members,
                 "attached_weak": c.attached_weak,
-                "prototypes": {k: _encode_vector(v) for k, v in c.prototypes.items()},
+                "prototypes": {k: encode_vector(v) for k, v in c.prototypes.items()},
             }
             for c in index.clusters
         ],
-        "calibration": {
-            k: {
-                "release_threshold": c.release_threshold,
-                "borderline_threshold": c.borderline_threshold,
-                "impostor_pairs": c.impostor_pairs,
-                "release_calibrated": c.release_calibrated,
-                "borderline_calibrated": c.borderline_calibrated,
-                "impostor_max": c.impostor_max,
-            }
-            for k, c in index.calibration.items()
-        },
+        "calibration": {k: c.to_dict() for k, c in index.calibration.items()},
     }
     return json.dumps(payload, separators=(",", ":")).encode("utf-8")
 
@@ -226,15 +226,7 @@ def deserialise(data: bytes) -> EventIndex:
                 )
             )
         calibration = {
-            str(k): EngineCalibration(
-                engine=str(k),
-                release_threshold=float(c["release_threshold"]),
-                borderline_threshold=float(c["borderline_threshold"]),
-                impostor_pairs=int(c["impostor_pairs"]),
-                release_calibrated=bool(c["release_calibrated"]),
-                borderline_calibrated=bool(c["borderline_calibrated"]),
-                impostor_max=None if c["impostor_max"] is None else float(c["impostor_max"]),
-            )
+            str(k): EngineCalibration.from_dict(str(k), c)
             for k, c in payload["calibration"].items()
         }
         return EventIndex(

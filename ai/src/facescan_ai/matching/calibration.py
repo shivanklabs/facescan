@@ -12,6 +12,7 @@ never go below a configured floor.
 """
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import numpy as np
@@ -82,6 +83,46 @@ class EngineCalibration:
             f"{self.engine}: release {self.release_threshold:.3f} [{how_r}], "
             f"borderline {self.borderline_threshold:.3f} [{how_b}], "
             f"impostor pairs {self.impostor_pairs}"
+        )
+
+    def to_dict(self) -> dict[str, float | int | bool | None]:
+        """
+        Purpose: plain dictionary representation for JSON and database storage.
+        Outputs: dictionary of calibration fields without biometric data.
+        Side effects: none.
+        """
+        return {
+            "release_threshold": self.release_threshold,
+            "borderline_threshold": self.borderline_threshold,
+            "impostor_pairs": self.impostor_pairs,
+            "release_calibrated": self.release_calibrated,
+            "borderline_calibrated": self.borderline_calibrated,
+            "impostor_max": self.impostor_max,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, engine: str, raw: Mapping[str, float | int | bool | None]
+    ) -> "EngineCalibration":
+        """
+        Purpose: reconstruct EngineCalibration from dictionary.
+        Inputs: engine name and raw calibration mapping.
+        Outputs: EngineCalibration. Side effects: none.
+        """
+        r_thresh = raw.get("release_threshold")
+        b_thresh = raw.get("borderline_threshold")
+        pairs = raw.get("impostor_pairs")
+        imp_max = raw.get("impostor_max")
+        return cls(
+            engine=engine,
+            release_threshold=float(r_thresh) if isinstance(r_thresh, (int, float, str)) else 0.0,
+            borderline_threshold=float(b_thresh)
+            if isinstance(b_thresh, (int, float, str))
+            else 0.0,
+            impostor_pairs=int(pairs) if isinstance(pairs, (int, float, str)) else 0,
+            release_calibrated=bool(raw.get("release_calibrated")),
+            borderline_calibrated=bool(raw.get("borderline_calibrated")),
+            impostor_max=float(imp_max) if isinstance(imp_max, (int, float, str)) else None,
         )
 
 

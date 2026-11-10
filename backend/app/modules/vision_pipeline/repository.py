@@ -5,11 +5,10 @@ data key; the associated data names the event, the table and the row (app/core/c
 Run every function inside the event's own transaction (RLS).
 """
 
-import base64
 import json
 from uuid import UUID
 
-import numpy as np
+from facescan_ai.index_store import decode_vector, encode_vector
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -22,18 +21,12 @@ CalibrationDict = dict[str, dict[str, float | int | bool | None]]
 
 def _pack(vectors: dict[str, Vector]) -> dict[str, str]:
     """Purpose: vectors -> base64 float32 text."""
-    return {
-        k: base64.b64encode(np.asarray(v, dtype="<f4").tobytes()).decode("ascii")
-        for k, v in vectors.items()
-    }
+    return {k: encode_vector(v) for k, v in vectors.items()}
 
 
 def _unpack(packed: dict[str, str]) -> dict[str, Vector]:
     """Purpose: inverse of _pack."""
-    return {
-        k: np.frombuffer(base64.b64decode(v, validate=True), dtype="<f4").astype(np.float32)
-        for k, v in packed.items()
-    }
+    return {k: decode_vector(v) for k, v in packed.items()}
 
 
 def delete_event_model(session: Session, event_id: UUID) -> None:

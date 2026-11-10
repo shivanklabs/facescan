@@ -59,30 +59,14 @@ def sniff_content_type(data: bytes) -> str | None:
 
 def _calibration_to_dict(cal: EngineCalibration) -> dict[str, float | int | bool | None]:
     """Purpose: plain dict for encrypted storage."""
-    return {
-        "release_threshold": cal.release_threshold,
-        "borderline_threshold": cal.borderline_threshold,
-        "impostor_pairs": cal.impostor_pairs,
-        "release_calibrated": cal.release_calibrated,
-        "borderline_calibrated": cal.borderline_calibrated,
-        "impostor_max": cal.impostor_max,
-    }
+    return cal.to_dict()
 
 
 def _calibration_from_dict(
     engine: str, raw: dict[str, float | int | bool | None]
 ) -> EngineCalibration:
     """Purpose: inverse of _calibration_to_dict."""
-    impostor_max = raw.get("impostor_max")
-    return EngineCalibration(
-        engine=engine,
-        release_threshold=float(raw["release_threshold"] or 0.0),
-        borderline_threshold=float(raw["borderline_threshold"] or 0.0),
-        impostor_pairs=int(raw["impostor_pairs"] or 0),
-        release_calibrated=bool(raw["release_calibrated"]),
-        borderline_calibrated=bool(raw["borderline_calibrated"]),
-        impostor_max=None if impostor_max is None else float(impostor_max),
-    )
+    return EngineCalibration.from_dict(engine, raw)
 
 
 class FacescanAiFaceAnalyzer:
