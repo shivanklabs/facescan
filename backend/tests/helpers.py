@@ -2,11 +2,9 @@
 
 The SoftAuthenticator produces real WebAuthn responses (P-256 keys, "none" attestation,
 signed assertions) so the server-side passkey code is exercised end to end by py_webauthn.
-A tiny CBOR encoder covers what WebAuthn needs (maps, ints, bytes, text) so tests do not
-depend on a CBOR library directly.
+Uses webauthn.helpers for CBOR encoding and base64url conversions.
 """
 
-import base64
 import hashlib
 import json
 import re
@@ -23,6 +21,7 @@ from app.ports.capabilities import Capabilities
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
+from webauthn.helpers import base64url_to_bytes, bytes_to_base64url, encode_cbor
 
 ORIGIN = "http://localhost:5173"
 RP_ID = "localhost"
@@ -51,40 +50,7 @@ class MemoryEmailSender:
         raise AssertionError(f"no link sent to {address}")
 
 
-# ---------------------------------------------------------------- CBOR + WebAuthn
-
-
-def _cbor_head(major: int, value: int) -> bytes:
-    if value < 24:
-        return bytes([major << 5 | value])
-    if value < 256:
-        return bytes([major << 5 | 24, value])
-    if value < 65536:
-        return bytes([major << 5 | 25]) + struct.pack(">H", value)
-    return bytes([major << 5 | 26]) + struct.pack(">I", value)
-
-
-def cbor(value: object) -> bytes:
-    if isinstance(value, bool):
-        return bytes([0xF5 if value else 0xF4])
-    if isinstance(value, int):
-        return _cbor_head(0, value) if value >= 0 else _cbor_head(1, -1 - value)
-    if isinstance(value, bytes):
-        return _cbor_head(2, len(value)) + value
-    if isinstance(value, str):
-        raw = value.encode()
-        return _cbor_head(3, len(raw)) + raw
-    if isinstance(value, dict):
-        return _cbor_head(5, len(value)) + b"".join(cbor(k) + cbor(v) for k, v in value.items())
-    raise TypeError(type(value))
-
-
-def b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-
-def unb64url(text: str) -> bytes:
-    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+# ---------------------------------------------------------------- WebAuthn Authenticator
 
 
 @dataclass
@@ -106,7 +72,7 @@ class SoftAuthenticator:
     def create(self, options: dict[str, object], origin: str = ORIGIN) -> dict[str, object]:
         user = options["user"]
         assert isinstance(user, dict)
-        self.user_handle = unb64url(str(user["id"]))
+        self.user_handle = base64url_to_bytes(str(user["id"]))
         numbers = self.key.public_key().public_numbers()
         cose = {
             1: 2,
@@ -122,17 +88,17 @@ class SoftAuthenticator:
             + bytes(16)  # AAGUID
             + struct.pack(">H", len(self.credential_id))
             + self.credential_id
-            + cbor(cose)
+            + encode_cbor(cose)
         )
         client_data = self._client_data("webauthn.create", str(options["challenge"]), origin)
         return {
-            "id": b64url(self.credential_id),
-            "rawId": b64url(self.credential_id),
+            "id": bytes_to_base64url(self.credential_id),
+            "rawId": bytes_to_base64url(self.credential_id),
             "type": "public-key",
             "response": {
-                "clientDataJSON": b64url(client_data),
-                "attestationObject": b64url(
-                    cbor({"fmt": "none", "attStmt": {}, "authData": auth_data})
+                "clientDataJSON": bytes_to_base64url(client_data),
+                "attestationObject": bytes_to_base64url(
+                    encode_cbor({"fmt": "none", "attStmt": {}, "authData": auth_data})
                 ),
             },
             "clientExtensionResults": {},
@@ -150,14 +116,14 @@ class SoftAuthenticator:
             auth_data + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256())
         )
         return {
-            "id": b64url(self.credential_id),
-            "rawId": b64url(self.credential_id),
+            "id": bytes_to_base64url(self.credential_id),
+            "rawId": bytes_to_base64url(self.credential_id),
             "type": "public-key",
             "response": {
-                "clientDataJSON": b64url(client_data),
-                "authenticatorData": b64url(auth_data),
-                "signature": b64url(signature),
-                "userHandle": b64url(self.user_handle),
+                "clientDataJSON": bytes_to_base64url(client_data),
+                "authenticatorData": bytes_to_base64url(auth_data),
+                "signature": bytes_to_base64url(signature),
+                "userHandle": bytes_to_base64url(self.user_handle),
             },
             "clientExtensionResults": {},
         }
