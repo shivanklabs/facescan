@@ -104,14 +104,6 @@ class SelfieQuery:
 
 
 @dataclass(frozen=True, slots=True)
-class MatchBands:
-    """Photo ids per band. No scores, no vectors."""
-
-    release: list[UUID]
-    borderline: list[UUID]
-
-
-@dataclass(frozen=True, slots=True)
 class FramesMatch:
     """Result of a multi-frame selfie search: released photo ids, and whether some photos
     may be missing (borderline matches, or frames that did not agree on one person)."""
@@ -156,16 +148,6 @@ class FaceAnalyzer(Protocol):
 
     def build_event(self, faces: list[StoredFace]) -> BuiltEvent:
         """Purpose: quality gate, calibration and clustering for one event's faces."""
-        ...
-
-    def match(
-        self,
-        faces: list[StoredFace],
-        clusters: list[BuiltCluster],
-        calibration: dict[str, dict[str, float | int | bool | None]],
-        query: SelfieQuery,
-    ) -> MatchBands:
-        """Purpose: match one selfie against one event. Outputs: photo ids per band."""
         ...
 
     def match_frames(

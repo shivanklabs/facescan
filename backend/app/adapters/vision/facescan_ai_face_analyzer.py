@@ -32,7 +32,6 @@ from app.ports.face_analyzer import (
     FramesMatch,
     ImageInfo,
     ImageRejectedError,
-    MatchBands,
     SelfieQuery,
     SelfieRejectedError,
     StoredFace,
@@ -290,31 +289,4 @@ class FacescanAiFaceAnalyzer:
             release=[UUID(p) for p in result.release_photos],
             some_photos_missing=bool(result.borderline_photos),
             frames_agree=True,
-        )
-
-    def match(
-        self,
-        faces: list[StoredFace],
-        clusters: list[BuiltCluster],
-        calibration: dict[str, dict[str, float | int | bool | None]],
-        query: SelfieQuery,
-    ) -> MatchBands:
-        """Purpose: run the milestone-2 matcher on stored data. Outputs: photo ids per band."""
-        index = self._index(faces, {})
-        row_of = {f.face_id: i for i, f in enumerate(faces)}
-        index.clusters = [
-            EventCluster(
-                cluster_id=k,
-                members=[row_of[m] for m in c.members if m in row_of],
-                attached_weak=[row_of[m] for m in c.attached_weak if m in row_of],
-                prototypes=c.prototypes,
-            )
-            for k, c in enumerate(clusters)
-            if PRIMARY in c.prototypes
-        ]
-        index.calibration = {k: _calibration_from_dict(k, v) for k, v in calibration.items()}
-        result = match_event(index, query.vectors, query.strong, MatchConfig())
-        return MatchBands(
-            release=[UUID(p) for p in result.release_photos],
-            borderline=[UUID(p) for p in result.borderline_photos],
         )
