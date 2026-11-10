@@ -47,6 +47,15 @@ jobs:
       - run: uv run tasks db-migrate
       - run: uv run tasks lint --only python
       - run: uv run tasks licences
+      - name: Cache model weights
+        uses: actions/cache@v4
+        with:
+          path: ai/models/*.onnx
+          key: models-${{ hashFiles('ai/models/models.lock.json') }}
+      - name: Download model weights
+        run: uv run tasks models
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: uv run tasks test --only python
 
   frontend:
