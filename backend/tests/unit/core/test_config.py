@@ -45,3 +45,24 @@ def test_settings_fixture_does_not_load_env_file(
     # Verify that the fixture does not declare an env_file
     has_env = settings.model_config.get("env_file") is not None
     assert not has_env or getattr(settings, "_env_file", None) is None
+
+
+def test_repo_settings_uses_test_db_url_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Purpose: verify that _repo_settings picks up FACESCAN_TEST_DB_URL from the environment
+        without reading any .env file and without affecting unit test settings.
+    Inputs: monkeypatch (pytest.MonkeyPatch).
+    Outputs: None.
+    Side effects: sets FACESCAN_TEST_DB_URL in process environment.
+    """
+    from tests.conftest import _repo_settings
+
+    test_url = "postgresql+psycopg://test_user:test_pass@localhost:5432/test_db"
+    monkeypatch.setenv("FACESCAN_TEST_DB_URL", test_url)
+    repo_s = _repo_settings()
+    assert repo_s.db_url is not None
+    assert repo_s.db_url.get_secret_value() == test_url
+
+    # Verify standard unit test Settings(_env_file=None) remains unaffected
+    unit_settings = Settings(_env_file=None)
+    assert unit_settings.db_url is None

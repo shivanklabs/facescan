@@ -1,8 +1,9 @@
 """Shared fixtures.
 
-Database tests use the local PostgreSQL from the repository's .env (FACESCAN_DB_URL, the
-facescan role). Each test module gets its own throwaway schema, migrated with the real Alembic
-migration and dropped afterwards. Without a reachable database those tests are skipped.
+Database tests use the PostgreSQL URL provided via FACESCAN_TEST_DB_URL or FACESCAN_DB_URL
+(the facescan role). Each test module gets its own throwaway schema, migrated with the real
+Alembic migration and dropped afterwards. Without a reachable database those tests fail
+unless --skip-db is specified.
 
 FakeFaceAnalyzer needs no models: an image's top-left pixel encodes a person (red channel) and
 the number of faces (green channel), so ingest, indexing and matching run end to end while
@@ -11,6 +12,7 @@ clustering, calibration and matching use the real facescan_ai code.
 
 import base64
 import io
+import os
 import secrets
 from collections.abc import Iterator
 from pathlib import Path
@@ -28,6 +30,21 @@ from pydantic import SecretStr
 
 REPO = Path(__file__).resolve().parents[2]
 DIMS = {"auraface": 512, "sface": 128}
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """
+    Purpose: register --skip-db CLI flag allowing explicit skipping of database/security tests.
+    Inputs: parser (pytest.Parser).
+    Outputs: None.
+    Side effects: registers pytest command-line option.
+    """
+    parser.addoption(
+        "--skip-db",
+        action="store_true",
+        default=False,
+        help="explicitly skip database and security tests that require PostgreSQL",
+    )
 
 
 @pytest.fixture
@@ -117,34 +134,73 @@ class FakeFaceAnalyzer(FacescanAiFaceAnalyzer):
 def _repo_settings(**overrides: object) -> Settings:
     """
     Purpose: produce settings for database/integration tests with env-file loading disabled.
+        Explicitly injects FACESCAN_TEST_DB_URL or FACESCAN_DB_URL if db_url is not in overrides.
     Inputs: arbitrary keyword overrides.
     Outputs: Settings instance.
     Side effects: none.
     """
+    if "db_url" not in overrides:
+        url = os.environ.get("FACESCAN_TEST_DB_URL") or os.environ.get("FACESCAN_DB_URL")
+        if url:
+            overrides["db_url"] = SecretStr(url)
     return Settings(_env_file=None, **overrides)
 
 
+_db_reachability_error: str | None = None
+
+
 @pytest.fixture(scope="module")
-def db_schema() -> Iterator[str]:
-    """A migrated throwaway schema in the dev database (skips without a database)."""
+def db_schema(request: pytest.FixtureRequest) -> Iterator[str]:
+    """
+    Purpose: provide a migrated throwaway schema in PostgreSQL for database and security tests.
+        Fails with a clear message if PostgreSQL is unavailable, unless --skip-db is
+        explicitly passed.
+    Inputs: request (pytest.FixtureRequest).
+    Outputs: Iterator yielding generated schema name.
+    Side effects: creates database schema, runs Alembic migrations, drops schema on teardown.
+    """
+    global _db_reachability_error
     from alembic import command
     from alembic.config import Config
     from sqlalchemy import create_engine, text
     from sqlalchemy.exc import OperationalError
 
+    skip_db = bool(
+        request.config.getoption("--skip-db", default=False)
+        or os.environ.get("FACESCAN_SKIP_DB") == "1"
+    )
+
+    if _db_reachability_error is not None:
+        if skip_db:
+            pytest.skip(_db_reachability_error)
+        pytest.fail(_db_reachability_error)
+
     base = _repo_settings()
     if base.db_url is None:
-        pytest.skip("FACESCAN_DB_URL is not set (database tests skipped)")
+        if skip_db:
+            pytest.skip("database tests skipped via --skip-db flag")
+        _db_reachability_error = (
+            "Database tests require a database URL (set FACESCAN_TEST_DB_URL or FACESCAN_DB_URL, "
+            "or pass --skip-db to explicitly skip database tests)."
+        )
+        pytest.fail(_db_reachability_error)
     schema = "test_" + secrets.token_hex(6)
-    admin = create_engine(base.db_url.get_secret_value())
+    admin = create_engine(base.db_url.get_secret_value(), connect_args={"connect_timeout": 5})
     try:
         with admin.begin() as conn:
             conn.execute(text(f"CREATE SCHEMA {schema}"))
-    except OperationalError:
+    except OperationalError as exc:
         admin.dispose()
-        pytest.skip("PostgreSQL is not reachable (database tests skipped)")
+        _db_reachability_error = (
+            f"PostgreSQL is not reachable at configured database URL: {exc}. "
+            "Ensure PostgreSQL is running, or pass --skip-db to explicitly skip database tests."
+        )
+        if skip_db:
+            pytest.skip(_db_reachability_error)
+        pytest.fail(_db_reachability_error)
     migrator = create_engine(
-        base.db_url.get_secret_value(), connect_args={"options": f"-c search_path={schema}"}
+        base.db_url.get_secret_value(),
+        connect_args={"options": f"-c search_path={schema}", "connect_timeout": 5},
     )
     try:
         with migrator.begin() as conn:
@@ -152,6 +208,14 @@ def db_schema() -> Iterator[str]:
             cfg.attributes["connection"] = conn
             command.upgrade(cfg, "head")
         yield schema
+    except OperationalError as exc:
+        _db_reachability_error = (
+            f"PostgreSQL migration connection failed: {exc}. "
+            "Ensure PostgreSQL is running, or pass --skip-db to explicitly skip database tests."
+        )
+        if skip_db:
+            pytest.skip(_db_reachability_error)
+        pytest.fail(_db_reachability_error)
     finally:
         migrator.dispose()
         with admin.begin() as conn:
@@ -183,6 +247,7 @@ def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
         keys_master_key=SecretStr(master_key),
         job_retry_base_seconds=0.01,
         worker_poll_interval_seconds=0.01,
+        liveness_adapter="",
     )
     context = build_context(
         settings, analyzer=FakeFaceAnalyzer(), search_path=db_schema, email=MemoryEmailSender()

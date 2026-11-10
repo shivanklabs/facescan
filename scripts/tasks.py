@@ -13,10 +13,12 @@ import re
 import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,6 +87,65 @@ def child_env() -> dict[str, str]:
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return env
+
+
+def get_test_db_url() -> str | None:
+    """
+    Purpose: resolve the database URL for integration and database tests from the environment
+        or local .env file. Prefers FACESCAN_TEST_DB_URL, falling back to FACESCAN_DB_URL.
+    Inputs: none.
+    Outputs: database URL string or None if not configured.
+    Side effects: reads .env file if it exists.
+    """
+    env_vars = load_env_file(ENV_FILE)
+    return (
+        os.environ.get("FACESCAN_TEST_DB_URL")
+        or env_vars.get("FACESCAN_TEST_DB_URL")
+        or os.environ.get("FACESCAN_DB_URL")
+        or env_vars.get("FACESCAN_DB_URL")
+    )
+
+
+def test_env(*, test_db_url: str | None = None, skip_db: bool = False) -> dict[str, str]:
+    """
+    Purpose: minimal environment for test child processes. Passes process environment and
+        the explicit test database URL without loading the rest of .env, keeping tests isolated
+        from local development configuration.
+    Inputs: test_db_url (str or None), skip_db (bool).
+    Outputs: env dict.
+    Side effects: none.
+    """
+    env = {**os.environ}
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    if test_db_url:
+        env["FACESCAN_TEST_DB_URL"] = test_db_url
+    if skip_db:
+        env["FACESCAN_SKIP_DB"] = "1"
+    return env
+
+
+def check_db_reachable(db_url: str) -> None:
+    """
+    Purpose: verify that the PostgreSQL database host and port are accepting TCP connections.
+    Inputs: db_url (database connection URL).
+    Outputs: none.
+    Side effects: opens and closes a temporary socket connection. Raises TaskError if unreachable.
+    """
+    cleaned = db_url
+    if "://" in cleaned:
+        cleaned = "http://" + cleaned.split("://", 1)[1]
+    parsed = urllib.parse.urlsplit(cleaned)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 5432
+    try:
+        with socket.create_connection((host, port), timeout=2.0):
+            pass
+    except OSError as exc:
+        raise TaskError(
+            f"PostgreSQL is not reachable at {host}:{port} ({exc}). "
+            "Ensure PostgreSQL is running, or pass --skip-db to explicitly skip database tests."
+        ) from None
 
 
 def require_tool(name: str, hint: str) -> str:
@@ -535,19 +596,35 @@ def task_test(args: argparse.Namespace) -> None:
     """
     Purpose: run test suites (backend, ai, frontend). Runs all requested suites even if an
         earlier one fails, collecting errors and reporting all failures together at the end.
-    Inputs: args with optional .only ("python", "frontend", "backend", "ai").
+        Ensures database tests receive an explicit test database URL without loading the rest
+        of .env, and never skip silently unless --skip-db is explicitly specified.
+    Inputs: args with optional .only ("python", "frontend", "backend", "ai") and .skip_db (bool).
     Outputs: none.
     Side effects: runs pytest and vitest child processes. Raises TaskError if any suite failed.
     """
     failures: list[str] = []
+    skip_db = getattr(args, "skip_db", False)
+    test_db_url = None if skip_db else get_test_db_url()
+
     if args.only in (None, "python", "backend"):
+        if not skip_db:
+            if not test_db_url:
+                raise TaskError(
+                    "Database tests require a database URL. Set FACESCAN_TEST_DB_URL or "
+                    "FACESCAN_DB_URL in .env or your environment, or pass --skip-db to explicitly "
+                    "skip database tests."
+                )
+            check_db_reachable(test_db_url)
+        backend_args = ["--skip-db"] if skip_db else []
+        backend_env = test_env(test_db_url=test_db_url, skip_db=skip_db)
         try:
-            run(python_tool("pytest"), cwd=BACKEND)
+            run(python_tool("pytest", *backend_args), cwd=BACKEND, env=backend_env)
         except TaskError as exc:
             failures.append(f"backend tests: {exc}")
     if args.only in (None, "python", "ai"):
+        ai_env = test_env()
         try:
-            run(python_tool("pytest"), cwd=AI)
+            run(python_tool("pytest"), cwd=AI, env=ai_env)
         except TaskError as exc:
             failures.append(f"AI tests: {exc}")
     if args.only in (None, "frontend"):
@@ -598,6 +675,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif name == "test":
             task_parser.add_argument(
                 "--only", choices=("python", "frontend", "backend", "ai"), default=None
+            )
+            task_parser.add_argument(
+                "--skip-db",
+                "--skip-database",
+                dest="skip_db",
+                action="store_true",
+                default=False,
+                help="explicitly skip database and security tests that require PostgreSQL",
             )
     args = parser.parse_args(argv)
     try:
