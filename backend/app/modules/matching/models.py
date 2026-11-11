@@ -3,7 +3,15 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, LargeBinary, String
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +28,7 @@ class Match(Base):
             "score_band IN ('release', 'borderline', 'none', 'not_me', 'withdrawn')",
             name="ck_matches_score_band",
         ),
+        UniqueConstraint("event_id", "user_id", "photo_id", name="uq_matches_event_user_photo"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()

@@ -902,3 +902,78 @@ def test_ten_claims_produce_one_select_for_photos(organiser: TestClient, ctx: Ap
     assert len(photo_queries) == 1, (
         f"Expected 1 photo query, got {len(photo_queries)}: {photo_queries}"
     )
+
+
+def test_approving_claim_on_not_me_photo_leaves_it_as_not_me(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify that approving a claim on a photo already marked not_me leaves it as not_me.
+    Inputs: organiser (TestClient), ctx (AppContext).
+    Outputs: None.
+    Side effects: tests claim submission and organiser review with pre-existing not_me match.
+    """
+    event_id, invite_url, photos = searchable_event(
+        ctx, organiser, [make_png(1, 1), make_png(2, 1)]
+    )
+    guest = guest_client(ctx, "claimant_notme@example.test", event_id, invite_url)
+
+    search_resp = guest.post(
+        f"/events/{event_id}/scene-search",
+        json={"query": "person"},
+    )
+    assert search_resp.status_code == 200
+    candidate = search_resp.json()["candidates"][0]
+    photo_id = candidate["photo_id"]
+    face_id = candidate["faces"][0]["face_id"]
+
+    frames_fail = [make_selfie_b64(3), make_selfie_b64(3), make_selfie_b64(3)]
+    claim_resp = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": photo_id,
+            "face_id": face_id,
+            "frames": frames_fail,
+            "front_only": False,
+        },
+    )
+    assert claim_resp.status_code == 200
+    assert claim_resp.json()["status"] == "queued_for_review"
+
+    queue = organiser.get(f"/events/{event_id}/claims").json()
+    claim_id = queue["claims"][0]["claim_id"]
+
+    # Pre-existing match in DB is marked as not_me
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        consent_row = s.scalar(select(Consent).where(Consent.event_id == UUID(event_id)))
+        assert consent_row is not None
+        guest_user_id = consent_row.user_id
+        s.add(
+            Match(
+                event_id=UUID(event_id),
+                user_id=guest_user_id,
+                photo_id=UUID(photo_id),
+                score_band="not_me",
+                source="search",
+            )
+        )
+
+    # Organiser approves the claim
+    review_resp = organiser.post(
+        f"/events/{event_id}/claims/{claim_id}/review",
+        json={"action": "approve"},
+    )
+    assert review_resp.status_code == 200
+    assert review_resp.json()["status"] == "approved"
+
+    # Match in DB must still be score_band == 'not_me'
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        match_row = s.scalar(
+            select(Match).where(
+                Match.event_id == UUID(event_id),
+                Match.user_id == guest_user_id,
+                Match.photo_id == UUID(photo_id),
+            )
+        )
+        assert match_row is not None
+        assert match_row.score_band == "not_me"

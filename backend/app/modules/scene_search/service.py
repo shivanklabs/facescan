@@ -516,16 +516,31 @@ def submit_claim(
 
         if passed:
             # Automatic release to gallery with source = "claim"
-            session.add(
-                Match(
-                    event_id=event_id,
-                    user_id=user.user_id,
-                    photo_id=req.photo_id,
-                    score_band="release",
-                    source="claim",
-                    released_at=datetime.now(UTC),
+            existing_match = session.scalar(
+                select(Match)
+                .where(
+                    Match.event_id == event_id,
+                    Match.user_id == user.user_id,
+                    Match.photo_id == req.photo_id,
                 )
+                .limit(1)
             )
+            if existing_match is None:
+                session.add(
+                    Match(
+                        event_id=event_id,
+                        user_id=user.user_id,
+                        photo_id=req.photo_id,
+                        score_band="release",
+                        source="claim",
+                        released_at=datetime.now(UTC),
+                    )
+                )
+            else:
+                if existing_match.score_band != "not_me":
+                    existing_match.score_band = "release"
+                    existing_match.released_at = datetime.now(UTC)
+                existing_match.source = "claim"
             record(
                 session,
                 event_id=event_id,
@@ -680,9 +695,10 @@ def review_claim(
                     )
                 )
             else:
-                existing_match.score_band = "release"
+                if existing_match.score_band != "not_me":
+                    existing_match.score_band = "release"
+                    existing_match.released_at = now
                 existing_match.source = "claim"
-                existing_match.released_at = now
 
             record(
                 session,
