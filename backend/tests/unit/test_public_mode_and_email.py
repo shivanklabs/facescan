@@ -4,12 +4,16 @@ and Gmail SMTP email adapter.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from app.adapters.email.smtp_gmail_email import SmtpGmailEmailSender
 from app.core.config import Settings
 from app.core.rate_limit import extract_client_ip
 from app.main import create_app
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from starlette.requests import Request
+
+from scripts.tasks import TaskError, check_required_env_vars, find_cloudflared
 
 
 def _mock_request(client_host: str, headers: dict[str, str] | None = None) -> Request:
@@ -99,3 +103,70 @@ def test_public_mode_disables_docs_and_openapi() -> None:
     assert app.docs_url is None
     assert app.redoc_url is None
     assert app.openapi_url is None
+
+
+def test_public_mode_serves_api_and_spa() -> None:
+    """
+    Purpose: verify that API endpoints are accessible both directly and under /api prefix,
+        ensuring relative frontend calls succeed in public mode.
+    Inputs: none. Outputs: none. Side effects: creates test app and client.
+    """
+    settings = Settings(env="public")
+    mock_ctx = MagicMock()
+    app = create_app(settings=settings, ctx=mock_ctx)
+    client = TestClient(app)
+
+    # Health probe responds on both paths
+    assert client.get("/health").status_code == 200
+    assert client.get("/api/health").status_code == 200
+
+    # Auth endpoint responds on both paths (401 unauthorized, not 404)
+    assert client.get("/auth/me").status_code == 401
+    assert client.get("/api/auth/me").status_code == 401
+
+    # Unmapped /api route returns 404 JSON, not HTML fallback
+    res = client.get("/api/nonexistent_route")
+    assert res.status_code == 404
+    assert res.headers.get("content-type", "").startswith("application/json")
+
+
+def test_find_cloudflared_lookup() -> None:
+    """
+    Purpose: verify find_cloudflared discovers binary from PATH or winget install folders.
+    Inputs: none. Outputs: none. Side effects: none (mocked).
+    """
+    # 1. When shutil.which finds it
+    with patch("shutil.which", return_value="/usr/local/bin/cloudflared"):
+        assert find_cloudflared() == "/usr/local/bin/cloudflared"
+
+    # 2. When not on PATH, checks Windows winget candidates
+    with (
+        patch("shutil.which", return_value=None),
+        patch("sys.platform", "win32"),
+        patch("pathlib.Path.is_file", return_value=True),
+    ):
+        found = find_cloudflared()
+        assert found is not None
+        assert "cloudflared.exe" in found
+
+
+def test_check_required_env_vars_preflight() -> None:
+    """
+    Purpose: verify preflight checks that required env vars exist and are non-empty,
+        raising TaskError without printing values.
+    Inputs: none. Outputs: none. Side effects: none.
+    """
+    # All present
+    env_valid = {"FOO": "value1", "BAR": "value2"}
+    check_required_env_vars(env_valid, ["FOO", "BAR"], "test")
+
+    # Missing and empty
+    env_invalid = {"FOO": "value1", "BAR": "", "SECRET_KEY": "supersecret"}
+    with pytest.raises(TaskError) as exc_info:
+        check_required_env_vars(env_invalid, ["FOO", "BAR", "BAZ"], "test")
+
+    msg = str(exc_info.value)
+    assert "BAR" in msg
+    assert "BAZ" in msg
+    assert "FOO" not in msg
+    assert "supersecret" not in msg  # Never prints values!

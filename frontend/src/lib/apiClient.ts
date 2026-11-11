@@ -2,7 +2,28 @@
 // All calls go to /api on the same origin (Vite proxies it to the API in development), so the
 // HttpOnly session cookie stays first-party. Requests time out; errors become ApiError.
 
-export const API_BASE = '/api';
+/**
+ * Purpose: compute base API path.
+ * In production or public mode (or whenever configured with localhost),
+ * strictly use same-origin relative '/api' so mobile clients on tunnel URLs never call localhost.
+ * Inputs: none.
+ * Outputs: string base URL ('/api' or custom non-localhost origin + '/api').
+ * Side effects: reads import.meta.env.
+ */
+function resolveApiBase(): string {
+  const envUrl = import.meta.env.VITE_FACESCAN_API_URL;
+  if (
+    import.meta.env.PROD ||
+    !envUrl ||
+    envUrl.includes('localhost') ||
+    envUrl.includes('127.0.0.1')
+  ) {
+    return '/api';
+  }
+  return `${envUrl.replace(/\/$/, '')}/api`;
+}
+
+export const API_BASE = resolveApiBase();
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export class ApiError extends Error {

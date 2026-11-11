@@ -92,6 +92,28 @@ def child_env() -> dict[str, str]:
     return env
 
 
+def check_required_env_vars(
+    env: dict[str, str], required_vars: Sequence[str], task_name: str
+) -> None:
+    """
+    Purpose: preflight check that required .env variables exist and are non-empty.
+    Inputs: env (dict of environment variables), required_vars (sequence of variable names),
+        task_name (str task name for messaging).
+    Outputs: None.
+    Side effects: raises TaskError printing only the variable names (never values).
+    """
+    missing = [key for key in required_vars if not env.get(key, "").strip()]
+    if missing:
+        names = "\n".join(f"  - {key}" for key in missing)
+        details = "\n".join(f"{key} is not set in .env." for key in missing)
+        raise TaskError(
+            f"Preflight check failed for `tasks {task_name}`.\n"
+            f"The following required .env variable(s) are missing or empty:\n{names}\n"
+            f"{details}\n"
+            "Please configure them in your .env file."
+        )
+
+
 def get_test_db_url() -> str | None:
     """
     Purpose: resolve the database URL for integration and database tests from the environment
@@ -580,6 +602,44 @@ def task_dev(_args: argparse.Namespace) -> None:
     print("All dev processes stopped.")
 
 
+def find_cloudflared() -> str | None:
+    """
+    Purpose: locate cloudflared binary: checks PATH, then standard Windows/winget install folders.
+    Inputs: none.
+    Outputs: path string or None.
+    Side effects: checks filesystem and PATH.
+    """
+    on_path = shutil.which("cloudflared")
+    if on_path:
+        return on_path
+    if sys.platform == "win32":
+        exe = "cloudflared.exe"
+        candidates: list[Path] = []
+        for pf_key in ("PROGRAMFILES", "ProgramFiles(x86)", "ProgramW6432"):
+            pf = os.environ.get(pf_key)
+            if pf:
+                candidates.append(Path(pf) / "cloudflared" / exe)
+        candidates.extend(
+            [
+                Path(r"C:\Program Files\cloudflared") / exe,
+                Path(r"C:\Program Files (x86)\cloudflared") / exe,
+            ]
+        )
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            lad_path = Path(local_app_data)
+            candidates.append(lad_path / "Microsoft" / "WinGet" / "Links" / exe)
+            winget_pkgs = lad_path / "Microsoft" / "WinGet" / "Packages"
+            if winget_pkgs.is_dir():
+                candidates.extend(winget_pkgs.glob(f"Cloudflare.cloudflared_*/{exe}"))
+                candidates.extend(winget_pkgs.glob(f"*/{exe}"))
+
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
 def task_public(_args: argparse.Namespace) -> None:
     """
     Purpose: phone test mode for real guests.
@@ -599,7 +659,20 @@ def task_public(_args: argparse.Namespace) -> None:
     if not ENV_FILE.exists():
         raise TaskError(".env is missing. Run: uv run tasks setup")
 
-    cloudflared_bin = shutil.which("cloudflared")
+    env = child_env()
+    check_required_env_vars(
+        env,
+        [
+            "FACESCAN_AUTH_ORGANISER_EMAILS",
+            "FACESCAN_AUTH_ADMIN_EMAILS",
+            "FACESCAN_EMAIL_ADAPTER",
+            "FACESCAN_EMAIL_SMTP_USER",
+            "FACESCAN_EMAIL_SMTP_PASSWORD",
+        ],
+        "public",
+    )
+
+    cloudflared_bin = find_cloudflared()
     if not cloudflared_bin:
         raise TaskError(
             "cloudflared is not installed or not in PATH.\n"
@@ -608,7 +681,9 @@ def task_public(_args: argparse.Namespace) -> None:
         )
 
     print("Building frontend for production...", flush=True)
-    run([npm(), "run", "build"], cwd=FRONTEND)
+    build_env = child_env()
+    build_env["VITE_FACESCAN_API_URL"] = ""
+    run([npm(), "run", "build"], cwd=FRONTEND, env=build_env)
 
     print("Starting Cloudflare Quick Tunnel on 127.0.0.1:8000...", flush=True)
     tunnel_cmd = [cloudflared_bin, "tunnel", "--url", "http://127.0.0.1:8000"]
@@ -831,13 +906,15 @@ def task_backup(_args: argparse.Namespace) -> None:
         raise TaskError(".env is missing. Run: uv run tasks setup")
     env = child_env()
 
+    check_required_env_vars(
+        env,
+        [
+            "FACESCAN_BACKUP_DIR",
+        ],
+        "backup",
+    )
+
     backup_dir_val = env.get("FACESCAN_BACKUP_DIR", "").strip()
-    if not backup_dir_val:
-        raise TaskError(
-            "FACESCAN_BACKUP_DIR is not set in .env.\n"
-            "Please configure FACESCAN_BACKUP_DIR pointing to a folder outside "
-            "the repository and storage root."
-        )
 
     backup_dir = (
         Path(backup_dir_val) if Path(backup_dir_val).is_absolute() else (ROOT / backup_dir_val)

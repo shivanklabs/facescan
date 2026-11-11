@@ -72,13 +72,16 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     app.middleware("http")(same_origin_guard(settings.auth_rp_origin))
 
     @app.get("/health", response_model=HealthResponse, tags=["ops"])
+    @app.get("/api/health", response_model=HealthResponse, tags=["ops"])
     def health() -> HealthResponse:
         """Purpose: liveness probe. Inputs: none. Outputs: status + version. Side effects: none."""
         return HealthResponse(status="ok", version=__version__)
 
     # Signed downloads for the local filesystem storage adapter (invariant 6).
     if settings.storage_signing_key is not None:
-        app.include_router(create_download_router(build_local_storage(settings)))
+        download_router = create_download_router(build_local_storage(settings))
+        app.include_router(download_router)
+        app.include_router(download_router, prefix="/api")
 
     from app.modules.admin.router import router as admin_router
     from app.modules.consent.router import router as consent_router
@@ -106,10 +109,13 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         admin_router,
     ):
         app.include_router(router)
+        app.include_router(router, prefix="/api")
 
-    # In public or production mode (or when frontend/dist is built), serve frontend SPA
-    dist_dir = Path(__file__).resolve().parents[3] / "frontend" / "dist"
-    if dist_dir.exists() and (dist_dir / "index.html").exists():
+    # In public or production mode (when frontend/dist is built), serve frontend SPA
+    dist_dir = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if not dist_dir.exists():
+        dist_dir = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    if is_prod and dist_dir.exists() and (dist_dir / "index.html").exists():
         assets_dir = dist_dir / "assets"
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="spa_assets")
@@ -119,9 +125,17 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
             """
             Purpose: serve static SPA files or fallback to index.html for client-side routing.
             Inputs: full_path (str) requested path.
-            Outputs: FileResponse with file contents or index.html.
+            Outputs: FileResponse with file or index.html (or 404 for unmapped API/storage).
             Side effects: reads static file from filesystem.
             """
+            api_prefixes = ("api", "storage", "auth", "events", "admin", "health")
+            first_segment = full_path.split("/", 1)[0]
+            if first_segment in api_prefixes:
+                return Response(
+                    content='{"detail":"Not Found"}',
+                    status_code=404,
+                    media_type="application/json",
+                )
             candidate = dist_dir / full_path
             if full_path and candidate.is_file():
                 return FileResponse(str(candidate))
