@@ -6,6 +6,7 @@ Images are decoded in memory; nothing here writes files.
 """
 
 import io
+import logging
 import threading
 import warnings
 from uuid import UUID
@@ -43,6 +44,8 @@ from app.ports.face_analyzer import (
     StoredFace,
 )
 
+logger = logging.getLogger("facescan.vision.download")
+
 PRIMARY = "auraface"
 _SIGNATURES: tuple[tuple[str, bytes, int], ...] = (
     ("image/jpeg", b"\xff\xd8\xff", 0),
@@ -73,6 +76,88 @@ def _calibration_from_dict(
 ) -> EngineCalibration:
     """Purpose: inverse of _calibration_to_dict."""
     return EngineCalibration.from_dict(engine, raw)
+
+
+def strip_sensitive_exif_lossless(data: bytes) -> bytes:
+    """
+    Purpose: losslessly remove GPS tags, serial numbers, and MakerNote from JPEG bytes
+        without re-encoding pixel data or changing image dimensions.
+    Inputs: data (bytes) raw image file content.
+    Outputs: bytes (cleaned JPEG bytes, or original bytes if not JPEG or on failure).
+    Side effects: logs a warning count on failure without PII or stack trace.
+    """
+    if len(data) < 4 or data[:2] != b"\xff\xd8":
+        logger.warning("lossless EXIF stripping skipped: not a JPEG image")
+        return data
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            if img.format != "JPEG":
+                logger.warning("lossless EXIF stripping skipped: format is not JPEG")
+                return data
+            exif = img.getexif()
+            if not exif:
+                return data
+
+            # Tags to remove:
+            # 34853: GPSInfo
+            # 37500: MakerNote
+            # 42033: BodySerialNumber
+            # 42037: LensSerialNumber
+            # 50735: CameraSerialNumber
+            # 50741: MakerNoteSafety
+            sensitive_tags = {34853, 37500, 42033, 42037, 50735, 50741}
+            for tag in list(exif.keys()):
+                if tag in sensitive_tags:
+                    del exif[tag]
+
+            if 0x8769 in exif:
+                exif_ifd = exif.get_ifd(0x8769)
+                for tag in list(exif_ifd.keys()):
+                    if tag in sensitive_tags:
+                        del exif_ifd[tag]
+
+            if 0x8825 in exif:
+                exif.get_ifd(0x8825).clear()
+                del exif[0x8825]
+
+            new_exif_bytes = exif.tobytes()
+
+        app1_payload = b"Exif\x00\x00" + new_exif_bytes
+        new_app1 = b"\xff\xe1" + (len(app1_payload) + 2).to_bytes(2, "big") + app1_payload
+
+        out = [b"\xff\xd8", new_app1]
+        i = 2
+        found_sos = False
+        while i < len(data) - 1:
+            if data[i] != 0xFF:
+                break
+            while i < len(data) - 1 and data[i + 1] == 0xFF:
+                i += 1
+            if i >= len(data) - 1:
+                break
+            marker = data[i + 1]
+            if marker in (0xD8, 0xD9):
+                i += 2
+                continue
+            if marker == 0xDA:  # Start of Scan (entropy-coded MCUs follow)
+                out.append(data[i:])
+                found_sos = True
+                break
+            length = int.from_bytes(data[i + 2 : i + 4], "big")
+            seg = data[i : i + 2 + length]
+            if marker == 0xE1 and len(seg) >= 10 and seg[4:10] == b"Exif\x00\x00":
+                pass
+            else:
+                out.append(seg)
+            i += 2 + length
+
+        if not found_sos:
+            logger.warning("lossless EXIF stripping failed: SOS marker not found")
+            return data
+        return b"".join(out)
+    except Exception:
+        logger.warning("lossless EXIF stripping failed: unexpected error processing metadata")
+        return data
 
 
 class FacescanAiFaceAnalyzer:
@@ -185,12 +270,14 @@ class FacescanAiFaceAnalyzer:
         return bytes(encoded.tobytes())
 
     def full_copy(self, data: bytes) -> bytes:
-        """Purpose: upright full-resolution JPEG; OpenCV writes no EXIF or other metadata."""
-        image = decode_image(data)
-        ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
-        if not ok:
-            raise ImageRejectedError("could not encode download copy")
-        return bytes(encoded.tobytes())
+        """
+        Purpose: serve full-resolution photo for download without resizing or recompressing;
+            losslessly strips GPS, serial numbers, and MakerNote from EXIF.
+        Inputs: data (bytes) stored original photo bytes.
+        Outputs: bytes (losslessly stripped download copy).
+        Side effects: logs warning on stripping failure.
+        """
+        return strip_sensitive_exif_lossless(data)
 
     def selfie_query(self, data: bytes) -> SelfieQuery:
         """Purpose: one-face selfie embeddings in memory. Raises SelfieRejectedError."""

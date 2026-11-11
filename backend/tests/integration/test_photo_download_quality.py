@@ -1,10 +1,18 @@
 """Test photo download resolution, recompression, and metadata handling."""
 
+import hashlib
 import io
+from uuid import UUID
 
+import numpy as np
 from app.core.context import AppContext
+from app.db.event_scope import event_transaction
+from app.modules.events.models import EventMember
+from app.modules.ingest.models import Photo
+from app.modules.matching.models import Match
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, ImageCms
+from sqlalchemy import select
 from tests.helpers import guest_client, searchable_event
 
 
@@ -12,10 +20,10 @@ def make_jpeg_with_exif(
     person: int = 1, count: int = 1, size: tuple[int, int] = (640, 480)
 ) -> bytes:
     """
-    Purpose: create test JPEG image with EXIF metadata (camera model and GPS tags)
-        and person marker.
+    Purpose: create test JPEG image with rich metadata (ICC profile, orientation,
+        camera Make/Model, GPS tags, serial numbers, MakerNote) and person marker.
     Inputs: person id, face count, dimensions (w, h).
-    Outputs: JPEG bytes with EXIF data.
+    Outputs: JPEG bytes with EXIF data and ICC profile.
     Side effects: none.
     """
     img = Image.new("RGB", size, (200, 200, 200))
@@ -23,12 +31,33 @@ def make_jpeg_with_exif(
     img.putpixel((0, 0), (person, count, 0))
 
     exif = img.getexif()
-    # Tag 271: Make, Tag 272: Model
+    # Orientation: 6 = 90 deg CW
+    exif[274] = 6
+    # Camera metadata
     exif[271] = "FaceScan Test Camera"
     exif[272] = "Model-X"
+    # Serial numbers
+    exif[42033] = "BODY-SERIAL-12345"
+    exif[42037] = "LENS-SERIAL-67890"
+    # MakerNote
+    exif[37500] = b"CONFIDENTIAL_MAKERNOTE"
+
+    # GPS IFD
+    gps = exif.get_ifd(0x8825)
+    gps[1] = "N"
+    gps[2] = (19, 4, 30)
+
+    # Exif IFD sub-dictionary
+    exif_ifd = exif.get_ifd(0x8769)
+    exif_ifd[42033] = "BODY-SERIAL-12345"
+    exif_ifd[37500] = b"CONFIDENTIAL_MAKERNOTE"
+
+    # ICC profile
+    srgb = ImageCms.createProfile("sRGB")
+    icc_bytes = ImageCms.ImageCmsProfile(srgb).tobytes()
 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", exif=exif, quality=95)
+    img.save(buf, format="JPEG", exif=exif, icc_profile=icc_bytes, quality=90)
     return buf.getvalue()
 
 
@@ -36,26 +65,36 @@ def test_photo_download_resolution_and_metadata_behavior(
     organiser: TestClient, ctx: AppContext
 ) -> None:
     """
-    Purpose: verify that downloaded gallery photos maintain original dimensions, and record
-        current behavior regarding recompression (OpenCV q=95) and EXIF metadata stripping.
+    Purpose: verify the five production photo download quality invariants:
+      1. Decoded pixels match uploaded photo exactly (np.array_equal).
+      2. Compressed image scan data is not re-encoded (JPEG MCU data identical).
+      3. ICC profile and orientation are preserved.
+      4. GPS tags, serial numbers, and MakerNote are stripped losslessly.
+      5. Stored original file on disk is never modified (SHA-256 unchanged).
+    Inputs: organiser (TestClient), ctx (AppContext).
+    Outputs: none.
+    Side effects: uploads photo, releases match, downloads photo via HTTP endpoint.
     """
-    from uuid import UUID
-
-    from app.db.event_scope import event_transaction
-    from app.modules.matching.models import Match
-    from sqlalchemy import select
-
     target_jpeg = make_jpeg_with_exif(person=1, count=1, size=(640, 480))
+    initial_sha = hashlib.sha256(target_jpeg).hexdigest()
+
     event_id, invite_url, photo_ids = searchable_event(ctx, organiser, [target_jpeg])
     photo_id = photo_ids[0]
+
+    # Verify stored file matches target_jpeg exactly before download
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        photo_row = s.scalar(select(Photo).where(Photo.id == UUID(photo_id)))
+        assert photo_row is not None
+        bucket, obj_key = photo_row.bucket, photo_row.object_key
+
+    stored_bytes_before = ctx.storage.get_object(bucket, UUID(event_id), obj_key)
+    assert hashlib.sha256(stored_bytes_before).hexdigest() == initial_sha
 
     # Guest sign in, join event, and consent
     guest = guest_client(ctx, "guest@example.test", event_id, invite_url)
 
     # Release photo to guest gallery (simulating claim or organiser approval)
     with event_transaction(ctx.sessions, UUID(event_id)) as s:
-        from app.modules.events.models import EventMember
-
         member = s.scalar(
             select(EventMember).where(
                 EventMember.event_id == UUID(event_id), EventMember.role == "guest"
@@ -79,19 +118,40 @@ def test_photo_download_resolution_and_metadata_behavior(
     assert download_resp.headers["cache-control"] == "private, no-store"
 
     downloaded_bytes = download_resp.content
-    with Image.open(io.BytesIO(downloaded_bytes)) as dl_img:
-        # 1. Dimension preservation: downloaded resolution matches original exactly
+
+    # Invariant 1: Decoded pixels match uploaded photo exactly
+    with (
+        Image.open(io.BytesIO(downloaded_bytes)) as dl_img,
+        Image.open(io.BytesIO(target_jpeg)) as orig_img,
+    ):
         assert dl_img.size == (640, 480)
+        assert np.array_equal(np.array(dl_img), np.array(orig_img))
 
-        # 2. Metadata behavior today: OpenCV imencode does not write EXIF, so tags are stripped
+        # Invariant 2: Compressed image scan data is not re-encoded (JPEG MCUs unchanged)
+        orig_sos = target_jpeg.find(b"\xff\xda")
+        dl_sos = downloaded_bytes.find(b"\xff\xda")
+        assert orig_sos > 0 and dl_sos > 0
+        assert target_jpeg[orig_sos:] == downloaded_bytes[dl_sos:]
+
+        # Invariant 3: ICC profile and orientation are preserved
+        assert dl_img.info.get("icc_profile") == orig_img.info.get("icc_profile")
         dl_exif = dl_img.getexif()
-        assert 271 not in dl_exif, (
-            "EXIF metadata is stripped on download today by OpenCV re-encoding"
-        )
+        assert dl_exif.get(274) == 6  # Orientation preserved
+        assert dl_exif.get(271) == "FaceScan Test Camera"
+        assert dl_exif.get(272) == "Model-X"
 
-    # 3. Quality & recompression behavior today:
-    # Today, FacescanAiFaceAnalyzer.full_copy re-encodes via cv2.imencode at quality 95,
-    # so downloaded bytes differ from uploaded bytes.
-    # When bit-for-bit identical storage download is enabled in a future milestone,
-    # downloaded_bytes will match original_jpeg.
-    assert len(downloaded_bytes) > 0
+        # Invariant 4: GPS, serial numbers, and MakerNote are removed
+        assert 34853 not in dl_exif
+        assert len(dl_exif.get_ifd(0x8825)) == 0
+        assert 42033 not in dl_exif
+        assert 42037 not in dl_exif
+        assert 37500 not in dl_exif
+        if 0x8769 in dl_exif:
+            sub_ifd = dl_exif.get_ifd(0x8769)
+            assert 42033 not in sub_ifd
+            assert 42037 not in sub_ifd
+            assert 37500 not in sub_ifd
+
+    # Invariant 5: Stored file on disk is never modified
+    stored_bytes_after = ctx.storage.get_object(bucket, UUID(event_id), obj_key)
+    assert hashlib.sha256(stored_bytes_after).hexdigest() == initial_sha
