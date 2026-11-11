@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="FACESCAN_", env_file=".env", extra="ignore")
 
-    env: Literal["dev", "test", "prod"] = "dev"
+    env: Literal["dev", "test", "prod", "public"] = "dev"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     db_url: SecretStr | None = None
@@ -60,8 +60,13 @@ class Settings(BaseSettings):
     auth_cookie_secure: bool = True
     # Who may create events (comma-separated emails). Organisers must use a passkey.
     auth_organiser_emails: str = ""
-    # Magic-link delivery. "console" prints links to the API terminal and only runs in dev.
-    email_adapter: Literal["console"] = "console"
+    # Magic-link delivery: "console" (dev only) or "smtp_gmail" (production / public testing).
+    email_adapter: Literal["console", "smtp_gmail"] = "console"
+    email_smtp_user: str | None = None
+    email_smtp_password: SecretStr | None = None
+    email_smtp_host: str = "smtp.gmail.com"
+    email_smtp_port: int = Field(default=587, ge=1, le=65535)
+    email_smtp_use_tls: bool = True
 
     # Gemini scene query rewriting (optional; falls back to local query on failure/missing key).
     gemini_api_key: SecretStr | None = None

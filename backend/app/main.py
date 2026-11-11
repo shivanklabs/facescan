@@ -2,9 +2,12 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from pydantic import BaseModel
+from starlette.responses import FileResponse
+from starlette.staticfiles import StaticFiles
 
 from app import __version__
 from app.adapters.storage.local_filesystem_download import (
@@ -39,7 +42,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     """
     settings = settings or get_settings()
     configure_logging(settings.log_level)
-    is_prod = settings.env == "prod"
+    is_prod = settings.env in ("prod", "production", "public")
     if ctx is None and settings.db_url is not None:
         ctx = build_context(settings)
 
@@ -101,4 +104,25 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         claims_router,
     ):
         app.include_router(router)
+
+    # In public or production mode (or when frontend/dist is built), serve frontend SPA
+    dist_dir = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+    if dist_dir.exists() and (dist_dir / "index.html").exists():
+        assets_dir = dist_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="spa_assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def serve_spa(full_path: str) -> Response:
+            """
+            Purpose: serve static SPA files or fallback to index.html for client-side routing.
+            Inputs: full_path (str) requested path.
+            Outputs: FileResponse with file contents or index.html.
+            Side effects: reads static file from filesystem.
+            """
+            candidate = dist_dir / full_path
+            if full_path and candidate.is_file():
+                return FileResponse(str(candidate))
+            return FileResponse(str(dist_dir / "index.html"))
+
     return app

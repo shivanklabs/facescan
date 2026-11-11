@@ -10,21 +10,50 @@ function Upload({ eventId }: { eventId: string }) {
   const { t } = useTranslation();
   const [files, setFiles] = useState<FileList | null>(null);
   const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
+  const [progress, setProgress] = useState<{ current: number; total: number; name: string } | null>(
+    null
+  );
   const [detail, setDetail] = useState('');
 
   async function send(e: FormEvent) {
     e.preventDefault();
     if (!files || files.length === 0) return;
-    const form = new FormData();
-    Array.from(files).forEach((file) => form.append('files', file));
+    const fileList = Array.from(files);
     setState('sending');
-    try {
-      await api(`/events/${eventId}/photos`, { body: form, timeoutMs: 300_000 });
-      setState('done');
-    } catch (error) {
-      setDetail(error instanceof Error ? error.message : '');
-      setState('error');
+    setDetail('');
+
+    let collectionId: string | null = null;
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      if (!file) continue;
+      setProgress({ current: i + 1, total: fileList.length, name: file.name });
+
+      const form = new FormData();
+      form.append('files', file);
+      if (collectionId) {
+        form.append('collection_id', collectionId);
+      }
+
+      try {
+        const resp = await api<{ collection_id: string }>(`/events/${eventId}/photos`, {
+          body: form,
+          timeoutMs: 120_000,
+        });
+        if (!collectionId && resp.collection_id) {
+          collectionId = resp.collection_id;
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Upload failed';
+        setDetail(`Failed uploading "${file.name}": ${msg}. Please retry.`);
+        setState('error');
+        setProgress(null);
+        return;
+      }
     }
+
+    setProgress(null);
+    setState('done');
   }
 
   return (
@@ -38,7 +67,11 @@ function Upload({ eventId }: { eventId: string }) {
         onChange={(e) => setFiles(e.target.files)}
       />
       <button type="submit" disabled={state === 'sending'}>
-        {state === 'sending' ? t('upload.sending') : t('upload.send')}
+        {state === 'sending'
+          ? progress
+            ? `Uploading ${progress.current}/${progress.total} (${progress.name})…`
+            : t('upload.sending')
+          : t('upload.send')}
       </button>
       {state === 'done' && <p role="status">{t('upload.done')}</p>}
       {state === 'error' && (

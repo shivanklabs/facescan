@@ -563,6 +563,132 @@ def task_dev(_args: argparse.Namespace) -> None:
     print("All dev processes stopped.")
 
 
+def task_public(_args: argparse.Namespace) -> None:
+    """
+    Purpose: phone test mode for real guests.
+      1. Builds the frontend for production (npm run build).
+      2. Starts cloudflared Quick Tunnel (http://127.0.0.1:8000).
+      3. Reads the https://*.trycloudflare.com URL.
+      4. Configures public URL, WebAuthn RP ID and origin, and allowed CORS/hosts.
+      5. Runs the API and worker on 127.0.0.1 with Silent-Face liveness and Gmail SMTP.
+      6. Prints the public URL clearly.
+    Inputs: _args (argparse.Namespace, unused).
+    Outputs: None.
+    Side effects: builds frontend, spawns tunnel, api, and worker; stops on Ctrl+C.
+    """
+    _install_stop_handlers()
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(errors="replace")
+    if not ENV_FILE.exists():
+        raise TaskError(".env is missing. Run: uv run tasks setup")
+
+    cloudflared_bin = shutil.which("cloudflared")
+    if not cloudflared_bin:
+        raise TaskError(
+            "cloudflared is not installed or not in PATH.\n"
+            "Please install it via winget (Windows): winget install Cloudflare.cloudflared\n"
+            "or download from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+        )
+
+    print("Building frontend for production...", flush=True)
+    run([npm(), "run", "build"], cwd=FRONTEND)
+
+    print("Starting Cloudflare Quick Tunnel on 127.0.0.1:8000...", flush=True)
+    tunnel_cmd = [cloudflared_bin, "tunnel", "--url", "http://127.0.0.1:8000"]
+    tunnel_proc = subprocess.Popen(  # noqa: S603
+        tunnel_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+    tunnel_url = ""
+    start_time = time.time()
+    assert tunnel_proc.stderr is not None
+    for line in tunnel_proc.stderr:
+        match = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", line)
+        if match:
+            tunnel_url = match.group(0)
+            break
+        if time.time() - start_time > 30:
+            tunnel_proc.terminate()
+            raise TaskError("Timed out waiting for Cloudflare tunnel URL (30s).")
+
+    if not tunnel_url:
+        tunnel_proc.terminate()
+        raise TaskError("Failed to extract Cloudflare tunnel URL.")
+
+    host = urllib.parse.urlparse(tunnel_url).netloc
+
+    print("\n" + "=" * 78, flush=True)
+    print("  FACE-SCAN PHONE TEST MODE READY", flush=True)
+    print(f"  Public Tunnel URL:  {tunnel_url}", flush=True)
+    print("=" * 78, flush=True)
+    print("  Important Instructions:", flush=True)
+    print(f"  1. Open {tunnel_url} on your phone to test the guest experience.", flush=True)
+    print("  2. The tunnel URL changes on every restart.", flush=True)
+    print("     The organiser must register a new passkey after each restart.", flush=True)
+    print("  3. Magic links are sent via Gmail SMTP to the recipient's email address.", flush=True)
+    print("  4. Press Ctrl+C to stop the API, worker, and tunnel.", flush=True)
+    print("=" * 78 + "\n", flush=True)
+
+    env = child_env()
+    env["FACESCAN_ENV"] = "public"
+    env["FACESCAN_PUBLIC_BASE_URL"] = tunnel_url
+    env["FACESCAN_AUTH_RP_ORIGIN"] = tunnel_url
+    env["FACESCAN_AUTH_RP_ID"] = host
+    env["FACESCAN_STORAGE_PUBLIC_BASE_URL"] = tunnel_url
+    env["FACESCAN_LIVENESS_ADAPTER"] = "silent_face"
+    env["FACESCAN_EMAIL_ADAPTER"] = "smtp_gmail"
+
+    processes = [
+        DevProcess(
+            "api",
+            python_tool(
+                "uvicorn",
+                "app.main:create_app",
+                "--factory",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000",
+            ),
+            BACKEND,
+        ),
+        DevProcess("worker", python_tool("app.worker"), BACKEND),
+    ]
+
+    lock = threading.Lock()
+    exit_message = ""
+    try:
+        for p in processes:
+            _start(p, env, lock)
+        while not exit_message:
+            for p in processes:
+                if p.proc is not None and p.proc.poll() is not None:
+                    exit_message = f"{p.name} exited with code {p.proc.returncode}"
+                    break
+            if tunnel_proc.poll() is not None:
+                exit_message = f"cloudflared tunnel exited with code {tunnel_proc.returncode}"
+                break
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        exit_message = ""
+    finally:
+        with lock:
+            print("\nStopping api, worker and tunnel...", flush=True)
+        stop_all(processes)
+        try:
+            tunnel_proc.terminate()
+            tunnel_proc.wait(timeout=3)
+        except Exception:
+            tunnel_proc.kill()
+    if exit_message:
+        raise TaskError(exit_message)
+    print("Public test mode stopped cleanly.")
+
+
 # ---------------------------------------------------------------- lint / format / test
 
 
@@ -658,6 +784,10 @@ TASKS: dict[str, tuple[Callable[[argparse.Namespace], None], str]] = {
     "test": (task_test, "pytest (backend, ai) + vitest"),
     "models": (task_models, "download model weights and verify SHA-256"),
     "licences": (task_licences, "fail on forbidden models or packages"),
+    "public": (
+        task_public,
+        "phone test mode: production frontend build, Cloudflare tunnel, api, worker",
+    ),
 }
 
 

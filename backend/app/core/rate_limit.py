@@ -24,6 +24,23 @@ class RateLimitStore:
         self.lock = threading.Lock()
 
 
+def extract_client_ip(request: Request) -> str:
+    """
+    Purpose: resolve client IP address for rate limiting. Behind a local tunnel,
+        requests from 127.0.0.1 / ::1 take CF-Connecting-IP if present. Direct
+        requests use request.client.host to prevent header spoofing.
+    Inputs: request (FastAPI Request).
+    Outputs: str (client IP address).
+    Side effects: none.
+    """
+    host = request.client.host if request.client else "unknown"
+    if host in ("127.0.0.1", "::1", "localhost"):
+        cf_ip = request.headers.get("CF-Connecting-IP")
+        if cf_ip and cf_ip.strip():
+            return cf_ip.strip()
+    return host
+
+
 class RateLimiter:
     """At most `limit` calls per `window_seconds` per client address."""
 
@@ -53,5 +70,5 @@ class RateLimiter:
     def __call__(self, request: Request) -> None:
         """Purpose: FastAPI dependency keyed on the client address."""
         store: RateLimitStore = request.app.state.rate_limits
-        client = request.client.host if request.client else "unknown"
+        client = extract_client_ip(request)
         self.check(store, client)

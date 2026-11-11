@@ -65,13 +65,23 @@ def build_context(
     if settings.storage_signing_key is None:
         raise ContextConfigError("FACESCAN_STORAGE_SIGNING_KEY is not set")
     if email is None:
-        if settings.email_adapter == "console" and settings.env != "dev":
-            raise ContextConfigError(
-                "the console email adapter only runs in dev; configure an email service"
-            )
-        from app.adapters.email.console_email import ConsoleEmailSender
+        if settings.email_adapter == "smtp_gmail":
+            from app.adapters.email.smtp_gmail_email import SmtpGmailEmailSender
 
-        email = ConsoleEmailSender()
+            email = SmtpGmailEmailSender(settings)
+        elif settings.email_adapter == "console":
+            if settings.env in ("prod", "public"):
+                raise ContextConfigError(
+                    "the console email adapter only runs in dev; configure an email service"
+                )
+            from app.adapters.email.console_email import ConsoleEmailSender
+
+            email = ConsoleEmailSender()
+        else:
+            raise ContextConfigError(f"unknown email adapter: {settings.email_adapter}")
+
+    if settings.env in ("prod", "public") and settings.liveness_adapter != "silent_face":
+        raise ContextConfigError("the silent_face liveness adapter is required in public/prod mode")
     try:
         master = parse_master_key(settings.keys_master_key.get_secret_value())
     except ValueError as exc:
