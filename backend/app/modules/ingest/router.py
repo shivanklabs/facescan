@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from app.core.deps import Ctx, PasskeyUser
@@ -93,7 +94,12 @@ async def _read_files(
 async def upload_photos(
     event_id: UUID, request: Request, user: PasskeyUser, ctx: Ctx
 ) -> UploadResponse:
-    """Purpose: upload photos into quarantine (validated, random ids)."""
+    """
+    Purpose: upload photos into quarantine offloaded to a threadpool.
+    Inputs: event_id, request, user (PasskeyUser), app context.
+    Outputs: UploadResponse with collection_id, photo_ids, and messages.
+    Side effects: saves uploaded photos to quarantine storage and DB.
+    """
     settings = ctx.settings
     files, collection_id = await _read_files(
         request,
@@ -101,7 +107,9 @@ async def upload_photos(
         settings.upload_max_bytes,
         Path(settings.upload_spool_dir),
     )
-    result = service.upload_photos(ctx, event_id, files, collection_id, user)
+    result = await run_in_threadpool(
+        service.upload_photos, ctx, event_id, files, collection_id, user
+    )
     return UploadResponse(
         collection_id=result.collection_id,
         photo_ids=result.photo_ids,
@@ -166,14 +174,28 @@ async def upload_chunk_part(
     chunk_index: int = Query(..., ge=0),
     chunk_sha256: str | None = Query(default=None),
 ) -> UploadChunkResponse:
-    """Purpose: receive and verify a single chunk in a chunked upload."""
+    """
+    Purpose: receive and verify a single chunk in a chunked upload offloaded to threadpool.
+    Inputs: event_id, upload_id, request, user, ctx, chunk_index, chunk_sha256.
+    Outputs: UploadChunkResponse with received_chunks and complete flag.
+    Side effects: writes chunk to storage and updates upload session in database.
+    """
     chunk_data = await request.body()
     if not chunk_data:
         raise UnprocessableError("empty chunk data")
-    received = service.upload_chunk(
-        ctx, event_id, upload_id, chunk_index, chunk_sha256, chunk_data, user
+    received = await run_in_threadpool(
+        service.upload_chunk,
+        ctx,
+        event_id,
+        upload_id,
+        chunk_index,
+        chunk_sha256,
+        chunk_data,
+        user,
     )
-    upload_sess = service.get_upload_session(ctx, event_id, upload_id, user)
+    upload_sess = await run_in_threadpool(
+        service.get_upload_session, ctx, event_id, upload_id, user
+    )
     return UploadChunkResponse(
         received_chunks=received,
         complete=len(received) == upload_sess.total_chunks,

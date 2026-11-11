@@ -10,6 +10,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
+from starlette.concurrency import run_in_threadpool
 
 from app.core.deps import Ctx, User
 from app.core.errors import PayloadTooLargeError, UnprocessableError
@@ -73,9 +74,16 @@ async def search(
     ctx: Ctx,
     mode: Literal["guided", "front-only"] = Query(default="guided"),
 ) -> SearchResponse:
-    """Purpose: the guest's photos in this event (release band only)."""
+    """
+    Purpose: the guest's photos in this event (release band only) offloaded to threadpool.
+    Inputs: event_id, request with selfie frames, user, ctx, mode.
+    Outputs: SearchResponse with release photos and missing photos flag.
+    Side effects: updates guest matches and search attempt record.
+    """
     frames = await read_frames(
         request, ctx.settings.search_max_frames, ctx.settings.selfie_max_bytes
     )
-    result = service.guest_search(ctx, user, event_id, frames, front_only=(mode == "front-only"))
+    result = await run_in_threadpool(
+        service.guest_search, ctx, user, event_id, frames, front_only=(mode == "front-only")
+    )
     return SearchResponse(release=result.release, some_photos_missing=result.some_photos_missing)

@@ -68,6 +68,7 @@ from app.ports.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejec
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger("facescan.scene_search")
 
@@ -159,16 +160,16 @@ def _check_guest_search_access(
             raise HTTPException(status_code=403, detail="consent_required")
 
 
-async def search_scene(
+def _prepare_scene_search(
     ctx: AppContext, user: CurrentUser, event_id: UUID, req: SceneSearchRequest
-) -> SceneSearchResponse:
+) -> tuple[set[UUID], dict[UUID, np.ndarray]]:
     """
-    Purpose: execute natural language scene search over photos using SigLIP 2 embeddings.
-    Inputs: ctx, user, event_id, request payload.
-    Outputs: SceneSearchResponse with candidates, preview URLs, and face bounding boxes.
-    Side effects: records scene_search_attempts, saves candidate faces, logs audit row.
+    Purpose: verify guest access, enforce daily rate limits with advisory lock,
+        and load eligible photo IDs with scene embeddings.
+    Inputs: ctx, user, event_id, req.
+    Outputs: tuple of (eligible_photo_ids, scene_embeddings).
+    Side effects: adds SceneSearchAttempt in database.
     """
-    # 1. Authorization, consent & daily limit with advisory lock
     with event_transaction(ctx.sessions, event_id) as session:
         _check_guest_search_access(session, event_id, user)
 
@@ -222,16 +223,25 @@ async def search_scene(
 
         eligible_photo_ids = set(session.scalars(stmt.with_only_columns(Photo.id)))
 
-    if not eligible_photo_ids or not scene_embeddings:
-        return SceneSearchResponse(candidates=[], query_rewritten=False)
+    return eligible_photo_ids, scene_embeddings
 
-    # 2. Query rewriting (Gemini) - falls back to local query on any failure
-    rewritten_phrases: list[str] = []
-    if ctx.rewriter is not None:
-        rewritten_phrases = await ctx.rewriter.rewrite_query(req.query)
-    is_rewritten = bool(rewritten_phrases and rewritten_phrases != [req.query])
-    phrases = rewritten_phrases if rewritten_phrases else [req.query]
 
+def _rank_and_save_candidates(
+    ctx: AppContext,
+    user: CurrentUser,
+    event_id: UUID,
+    phrases: list[str],
+    is_rewritten: bool,
+    eligible_photo_ids: set[UUID],
+    scene_embeddings: dict[UUID, np.ndarray],
+) -> SceneSearchResponse:
+    """
+    Purpose: compute scene query embeddings, rank candidate photos by cosine similarity,
+        load faces, record candidate history, and build response.
+    Inputs: ctx, user, event_id, phrases, is_rewritten, eligible_photo_ids, scene_embeddings.
+    Outputs: SceneSearchResponse.
+    Side effects: inserts SceneSearchCandidate rows and records audit log.
+    """
     # 3. Compute normalized query embedding
     phrase_vecs = [ctx.analyzer.embed_scene_query(p) for p in phrases]
     query_vec = np.mean(phrase_vecs, axis=0)
@@ -307,6 +317,41 @@ async def search_scene(
         )
 
         return SceneSearchResponse(candidates=items, query_rewritten=is_rewritten)
+
+
+async def search_scene(
+    ctx: AppContext, user: CurrentUser, event_id: UUID, req: SceneSearchRequest
+) -> SceneSearchResponse:
+    """
+    Purpose: execute natural language scene search over photos using SigLIP 2
+        embeddings offloaded to threadpool.
+    Inputs: ctx, user, event_id, request payload.
+    Outputs: SceneSearchResponse with candidates, preview URLs, and face bounding boxes.
+    Side effects: records scene_search_attempts, saves candidate faces, logs audit row.
+    """
+    eligible_photo_ids, scene_embeddings = await run_in_threadpool(
+        _prepare_scene_search, ctx, user, event_id, req
+    )
+    if not eligible_photo_ids or not scene_embeddings:
+        return SceneSearchResponse(candidates=[], query_rewritten=False)
+
+    # 2. Query rewriting (Gemini) - falls back to local query on any failure
+    rewritten_phrases: list[str] = []
+    if ctx.rewriter is not None:
+        rewritten_phrases = await ctx.rewriter.rewrite_query(req.query)
+    is_rewritten = bool(rewritten_phrases and rewritten_phrases != [req.query])
+    phrases = rewritten_phrases if rewritten_phrases else [req.query]
+
+    return await run_in_threadpool(
+        _rank_and_save_candidates,
+        ctx,
+        user,
+        event_id,
+        phrases,
+        is_rewritten,
+        eligible_photo_ids,
+        scene_embeddings,
+    )
 
 
 def get_candidate_preview(
