@@ -418,3 +418,25 @@ def test_claim_queue_shows_guest_number(
     assert len(claims) >= 2
     assert claims[0]["claimant_email"] == "Guest #1"
     assert claims[1]["claimant_email"] == "Guest #2"
+
+
+def test_second_search_keeps_released_photos(
+    event: tuple[str, str, list[str]], ctx: AppContext
+) -> None:
+    """
+    Purpose: a guest who runs the same face search twice keeps every released photo.
+    Inputs: searchable event fixture, ctx.
+    Outputs: None.
+    Side effects: runs two searches and reads the gallery.
+    """
+    event_id, invite_url, _ = event
+    guest = guest_client(ctx, "twice@example.test", event_id, invite_url)
+    first = search(guest, event_id, selfie_frames(1))
+    assert first.status_code == 200
+    released = sorted(first.json()["release"])
+    assert released
+    second = search(guest, event_id, selfie_frames(1))
+    assert second.status_code == 200
+    assert sorted(second.json()["release"]) == released
+    gallery = guest.get(f"/events/{event_id}/gallery").json()
+    assert sorted(p["photo_id"] for p in gallery["photos"]) == released

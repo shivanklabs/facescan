@@ -141,15 +141,6 @@ def guest_search(
             )
             return SearchResult(release=[], some_photos_missing=result.some_photos_missing)
 
-        existing_matches = {
-            m.photo_id: m
-            for m in session.scalars(
-                select(Match).where(
-                    Match.event_id == event_id,
-                    Match.user_id == user.user_id,
-                )
-            ).all()
-        }
         cannot_links = session.scalars(
             select(CannotLink).where(
                 CannotLink.event_id == event_id,
@@ -157,10 +148,6 @@ def guest_search(
             )
         ).all()
         cannot_photo_ids = {cl.photo_id for cl in cannot_links}
-        excluded_ids = cannot_photo_ids | {
-            pid for pid, m in existing_matches.items() if m.score_band in ("not_me", "withdrawn")
-        }
-        clean_release = [pid for pid in result.release if pid not in excluded_ids]
 
         # Preserve not_me, withdrawn, and claim matches; only replace search matches
         session.execute(
@@ -171,6 +158,21 @@ def guest_search(
                 Match.source != "claim",
             )
         )
+        # One query for the rows that survived the delete (not_me, withdrawn, claim). Loading
+        # them before the delete would skip the re-insert of deleted rows and lose photos.
+        existing_matches = {
+            m.photo_id: m
+            for m in session.scalars(
+                select(Match).where(
+                    Match.event_id == event_id,
+                    Match.user_id == user.user_id,
+                )
+            ).all()
+        }
+        excluded_ids = cannot_photo_ids | {
+            pid for pid, m in existing_matches.items() if m.score_band in ("not_me", "withdrawn")
+        }
+        clean_release = [pid for pid in result.release if pid not in excluded_ids]
         now = datetime.now(UTC)
         for photo_id in clean_release:
             existing = existing_matches.get(photo_id)
