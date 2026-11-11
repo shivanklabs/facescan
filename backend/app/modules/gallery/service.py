@@ -46,6 +46,8 @@ class GalleryContent:
 
 def _guest_with_consent(session: Session, event_id: UUID, user: CurrentUser) -> None:
     """Purpose: the permission check shared by gallery and download. Raises 403/404."""
+    # Lighter check (guest role plus active consent) because viewing released photos
+    # must keep working after the search window closes.
     require_role(session, event_id, user.user_id, ("guest",))
     if active_consent(session, event_id, user.user_id, FACE_SEARCH) is None:
         raise HTTPException(status_code=403, detail="consent_required")

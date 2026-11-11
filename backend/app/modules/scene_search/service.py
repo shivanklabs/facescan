@@ -33,11 +33,12 @@ from app.core.errors import (
     PayloadTooLargeError,
     UnprocessableError,
 )
-from app.core.policy import load_country_policy
+from app.core.policy import load_country_policy as load_country_policy
 from app.db.event_scope import ADMIN_SCOPE, event_transaction, scoped_transaction
 from app.modules.audit.service import record
-from app.modules.consent.service import FACE_SEARCH, active_consent, notice_for
-from app.modules.events import repository as events_repo
+from app.modules.consent.service import (
+    check_guest_search_access,
+)
 from app.modules.events.service import data_key
 from app.modules.gallery.models import Claim
 from app.modules.identity.models import User
@@ -67,7 +68,6 @@ from app.modules.vision_pipeline.models import Face
 from app.ports.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejectedError
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
-from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger("facescan.scene_search")
@@ -127,39 +127,6 @@ def verify_preview_signature(
     return hmac.compare_digest(expected, signature)
 
 
-def _check_guest_search_access(
-    session: Session, event_id: UUID, user: CurrentUser, ctx: AppContext | None = None
-) -> None:
-    """
-    Purpose: verify guest has active face search consent and within search window.
-    Inputs: session, event_id, user, optional ctx.
-    Outputs: None.
-    Side effects: raises HTTPException (403) on violation.
-    """
-    require_role(session, event_id, user.user_id, ("guest",))
-    event = events_repo.get_event(session, event_id)
-    if (
-        event is not None
-        and event.search_window_ends_at is not None
-        and datetime.now(UTC) > event.search_window_ends_at
-    ):
-        raise HTTPException(status_code=403, detail="Search window for this event has closed")
-    policy = load_country_policy(event.country if event else "IN")
-    account = session.get(User, user.user_id)
-    if not policy.minors_self_search_allowed:
-        if account is None or account.age_answered_at is None:
-            raise HTTPException(status_code=403, detail="age_question_required")
-        if account.is_minor:
-            raise HTTPException(status_code=403, detail="under_18_blocked_from_search")
-    consent = active_consent(session, event_id, user.user_id, FACE_SEARCH)
-    if consent is None:
-        raise HTTPException(status_code=403, detail="consent_required")
-    if ctx is not None:
-        notice = notice_for(ctx)
-        if consent.notice_version != notice.version:
-            raise HTTPException(status_code=403, detail="consent_required")
-
-
 def _prepare_scene_search(
     ctx: AppContext, user: CurrentUser, event_id: UUID, req: SceneSearchRequest
 ) -> tuple[set[UUID], dict[UUID, np.ndarray]]:
@@ -171,7 +138,7 @@ def _prepare_scene_search(
     Side effects: adds SceneSearchAttempt in database.
     """
     with event_transaction(ctx.sessions, event_id) as session:
-        _check_guest_search_access(session, event_id, user)
+        check_guest_search_access(session, ctx, event_id, user)
 
         # Acquire per-guest transaction advisory lock to serialize concurrent attempts
         lock_key = _advisory_lock_key(event_id, user.user_id, "scene_search")
@@ -372,7 +339,7 @@ def get_candidate_preview(
         raise HTTPException(status_code=403, detail="invalid_or_expired_signature")
 
     with event_transaction(ctx.sessions, event_id) as session:
-        _check_guest_search_access(session, event_id, user)
+        check_guest_search_access(session, ctx, event_id, user)
 
         # Server-side verification: photo must be one of recent candidate photos
         cand = session.scalar(
@@ -412,7 +379,7 @@ def submit_claim(
     # 1. Authorization, age, consent, search window, advisory lock and daily limit
     # must all happen before frame decoding, liveness or embeddings (same order as guest_search).
     with event_transaction(ctx.sessions, event_id) as session:
-        _check_guest_search_access(session, event_id, user, ctx)
+        check_guest_search_access(session, ctx, event_id, user)
 
         # Acquire transaction advisory lock for atomic claim limit enforcement
         lock_key = _advisory_lock_key(event_id, user.user_id, "claim")

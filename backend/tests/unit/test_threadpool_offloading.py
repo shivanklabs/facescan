@@ -58,7 +58,12 @@ async def test_upload_chunk_part_offloads_to_threadpool() -> None:
     event_id = uuid4()
     upload_id = uuid4()
     req = MagicMock(spec=Request)
-    req.body = AsyncMock(return_value=b"chunk bytes")
+
+    async def mock_stream():
+        yield b"chunk bytes"
+
+    req.stream = mock_stream
+    req.headers = {}
     user = MagicMock(spec=CurrentUser)
     ctx = MagicMock()
 

@@ -19,14 +19,15 @@ from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app.core import policy as policy_module
 from app.core.auth import CurrentUser, revoke_sessions
 from app.core.context import AppContext, guest_search_allowed
-from app.core.deps import require_role
+from app.core.deps import STAFF_ROLES, require_role
 from app.core.errors import ConflictError
-from app.core.policy import load_country_policy
 from app.db.event_scope import event_transaction, user_transaction
 from app.modules.audit.service import record
 from app.modules.consent.models import Consent
+from app.modules.events import repository as events_repo
 from app.modules.events.models import Event
 from app.modules.identity.models import User
 from app.modules.matching.models import Match
@@ -81,6 +82,51 @@ def active_consent(session: Session, event_id: UUID, user_id: UUID, purpose: str
         )
         .order_by(Consent.granted_at.desc())
     ).first()
+
+
+def load_country_policy(
+    country_code: str, policies_dir: str | Path | None = None
+) -> policy_module.CountryPolicy:
+    """
+    Purpose: load country policy delegation wrapper for consent checks.
+    Inputs: country_code (e.g. 'IN'), optional policies_dir path.
+    Outputs: CountryPolicy instance.
+    Side effects: delegates to app.core.policy.load_country_policy.
+    """
+    return policy_module.load_country_policy(country_code, policies_dir)
+
+
+def check_guest_search_access(
+    session: Session, ctx: AppContext, event_id: UUID, user: CurrentUser
+) -> None:
+    """
+    Purpose: unified access check for guest face search, scene search, candidate preview,
+        and claims. Enforces guest role, no staff role, searchable event, search window,
+        age policy, and active consent for the current notice version.
+    Inputs: database session, app context, event_id, current user.
+    Outputs: None.
+    Side effects: raises HTTPException (403) or ConflictError on access rejection.
+    """
+    roles = require_role(session, event_id, user.user_id, ("guest",))
+    if roles & set(STAFF_ROLES):
+        raise HTTPException(status_code=403, detail="staff_cannot_search")
+    event = events_repo.get_event(session, event_id)
+    if event is None or event.status != "searchable":
+        raise ConflictError("this event's photos are not ready yet")
+    now = datetime.now(UTC)
+    if event.search_window_ends_at is not None and now > event.search_window_ends_at:
+        raise HTTPException(status_code=403, detail="Search window for this event has closed")
+    policy = load_country_policy(event.country, ctx.settings.config_policies_dir)
+    account = session.get(User, user.user_id)
+    if not policy.minors_self_search_allowed:
+        if account is None or account.age_answered_at is None:
+            raise HTTPException(status_code=403, detail="age_question_required")
+        if account.is_minor:
+            raise HTTPException(status_code=403, detail="minor_guardian_consent_required")
+    notice = notice_for(ctx)
+    consent = active_consent(session, event_id, user.user_id, FACE_SEARCH)
+    if consent is None or consent.notice_version != notice.version:
+        raise HTTPException(status_code=403, detail="consent_required")
 
 
 @dataclass(frozen=True, slots=True)

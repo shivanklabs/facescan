@@ -9,6 +9,8 @@ from uuid import UUID
 import pytest
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
+from app.modules.consent.models import Consent
+from app.modules.events.models import EventMember
 from app.modules.gallery.models import Claim
 from app.modules.matching.models import Match
 from app.modules.scene_search.models import (
@@ -735,3 +737,76 @@ def test_claim_review_without_passkey_is_refused(organiser: TestClient, ctx: App
     )
     assert review_resp.status_code == 403
     assert review_resp.json()["detail"] == "passkey_required"
+
+
+def test_user_with_organiser_and_guest_role_refused_by_scene_search_and_claim(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify that a user with both guest and organiser roles receives
+        403 staff_cannot_search on both scene search and claims endpoints.
+    Inputs: organiser (TestClient), ctx (AppContext).
+    Outputs: None.
+    Side effects: tests HTTP endpoints and verifies unified search access enforcement.
+    """
+    event_id, invite_url, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
+    guest = guest_client(ctx, "guest_staff@example.test", event_id, invite_url)
+
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        consent_row = s.scalar(select(Consent).where(Consent.event_id == UUID(event_id)))
+        assert consent_row is not None
+        guest_user_id = consent_row.user_id
+        s.add(EventMember(event_id=UUID(event_id), user_id=guest_user_id, role="organiser"))
+
+    search_resp = guest.post(f"/events/{event_id}/scene-search", json={"query": "person"})
+    assert search_resp.status_code == 403
+    assert search_resp.json()["detail"] == "staff_cannot_search"
+
+    claim_resp = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": str(uuid.uuid4()),
+            "face_id": str(uuid.uuid4()),
+            "frames": [make_selfie_b64(1)],
+            "front_only": False,
+        },
+    )
+    assert claim_resp.status_code == 403
+    assert claim_resp.json()["detail"] == "staff_cannot_search"
+
+
+def test_old_notice_version_refused_by_scene_search_and_claim(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify that a user whose consent record has an outdated notice_version
+        receives 403 consent_required on both scene search and claims endpoints.
+    Inputs: organiser (TestClient), ctx (AppContext).
+    Outputs: None.
+    Side effects: tests HTTP endpoints and verifies unified search access enforcement.
+    """
+    event_id, invite_url, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
+    guest = guest_client(ctx, "outdated_consent@example.test", event_id, invite_url)
+
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        s.execute(
+            update(Consent)
+            .where(Consent.event_id == UUID(event_id))
+            .values(notice_version="legacy-v0")
+        )
+
+    search_resp = guest.post(f"/events/{event_id}/scene-search", json={"query": "person"})
+    assert search_resp.status_code == 403
+    assert search_resp.json()["detail"] == "consent_required"
+
+    claim_resp = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": str(uuid.uuid4()),
+            "face_id": str(uuid.uuid4()),
+            "frames": [make_selfie_b64(1)],
+            "front_only": False,
+        },
+    )
+    assert claim_resp.status_code == 403
+    assert claim_resp.json()["detail"] == "consent_required"

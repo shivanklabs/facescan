@@ -21,15 +21,14 @@ from sqlalchemy import delete, func, select
 
 from app.core.auth import CurrentUser
 from app.core.context import AppContext, guest_search_allowed
-from app.core.deps import STAFF_ROLES, require_role
 from app.core.errors import ConflictError, TooManyRequestsError, UnprocessableError
-from app.core.policy import load_country_policy
+from app.core.policy import load_country_policy as load_country_policy
 from app.db.event_scope import event_transaction
 from app.modules.audit.service import record
-from app.modules.consent.service import FACE_SEARCH, active_consent, notice_for
-from app.modules.events import repository as events_repo
+from app.modules.consent.service import (
+    check_guest_search_access,
+)
 from app.modules.events.service import data_key
-from app.modules.identity.models import User
 from app.modules.matching.models import CannotLink, Match, SearchAttempt
 from app.modules.vision_pipeline import repository
 from app.ports.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejectedError
@@ -45,33 +44,15 @@ class SearchResult:
 
 def _check_and_count(ctx: AppContext, user: CurrentUser, event_id: UUID) -> None:
     """
-    Purpose: run checks 2-5 and record the attempt. Raises HTTP errors (no data).
+    Purpose: run unified search access checks and record search attempt with rate limits.
     Inputs: ctx, user, event_id.
     Outputs: None.
     Side effects: adds SearchAttempt record.
     """
-    notice = notice_for(ctx)
     now = datetime.now(UTC)
     hour_ago = now - timedelta(hours=1)
     with event_transaction(ctx.sessions, event_id) as session:
-        roles = require_role(session, event_id, user.user_id, ("guest",))
-        if roles & set(STAFF_ROLES):
-            raise HTTPException(status_code=403, detail="staff_cannot_search")
-        event = events_repo.get_event(session, event_id)
-        if event is None or event.status != "searchable":
-            raise ConflictError("this event's photos are not ready yet")
-        if event.search_window_ends_at is not None and now > event.search_window_ends_at:
-            raise HTTPException(status_code=403, detail="Search window for this event has closed")
-        policy = load_country_policy(event.country, ctx.settings.config_policies_dir)
-        account = session.get(User, user.user_id)
-        if not policy.minors_self_search_allowed:
-            if account is None or account.age_answered_at is None:
-                raise HTTPException(status_code=403, detail="age_question_required")
-            if account.is_minor:
-                raise HTTPException(status_code=403, detail="minor_guardian_consent_required")
-        consent = active_consent(session, event_id, user.user_id, FACE_SEARCH)
-        if consent is None or consent.notice_version != notice.version:
-            raise HTTPException(status_code=403, detail="consent_required")
+        check_guest_search_access(session, ctx, event_id, user)
         mine = session.scalar(
             select(func.count())
             .select_from(SearchAttempt)
