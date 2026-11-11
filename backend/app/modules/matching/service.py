@@ -170,12 +170,13 @@ def guest_search(
 
         clean_release = [pid for pid in result.release if pid not in cannot_photo_ids]
 
-        # Preserve not_me and withdrawn matches; only replace search matches
+        # Preserve not_me, withdrawn, and claim matches; only replace search matches
         session.execute(
             delete(Match).where(
                 Match.event_id == event_id,
                 Match.user_id == user.user_id,
                 Match.score_band.not_in(["not_me", "withdrawn"]),
+                Match.source != "claim",
             )
         )
         now = datetime.now(UTC)

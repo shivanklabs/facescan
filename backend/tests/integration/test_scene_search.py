@@ -19,7 +19,13 @@ from app.modules.scene_search.service import cleanup_expired_attempts
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 from tests.conftest import make_png
-from tests.helpers import guest_client, new_client, searchable_event
+from tests.helpers import (
+    FRAMES_HEADERS,
+    frames_body,
+    guest_client,
+    new_client,
+    searchable_event,
+)
 
 
 def make_selfie_b64(person: int = 1) -> str:
@@ -598,3 +604,75 @@ def test_submit_claim_selfie_no_face_gives_422_not_500(
         assert "the selfie must show exactly one face; found 0" in res.text
     finally:
         ctx.analyzer.selfie_query = old_selfie_query
+
+
+def test_face_search_preserves_claimed_photos(organiser: TestClient, ctx: AppContext) -> None:
+    """
+    Purpose: verify that running a face search preserves existing claimed matches
+    (source == 'claim') in the user's gallery.
+    Inputs: organiser client, ctx.
+    Outputs: None.
+    Side effects: tests HTTP endpoints and database records.
+    """
+    event_id, invite_url, photos = searchable_event(
+        ctx, organiser, [make_png(1, 1), make_png(2, 1)]
+    )
+    guest = guest_client(ctx, "claim_preserve@example.test", event_id, invite_url)
+
+    # 1. Search scene and claim photo 1 (person 1)
+    search_resp = guest.post(
+        f"/events/{event_id}/scene-search",
+        json={"query": "person"},
+    )
+    assert search_resp.status_code == 200
+    candidates = search_resp.json()["candidates"]
+    cand_1 = next(c for c in candidates if c["photo_id"] == photos[0] and c["faces"])
+    photo_id_1 = cand_1["photo_id"]
+    face_id_1 = cand_1["faces"][0]["face_id"]
+
+    frames_claim = [make_selfie_b64(1), make_selfie_b64(1), make_selfie_b64(1)]
+    claim_resp = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": photo_id_1,
+            "face_id": face_id_1,
+            "frames": frames_claim,
+            "front_only": False,
+        },
+    )
+    assert claim_resp.status_code == 200
+    assert claim_resp.json()["status"] == "released"
+
+    # Verify photo 1 is in gallery
+    gallery_before = guest.get(f"/events/{event_id}/gallery").json()
+    assert any(p["photo_id"] == photo_id_1 for p in gallery_before["photos"])
+
+    # 2. Run face search with person 2's selfie frames
+    search_body = frames_body(
+        make_png(2, 1, (40, 30)),
+        make_png(2, 1, (41, 30)),
+        make_png(2, 1, (42, 30)),
+    )
+    face_search_resp = guest.post(
+        f"/events/{event_id}/search",
+        content=search_body,
+        headers=FRAMES_HEADERS,
+    )
+    assert face_search_resp.status_code == 200
+
+    # 3. Check gallery: photo 1 (claimed) MUST still be present
+    gallery_after = guest.get(f"/events/{event_id}/gallery").json()
+    claimed_present = any(p["photo_id"] == photo_id_1 for p in gallery_after["photos"])
+    assert claimed_present is True
+
+    # And in database, match row has source == 'claim'
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        claimed_match = s.scalar(
+            select(Match).where(
+                Match.event_id == UUID(event_id),
+                Match.photo_id == UUID(photo_id_1),
+            )
+        )
+        assert claimed_match is not None
+        assert claimed_match.source == "claim"
+        assert claimed_match.score_band == "release"
