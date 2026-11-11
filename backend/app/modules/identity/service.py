@@ -8,6 +8,7 @@
 - Every sign-in creates a new session (rotation) and revokes the one it replaces.
 """
 
+import hmac
 import re
 import secrets
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ from webauthn.helpers.structs import (
 )
 
 from app.core.auth import (
+    EMAIL_RE,
     CurrentUser,
     admin_allowed,
     create_session,
@@ -45,9 +47,10 @@ from app.core.auth import (
     seal_email,
 )
 from app.core.context import AppContext
-from app.core.errors import UnprocessableError
-from app.db.event_scope import ADMIN_SCOPE, scoped_transaction
+from app.core.errors import ForbiddenError, UnprocessableError
+from app.db.event_scope import ADMIN_SCOPE, scoped_transaction, user_transaction
 from app.modules.audit.service import record
+from app.modules.events.models import EventMember
 from app.modules.identity.models import AuthChallenge, MagicLink, Passkey, User
 
 CHALLENGE_MINUTES = 5
@@ -99,10 +102,48 @@ def audit_global(
 # ---------------------------------------------------------------- magic links
 
 
+def is_staff_email(ctx: AppContext, email: str) -> bool:
+    """
+    Purpose: Check if an email address belongs to staff (organiser, admin, or event photographer).
+    Inputs:
+        ctx: AppContext with settings, keys and session factory
+        email: normalised email address string
+    Outputs:
+        bool: True if address belongs to staff, False otherwise
+    Side Effects:
+        Queries database for user and event roles if not in configured admin/organiser lists.
+    """
+    settings = ctx.settings
+    digest = email_hash(ctx.keys, email)
+    allowed = {
+        email_hash(ctx.keys, normalise_email(a))
+        for a in f"{settings.auth_organiser_emails},{settings.auth_admin_emails}".split(",")
+        if a.strip() and EMAIL_RE.fullmatch(a.strip().lower())
+    }
+    if any(hmac.compare_digest(digest, h) for h in allowed):
+        return True
+
+    with ctx.sessions() as session:
+        user = session.scalars(select(User).where(User.email_hash == digest)).first()
+        if user is None:
+            return False
+    with user_transaction(ctx.sessions, user.id) as session:
+        has_staff_role = session.scalar(
+            select(func.count())
+            .select_from(EventMember)
+            .where(
+                EventMember.user_id == user.id,
+                EventMember.role.in_(("organiser", "photographer")),
+            )
+        )
+        return bool(has_staff_role and has_staff_role > 0)
+
+
 def request_magic_link(ctx: AppContext, address: str, next_path: str | None) -> None:
     """
-    Purpose: email a single-use sign-in link (silently does nothing over the hourly cap).
-    Raises UnprocessableError for a malformed address only.
+    Purpose: email a single-use sign-in link to staff only
+    (silently does nothing over the hourly cap).
+    Raises UnprocessableError for a malformed address; ForbiddenError for non-staff emails.
     Side effects: inserts magic_links; sends one email.
     """
     settings = ctx.settings
@@ -110,6 +151,8 @@ def request_magic_link(ctx: AppContext, address: str, next_path: str | None) -> 
         email = normalise_email(address)
     except ValueError as exc:
         raise UnprocessableError("enter a valid email address") from exc
+    if not is_staff_email(ctx, email):
+        raise ForbiddenError("magic links are for staff only; guests join without email")
     digest = email_hash(ctx.keys, email)
     token = new_token()
     now = datetime.now(UTC)

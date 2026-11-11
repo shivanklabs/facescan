@@ -33,31 +33,40 @@ This checklist guides organisers, photographers, and administrators through prep
 ---
 
 ## 4. Guest Experience & Core Verification
-- [ ] **Invite & Scan**: Guest scans the QR code or opens the invite link (`/e/:eventId?k=...`).
-- [ ] **Email Magic-Link Sign-in**: Guest signs in with their email address via magic link (Gmail SMTP adapter for production/testing, console adapter in local dev).
-- [ ] **Notice & Agreement**: Guest reviews the privacy notice and grants consent.
+- [ ] **Invite Link Access**: Guest scans event QR code or opens invite link (`/e/:eventId?k=...`). No email or phone is requested.
+- [ ] **Notice & Anonymous Session**: Guest reviews DPDP privacy notice and grants consent. An anonymous guest account (random UUID, no personal info) is created with a long-lived `HttpOnly, Secure, SameSite=Strict` session cookie (`fs_session`).
 - [ ] **Face Search / Liveness**: Guest submits 3–5 selfie frames with live motion:
   - Real face passes and initiates matching.
-  - Photo of a phone screen is refused by MiniFASNet liveness.
-  - Printed paper photo is refused by MiniFASNet liveness.
+  - Photo of a phone screen is refused by MiniFASNet / Silent-Face liveness.
+  - Printed paper photo is refused by liveness check.
 - [ ] **Borderline Search Handling**:
   - If a scan returns a borderline score, the app prompts for a second scan from a slightly different angle.
   - If still borderline, the app gracefully guides the guest to Scene Search and manual claim flow without releasing unverified photos.
 - [ ] **Gallery Delivery & Original Quality**:
-  - Matched photos appear in the guest's gallery.
-  - Downloaded photos preserve 100% original dimensions, bytes, and quality.
+  - Matched photos appear in the guest's gallery with high-resolution download links.
+  - Downloaded photos preserve 100% original dimensions, bytes, and stripped metadata.
+- [ ] **Passkey Option for Return Visits**:
+  - After first scan, a passkey offer is displayed.
+  - On supported browsers, the guest can register a passkey for faster return visits.
+  - If the browser lacks WebAuthn support (e.g. in-app browser), the offer is skipped without error.
+- [ ] **Return Visits & Lost Sessions**:
+  - On the same phone, visiting the site opens the gallery directly via the session cookie.
+  - If the session is lost (cookie cleared), reopening the invite link creates a new anonymous guest account and scans again.
 - [ ] **"Not me" Protection**:
   - Clicking "Not me" immediately removes the photo from the guest's view.
   - The match row is preserved as `not_me` (no data loss) and a `cannot_links` record prevents that face from ever being released to that guest.
 - [ ] **Non-Destructive Consent Withdrawal**:
   - Guest clicks withdraw consent in Privacy Settings.
-  - Gallery is hidden, matches are marked `withdrawn`, and sessions are revoked.
+  - Gallery is hidden, matches are marked `withdrawn`, and this event's sessions are revoked.
   - If the guest returns and grants consent again, matches are restored back to `release`.
+- [ ] **Staff Magic-Link Terminal Output**:
+  - Organisers and admins receive sign-in magic links printed directly in the laptop terminal (`console` adapter). Guests cannot request magic links.
 
 ---
 
 ## 5. Organiser Claims & Admin Monitoring
 - [ ] **Review Claims Queue**: Organiser reviews pending claims (`/organiser/events/{id}/claims`):
+  - Displays anonymous guest identifiers (`Guest #1`, `Guest #2`, etc.) instead of emails.
   - Approve releases the photo with source `claim`.
   - Reject notifies the guest with audit logging.
 - [ ] **Admin Health Monitoring**: Platform admin visits `/admin`:

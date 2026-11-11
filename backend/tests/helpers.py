@@ -187,12 +187,13 @@ def guest_client(
     adult: bool = True,
     consent: bool = True,
 ) -> TestClient:
-    """A guest who opened the invite, signed in with a magic link, answered age, consented."""
+    """A guest who opened the invite without email, joined, and consented."""
     key = invite_url.split("?k=", 1)[1]
     client = new_client(ctx)
-    magic_sign_in(client, ctx, address, next_path=f"/e/{event_id}")
-    assert client.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 200
-    assert client.post("/auth/age", json={"is_adult": adult}).status_code == 204
+    join_resp = client.post(f"/invites/{event_id}/join", json={"key": key})
+    assert join_resp.status_code == 200, join_resp.text
+    if not adult:
+        assert client.post("/auth/age", json={"is_adult": False}).status_code == 204
     if consent:
         notice = client.get("/consent/notice").json()
         response = client.post(

@@ -70,9 +70,10 @@ def build_context(
 
             email = SmtpGmailEmailSender(settings)
         elif settings.email_adapter == "console":
-            if settings.env in ("prod", "public"):
+            if settings.env == "prod":
                 raise ContextConfigError(
-                    "the console email adapter only runs in dev; configure an email service"
+                    "the console email adapter only runs in dev and public mode; "
+                    "configure an email service"
                 )
             from app.adapters.email.console_email import ConsoleEmailSender
 

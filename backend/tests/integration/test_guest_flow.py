@@ -17,7 +17,6 @@ from tests.helpers import (
     FRAMES_HEADERS,
     frames_body,
     guest_client,
-    magic_sign_in,
     new_client,
     searchable_event,
     staff_client,
@@ -76,18 +75,17 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
         organiser.get(f"/events/{event_id}/invites").json()["invites"][0]["url"] is None
     )
 
-    # Guest: landing page before sign-in, then sign-in, age, consent, search.
+    # Guest: landing page before sign-in, then join without email creating anonymous session.
     guest = new_client(ctx)
     landing = guest.post(f"/invites/{event_id}/resolve", json={"key": key})
     assert landing.status_code == 200 and landing.json()["name"] == "Wedding"
-    signed_in = magic_sign_in(guest, ctx, "guest@example.test", next_path=f"/e/{event_id}?k={key}")
-    assert signed_in["next"] == f"/e/{event_id}?k={key}"
-    assert guest.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 200
+    join_resp = guest.post(f"/invites/{event_id}/join", json={"key": key})
+    assert join_resp.status_code == 200
+    assert "fs_session" in guest.cookies
     status = guest.get(f"/events/{event_id}/guest-status").json()
     assert status["roles"] == ["guest"] and not status["consent_current"]
     assert status["dev_without_liveness"] is True and status["search_enabled"] is True
-    assert search(guest, event_id, selfie_frames(1)).status_code == 403  # no age, no consent
-    assert guest.post("/auth/age", json={"is_adult": True}).status_code == 204
+    assert search(guest, event_id, selfie_frames(1)).status_code == 403  # no consent yet
     notice = guest.get("/consent/notice").json()
     assert notice["draft"] is True and set(notice["texts"]) == {"en", "hi"}
     consent = guest.post(
@@ -115,6 +113,11 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
         assert img.format in ("JPEG", "PNG") and not img.getexif() and "exif" not in img.info
         assert img.size == (64, 48) or img.size[1] == 48  # full resolution
 
+    # Guest registers a passkey on their phone (offered in gallery)
+    from tests.helpers import passkey_sign_in, register_passkey
+
+    authenticator = register_passkey(guest)
+
     # Withdrawal: matches hidden (marked withdrawn, not deleted),
     # sessions for this event ended, gallery empty.
     withdrawn = guest.post(f"/events/{event_id}/consent/withdraw")
@@ -122,7 +125,7 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
     assert withdrawn.json()["matches"] == 4 and withdrawn.json()["sessions"] >= 1
     assert guest.get(f"/events/{event_id}/gallery").status_code == 401  # signed out of the event
     again = new_client(ctx)
-    magic_sign_in(again, ctx, "guest@example.test")
+    passkey_sign_in(again, authenticator)
     assert again.get(f"/events/{event_id}/gallery").status_code == 403  # no consent any more
     assert search(again, event_id, selfie_frames(1)).status_code == 403
     with event_transaction(ctx.sessions, uuid.UUID(event_id)) as s:
@@ -306,7 +309,6 @@ def test_revoked_and_expired_invites_stop_working(
     invite_id = organiser.get(f"/events/{event_id}/invites").json()["invites"][0]["invite_id"]
     assert organiser.post(f"/events/{event_id}/invites/{invite_id}/revoke").status_code == 204
     assert guest.post(f"/invites/{event_id}/resolve", json={"key": key}).status_code == 404
-    magic_sign_in(guest, ctx, "late-guest@example.test")
     assert guest.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 404
     fresh = (
         organiser.post(f"/events/{event_id}/invites", json={"days": 1})
@@ -317,3 +319,102 @@ def test_revoked_and_expired_invites_stop_working(
         s.execute(text("UPDATE event_invites SET expires_at = now() - interval '1 minute'"))
     assert guest.post(f"/invites/{event_id}/join", json={"key": fresh}).status_code == 404
     assert guest.post(f"/invites/{event_id}/resolve", json={"key": "x" * 40}).status_code == 404
+
+
+def test_return_visit_with_cookie(event: tuple[str, str, list[str]], ctx: AppContext) -> None:
+    """
+    Purpose: verify that a return visit with an existing session cookie opens the gallery directly.
+    Inputs: event fixture (event_id, invite, photo_ids), ctx (AppContext).
+    Outputs: None.
+    Side effects: tests HTTP endpoints.
+    """
+    event_id, invite, _ = event
+    key = invite.split("?k=")[1]
+    guest = guest_client(ctx, "guest1@example.test", event_id, invite)
+
+    # Return visit with cookie to gallery succeeds immediately
+    gallery_resp = guest.get(f"/events/{event_id}/gallery")
+    assert gallery_resp.status_code == 200
+
+    # Calling join again with the same cookie succeeds without creating a duplicate user
+    rejoin_resp = guest.post(f"/invites/{event_id}/join", json={"key": key})
+    assert rejoin_resp.status_code == 200
+    assert guest.get(f"/events/{event_id}/gallery").status_code == 200
+
+
+def test_new_account_after_lost_session(event: tuple[str, str, list[str]], ctx: AppContext) -> None:
+    """
+    Purpose: verify that if a guest session is lost, opening the invite link
+    creates a new anonymous guest account.
+    Inputs: event fixture, ctx (AppContext).
+    Outputs: None.
+    Side effects: tests HTTP endpoints.
+    """
+    event_id, invite, _ = event
+    key = invite.split("?k=")[1]
+
+    # First guest joins anonymously
+    guest1 = guest_client(ctx, "anon1@example.test", event_id, invite)
+    me1 = guest1.get("/auth/me").json()
+    user_id_1 = me1["user_id"]
+
+    # Session lost / new browser client opens invite link
+    guest2 = new_client(ctx)
+    join_resp = guest2.post(f"/invites/{event_id}/join", json={"key": key})
+    assert join_resp.status_code == 200
+    assert "fs_session" in guest2.cookies
+
+    me2 = guest2.get("/auth/me").json()
+    user_id_2 = me2["user_id"]
+    assert user_id_1 != user_id_2
+
+
+def test_claim_queue_shows_guest_number(
+    event: tuple[str, str, list[str]], organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify that the organiser claim queue shows anonymous identifiers
+    (Guest #1, Guest #2) instead of emails.
+    Inputs: event fixture, organiser client, ctx (AppContext).
+    Outputs: None.
+    Side effects: creates claims and queries organiser queue.
+    """
+    from app.modules.gallery.models import Claim
+
+    event_id, invite, photos = event
+    event_uuid = uuid.UUID(event_id)
+
+    # First anonymous guest joins
+    guest1 = guest_client(ctx, "anon1@example.test", event_id, invite)
+    user1_id = uuid.UUID(guest1.get("/auth/me").json()["user_id"])
+
+    # Second anonymous guest joins
+    guest2 = guest_client(ctx, "anon2@example.test", event_id, invite)
+    user2_id = uuid.UUID(guest2.get("/auth/me").json()["user_id"])
+
+    with event_transaction(ctx.sessions, event_uuid) as s:
+        s.add(
+            Claim(
+                event_id=event_uuid,
+                user_id=user1_id,
+                photo_id=uuid.UUID(photos[0]),
+                reason="face_check_failed",
+                status="pending",
+            )
+        )
+        s.add(
+            Claim(
+                event_id=event_uuid,
+                user_id=user2_id,
+                photo_id=uuid.UUID(photos[1]),
+                reason="front_only_scan",
+                status="pending",
+            )
+        )
+
+    queue_resp = organiser.get(f"/events/{event_id}/claims")
+    assert queue_resp.status_code == 200
+    claims = queue_resp.json()["claims"]
+    assert len(claims) >= 2
+    assert claims[0]["claimant_email"] == "Guest #1"
+    assert claims[1]["claimant_email"] == "Guest #2"

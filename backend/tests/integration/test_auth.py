@@ -3,11 +3,13 @@
 import hashlib
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from app.core.auth import SESSION_COOKIE
 from app.core.context import AppContext
 from app.modules.identity.models import AuthSession, MagicLink
 from sqlalchemy import select, update
 from tests.helpers import (
+    ORGANISER_EMAIL,
     MemoryEmailSender,
     SoftAuthenticator,
     magic_sign_in,
@@ -22,6 +24,56 @@ def email(ctx: AppContext) -> MemoryEmailSender:
     sender = ctx.email
     assert isinstance(sender, MemoryEmailSender)
     return sender
+
+
+@pytest.fixture(autouse=True)
+def _allow_test_staff_emails(ctx: AppContext) -> None:
+    """
+    Purpose: ensure test staff addresses are present on the allow-list for staff auth tests.
+    Inputs: ctx (AppContext).
+    Outputs: None.
+    Side effects: updates ctx.settings.auth_organiser_emails in memory.
+    """
+    ctx.settings.auth_organiser_emails = (
+        f"{ctx.settings.auth_organiser_emails},"
+        "guest.one@example.test,late@example.test,nobody@example.test,spam@example.test,"
+        "cookie@example.test,rotate@example.test,everywhere@example.test,passkey@example.test,strict@example.test"
+    )
+
+
+def test_guests_cannot_request_magic_links(ctx: AppContext) -> None:
+    """
+    Purpose: verify that guests and non-staff addresses cannot request a magic link (403 Forbidden).
+    Inputs: ctx (AppContext).
+    Outputs: None.
+    Side effects: tests HTTP 403 response.
+    """
+    client = new_client(ctx)
+    res = client.post("/auth/magic-link", json={"email": "random_guest@example.test"})
+    assert res.status_code == 403
+    assert res.json()["error"] == "forbidden"
+
+
+def test_staff_magic_link_terminal_output(
+    ctx: AppContext, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """
+    Purpose: verify that staff magic links appear in the terminal output with console adapter.
+    Inputs: ctx (AppContext), monkeypatch, capsys.
+    Outputs: None.
+    Side effects: captures stdout output from ConsoleEmailSender.
+    """
+    from app.adapters.email.console_email import ConsoleEmailSender
+    from tests.helpers import ORGANISER_EMAIL
+
+    console_sender = ConsoleEmailSender()
+    monkeypatch.setattr(ctx, "email", console_sender)
+    client = new_client(ctx)
+    res = client.post("/auth/magic-link", json={"email": ORGANISER_EMAIL})
+    assert res.status_code == 202
+    captured = capsys.readouterr()
+    assert "FaceScan DEV sign-in link (console email adapter)" in captured.out
+    assert "auth/callback#token=" in captured.out
 
 
 def test_magic_link_is_single_use_and_stored_only_as_a_hash(ctx: AppContext) -> None:
@@ -149,19 +201,21 @@ def test_cross_origin_state_changes_are_refused(ctx: AppContext) -> None:
     client = new_client(ctx)
     response = client.post(
         "/auth/magic-link",
-        json={"email": "csrf@example.test"},
+        json={"email": ORGANISER_EMAIL},
         headers={"Origin": "https://evil.example"},
     )
     assert response.status_code == 403
     same = client.post(
         "/auth/magic-link",
-        json={"email": "csrf@example.test"},
+        json={"email": ORGANISER_EMAIL},
         headers={"Origin": ctx.settings.auth_rp_origin},
     )
     assert same.status_code == 202
 
 
 def test_only_allow_listed_organisers_create_events(ctx: AppContext) -> None:
+    current_admins = ctx.settings.auth_admin_emails
+    ctx.settings.auth_admin_emails = f"{current_admins},not-an-organiser@example.test"
     someone = staff_client(ctx, "not-an-organiser@example.test")
     assert someone.post("/events", json={"name": "Mine", "country": "IN"}).status_code == 403
     assert someone.get("/auth/me").json()["can_create_events"] is False

@@ -22,9 +22,21 @@ export default function HomePage() {
   useEffect(() => {
     if (!me) return;
     api<{ events: EventSummary[] }>('/events')
-      .then((data) => setEvents(data.events))
+      .then((data) => {
+        setEvents(data.events);
+        const single = data.events.length === 1 ? data.events[0] : undefined;
+        if (
+          !me.can_create_events &&
+          !me.is_admin &&
+          single !== undefined &&
+          single.roles.length === 1 &&
+          single.roles[0] === 'guest'
+        ) {
+          navigate(`/events/${single.event_id}/gallery`, { replace: true });
+        }
+      })
       .catch(() => setEvents([]));
-  }, [me]);
+  }, [me, navigate]);
 
   if (loading) return <p>{t('common.loading')}</p>;
   return (

@@ -22,7 +22,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import numpy as np
-from app.core.auth import CurrentUser, open_email
+from app.core.auth import CurrentUser, is_anonymous_email, open_email
 from app.core.config import Settings
 from app.core.context import AppContext
 from app.core.crypto import aad, open_sealed
@@ -521,10 +521,17 @@ def list_event_claims(
 
         bucket = ctx.settings.storage_bucket_derivatives
         items: list[OrganiserClaimItem] = []
+        guest_numbers: dict[UUID, int] = {}
 
         for claim in claims:
             account = session.get(User, claim.user_id)
-            claimant_email = open_email(ctx.keys, account.email_encrypted) if account else "unknown"
+            raw_email = open_email(ctx.keys, account.email_encrypted) if account else ""
+            if raw_email and is_anonymous_email(raw_email):
+                if claim.user_id not in guest_numbers:
+                    guest_numbers[claim.user_id] = len(guest_numbers) + 1
+                claimant_email = f"Guest #{guest_numbers[claim.user_id]}"
+            else:
+                claimant_email = raw_email or "unknown"
 
             photo = session.get(Photo, claim.photo_id)
             if photo and photo.web_object_key:

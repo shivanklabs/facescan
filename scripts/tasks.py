@@ -666,8 +666,6 @@ def task_public(_args: argparse.Namespace) -> None:
             "FACESCAN_AUTH_ORGANISER_EMAILS",
             "FACESCAN_AUTH_ADMIN_EMAILS",
             "FACESCAN_EMAIL_ADAPTER",
-            "FACESCAN_EMAIL_SMTP_USER",
-            "FACESCAN_EMAIL_SMTP_PASSWORD",
         ],
         "public",
     )
@@ -718,10 +716,17 @@ def task_public(_args: argparse.Namespace) -> None:
     print(f"  Public Tunnel URL:  {tunnel_url}", flush=True)
     print("=" * 78, flush=True)
     print("  Important Instructions:", flush=True)
-    print(f"  1. Open {tunnel_url} on your phone to test the guest experience.", flush=True)
+    print(
+        f"  1. Open {tunnel_url} on your phone to test guest experience (no email needed).",
+        flush=True,
+    )
     print("  2. The tunnel URL changes on every restart.", flush=True)
     print("     The organiser must register a new passkey after each restart.", flush=True)
-    print("  3. Magic links are sent via Gmail SMTP to the recipient's email address.", flush=True)
+    print(
+        "  3. Staff magic links print to this terminal (console adapter); "
+        "guests join without email.",
+        flush=True,
+    )
     print("  4. Press Ctrl+C to stop the API, worker, and tunnel.", flush=True)
     print("=" * 78 + "\n", flush=True)
 
@@ -732,7 +737,7 @@ def task_public(_args: argparse.Namespace) -> None:
     env["FACESCAN_AUTH_RP_ID"] = host
     env["FACESCAN_STORAGE_PUBLIC_BASE_URL"] = tunnel_url
     env["FACESCAN_LIVENESS_ADAPTER"] = "silent_face"
-    env["FACESCAN_EMAIL_ADAPTER"] = "smtp_gmail"
+    env["FACESCAN_EMAIL_ADAPTER"] = "console"
 
     processes = [
         DevProcess(

@@ -61,6 +61,7 @@ def settings() -> Settings:
         _env_file=None,
         env="test",
         db_url=None,
+        storage_signing_key=None,
         keys_master_key=SecretStr(master_key),
         worker_poll_interval_seconds=0.01,
     )

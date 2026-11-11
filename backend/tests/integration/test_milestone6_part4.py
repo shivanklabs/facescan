@@ -39,8 +39,13 @@ def test_admin_auth_and_permissions(ctx: AppContext, monkeypatch) -> None:
     assert resp.status_code == 401, f"Expected 401 unauthenticated, got {resp.status_code}"
 
     # 2. Magic-link session without passkey -> 403 passkey_required
-    guest_email = "guest_no_passkey@example.test"
-    magic_sign_in(client, ctx, guest_email)
+    staff_email = "staff_no_passkey@example.test"
+    monkeypatch.setattr(
+        ctx.settings,
+        "auth_organiser_emails",
+        f"{ctx.settings.auth_organiser_emails},{staff_email},regular_organiser@example.test",
+    )
+    magic_sign_in(client, ctx, staff_email)
     resp = client.get("/admin/health")
     assert resp.status_code == 403, f"Expected 403 passkey_required, got {resp.status_code}"
 

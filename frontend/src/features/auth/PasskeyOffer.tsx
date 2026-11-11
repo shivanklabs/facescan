@@ -1,15 +1,23 @@
-// PasskeyOffer: after a guest's first sign-in, offer a passkey for faster sign-in next time.
+// PasskeyOffer: after a guest's first scan, offer a passkey for faster return visits.
+// If the browser cannot do passkeys (e.g. in-app browser), skips silently without error.
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { registerPasskey } from '@/lib/passkeys';
 import { useMe } from './useMe';
 
+/**
+ * Purpose: Prompt guests to register a passkey on their phone after their scan.
+ * Inputs: None (reads signed-in user status).
+ * Outputs: Passkey offer card, or null if unsupported or already registered.
+ * Side Effects: Registers WebAuthn credential and updates session on user action.
+ */
 export function PasskeyOffer() {
   const { t } = useTranslation();
   const { me, reload } = useMe();
-  const [state, setState] = useState<'idle' | 'done' | 'error'>('idle');
+  const [state, setState] = useState<'idle' | 'done'>('idle');
 
-  if (!me || me.has_passkey) return null;
+  if (!browserSupportsWebAuthn() || !me || me.has_passkey) return null;
   return (
     <aside className="card">
       <h3>{t('passkey.offerTitle')}</h3>
@@ -26,13 +34,15 @@ export function PasskeyOffer() {
                 setState('done');
                 reload();
               })
-              .catch(() => setState('error'));
+              .catch(() => {
+                // If browser or platform cannot complete passkey, skip silently without error
+                setState('idle');
+              });
           }}
         >
           {t('passkey.add')}
         </button>
       )}
-      {state === 'error' && <p role="alert">{t('common.error')}</p>}
     </aside>
   );
 }

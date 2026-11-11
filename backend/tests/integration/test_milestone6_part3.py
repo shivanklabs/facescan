@@ -17,7 +17,6 @@ from tests.conftest import make_png
 from tests.helpers import (
     FRAMES_HEADERS,
     guest_client,
-    magic_sign_in,
     new_client,
     searchable_event,
 )
@@ -114,6 +113,11 @@ def test_non_destructive_withdrawal_and_restoration(organiser: TestClient, ctx: 
         ).scalar()
         assert release_count == 4
 
+    from tests.helpers import passkey_sign_in, register_passkey
+
+    # Guest registers passkey on phone
+    authenticator = register_passkey(guest)
+
     # Withdraw consent
     w_resp = guest.post(f"/events/{event_id}/consent/withdraw")
     assert w_resp.status_code == 200
@@ -138,7 +142,7 @@ def test_non_destructive_withdrawal_and_restoration(organiser: TestClient, ctx: 
 
     # New sign-in without active consent is blocked
     new_sess = new_client(ctx)
-    magic_sign_in(new_sess, ctx, "withdraw_test@example.test")
+    passkey_sign_in(new_sess, authenticator)
     assert new_sess.get(f"/events/{event_id}/gallery").status_code == 403
     assert (
         new_sess.post(

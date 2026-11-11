@@ -4,7 +4,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
 
-from app.core.deps import Ctx, PasskeyUser, User
+from app.core.auth import set_session_cookie
+from app.core.deps import Ctx, MaybeUser, PasskeyUser, User
 from app.core.rate_limit import RateLimiter
 from app.modules.events import service
 from app.modules.events.schemas import (
@@ -120,9 +121,21 @@ def resolve_invite(event_id: UUID, body: InviteKey, ctx: Ctx) -> PublicEventResp
 @router.post(
     "/invites/{event_id}/join", response_model=EventResponse, dependencies=[Depends(invite_limiter)]
 )
-def join(event_id: UUID, body: InviteKey, user: User, ctx: Ctx) -> EventResponse:
-    """Purpose: become a guest of the event through its invite link."""
-    return _response(service.join_with_invite(ctx, user, event_id, body.key))
+def join(
+    event_id: UUID,
+    body: InviteKey,
+    user: MaybeUser,
+    ctx: Ctx,
+    response: Response,
+) -> EventResponse:
+    """
+    Purpose: become a guest of the event through its invite link
+    (creates anonymous session if unauthenticated).
+    """
+    view, session_token = service.join_with_invite(ctx, user, event_id, body.key)
+    if session_token is not None:
+        set_session_cookie(response, ctx.settings, session_token)
+    return _response(view)
 
 
 @router.post("/events/{event_id}/sections", status_code=201, response_model=SectionResponse)

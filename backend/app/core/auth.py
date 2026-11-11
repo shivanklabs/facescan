@@ -82,6 +82,44 @@ def open_email(keys: KeyManager, sealed: bytes) -> str:
     return open_sealed(keys.derive_key("email-encrypt"), sealed, _EMAIL_AAD).decode("utf-8")
 
 
+def create_anonymous_user(session: Session, keys: KeyManager) -> User:
+    """
+    Purpose: Create an anonymous guest account with a random UUID and synthetic address.
+    Inputs:
+        session: active SQLAlchemy database session
+        keys: KeyManager for HMAC and encryption
+    Outputs:
+        User: the newly created user record
+    Side Effects:
+        Inserts a new User into the database and flushes.
+    """
+    anon_id = secrets.token_hex(16)
+    anon_addr = f"anon_{anon_id}@guest.local"
+    digest = email_hash(keys, anon_addr)
+    user = User(
+        email_hash=digest,
+        email_encrypted=seal_email(keys, anon_addr),
+        is_minor=False,
+        age_answered_at=datetime.now(UTC),
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
+def is_anonymous_email(address: str) -> bool:
+    """
+    Purpose: Check if an email address represents an anonymous guest account.
+    Inputs:
+        address: email address string
+    Outputs:
+        bool: True if synthetic anonymous address, False otherwise
+    Side Effects:
+        None.
+    """
+    return address.startswith("anon_") and address.endswith("@guest.local")
+
+
 def find_or_create_user(session: Session, keys: KeyManager, address: str) -> User:
     """Purpose: the user for an address, created on first sign-in. Side effects: may insert."""
     digest = email_hash(keys, address)
@@ -212,10 +250,12 @@ __all__ = [
     "InvalidEmailError",
     "admin_allowed",
     "clear_session_cookie",
+    "create_anonymous_user",
     "create_session",
     "email_hash",
     "find_or_create_user",
     "hash_token",
+    "is_anonymous_email",
     "lookup_session",
     "new_token",
     "normalise_email",

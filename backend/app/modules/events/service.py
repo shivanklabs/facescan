@@ -17,7 +17,15 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.auth import CurrentUser, find_or_create_user, hash_token, new_token, normalise_email
+from app.core.auth import (
+    CurrentUser,
+    create_anonymous_user,
+    create_session,
+    find_or_create_user,
+    hash_token,
+    new_token,
+    normalise_email,
+)
 from app.core.auth import organiser_allowed as is_organiser_allowed
 from app.core.context import AppContext
 from app.core.crypto import new_data_key
@@ -252,10 +260,15 @@ def resolve_invite(ctx: AppContext, event_id: UUID, secret: str) -> EventView:
         return _view(event)
 
 
-def join_with_invite(ctx: AppContext, user: CurrentUser, event_id: UUID, secret: str) -> EventView:
+def join_with_invite(
+    ctx: AppContext, user: CurrentUser | None, event_id: UUID, secret: str
+) -> tuple[EventView, str | None]:
     """
-    Purpose: make the signed-in user a guest of the event through a valid invite link.
-    Side effects: inserts event_members (guest) and an audit row.
+    Purpose: make the caller a guest of the event through a valid invite link. If caller is
+        not signed in, creates an anonymous guest account and a session token.
+    Inputs: ctx, user (CurrentUser | None), event_id, secret.
+    Outputs: tuple of (EventView, session_token or None).
+    Side effects: inserts user/session (if anonymous), inserts event_members (guest), records audit.
     """
     with event_transaction(ctx.sessions, event_id) as session:
         event = repository.get_event(session, event_id)
@@ -265,6 +278,17 @@ def join_with_invite(ctx: AppContext, user: CurrentUser, event_id: UUID, secret:
             or _valid_invite(session, event_id, secret) is None
         ):
             raise NotFoundError("invite link is invalid or has expired")
+
+        session_token: str | None = None
+        if user is None:
+            anon_user = create_anonymous_user(session, ctx.keys)
+            session_token = create_session(
+                session, ctx.settings, anon_user.id, "magic_link", event_id
+            )
+            session.add(EventMember(event_id=event_id, user_id=anon_user.id, role="guest"))
+            record(session, event_id=event_id, actor=f"user:{anon_user.id}", action="invite.joined")
+            return _view(event, ("guest",)), session_token
+
         roles = {
             m.role
             for m in session.scalars(
@@ -276,7 +300,7 @@ def join_with_invite(ctx: AppContext, user: CurrentUser, event_id: UUID, secret:
         if "guest" not in roles:
             session.add(EventMember(event_id=event_id, user_id=user.user_id, role="guest"))
             record(session, event_id=event_id, actor=user.actor, action="invite.joined")
-        return _view(event, tuple(sorted(roles | {"guest"})))
+        return _view(event, tuple(sorted(roles | {"guest"}))), None
 
 
 def data_key(session: Session, keys: KeyManager, event_id: UUID) -> tuple[bytes, int]:

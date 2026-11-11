@@ -321,7 +321,7 @@ def test_organiser_claim_queue_and_approve_flow(organiser: TestClient, ctx: AppC
     claim_id = item["claim_id"]
     assert item["photo_id"] == photo_id_2
     assert item["face_id"] == face_id_2
-    assert item["claimant_email"] == "claimant_guest@example.test"
+    assert item["claimant_email"] == "Guest #1"
     assert item["reason"] == "face_check_failed"
     assert item["status"] == "pending"
     assert item["face_bbox"] is not None

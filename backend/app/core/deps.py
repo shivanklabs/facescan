@@ -54,6 +54,7 @@ def current_user(user: Annotated[CurrentUser | None, Depends(optional_user)]) ->
 
 
 User = Annotated[CurrentUser, Depends(current_user)]
+MaybeUser = Annotated[CurrentUser | None, Depends(optional_user)]
 
 
 def passkey_user(user: User) -> CurrentUser:
