@@ -32,6 +32,7 @@ from webauthn.helpers.structs import (
 
 from app.core.auth import (
     CurrentUser,
+    admin_allowed,
     create_session,
     email_hash,
     find_or_create_user,
@@ -339,6 +340,7 @@ class Me:
     age_answered: bool
     is_minor: bool
     can_create_events: bool
+    is_admin: bool = False
 
 
 def me(ctx: AppContext, user: CurrentUser) -> Me:
@@ -359,6 +361,7 @@ def me(ctx: AppContext, user: CurrentUser) -> Me:
             age_answered=row.age_answered_at is not None,
             is_minor=row.is_minor,
             can_create_events=organiser_allowed(ctx.settings, ctx.keys, row),
+            is_admin=admin_allowed(ctx.settings, ctx.keys, row),
         )
 
 

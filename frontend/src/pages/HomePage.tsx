@@ -46,6 +46,11 @@ export default function HomePage() {
               <Link to="/organiser">{t('organiser.title')}</Link>
             </p>
           )}
+          {me.is_admin && (
+            <p>
+              <Link to="/admin">Admin Dashboard</Link>
+            </p>
+          )}
           <ul className="list">
             {events.map((e) => (
               <li key={e.event_id}>

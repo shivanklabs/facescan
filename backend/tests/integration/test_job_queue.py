@@ -48,28 +48,37 @@ def test_two_workers_never_take_the_same_job(ctx: AppContext) -> None:
 
 def test_retry_with_backoff_then_failed(ctx: AppContext) -> None:
     drain(ctx)
-    event_id, (job_id,) = enqueue(ctx, 1)
-    job = ctx.queue.claim("w")
-    assert job is not None and job.job_id == job_id and job.attempts == 1
-    assert ctx.queue.fail(job, "ValueError") is True  # will retry
-    with event_transaction(ctx.sessions, event_id) as s:
-        row = s.execute(
-            text("SELECT status, last_error, run_after > now() AS later FROM jobs")
-        ).one()
-    assert (row.status, row.last_error, row.later) == ("queued", "ValueError", True)
-    attempts = 1
-    while True:
-        time.sleep(0.05)
+    from app.adapters.queue.postgres_job_queue import PostgresJobQueue
+
+    old_base = ctx.queue._retry_base if isinstance(ctx.queue, PostgresJobQueue) else 0.01
+    if isinstance(ctx.queue, PostgresJobQueue):
+        ctx.queue._retry_base = 0.5
+    try:
+        event_id, (job_id,) = enqueue(ctx, 1)
         job = ctx.queue.claim("w")
-        if job is None:
-            continue
-        attempts = job.attempts
-        if not ctx.queue.fail(job, "ValueError"):
-            break
-    assert attempts == ctx.settings.job_max_attempts
-    with event_transaction(ctx.sessions, event_id) as s:
-        assert s.execute(text("SELECT status FROM jobs")).scalar() == "failed"
-    assert ctx.queue.claim("w") is None  # failed jobs are never claimed again
+        assert job is not None and job.job_id == job_id and job.attempts == 1
+        assert ctx.queue.fail(job, "ValueError") is True  # will retry
+        with event_transaction(ctx.sessions, event_id) as s:
+            row = s.execute(
+                text("SELECT status, last_error, run_after > now() AS later FROM jobs")
+            ).one()
+        assert (row.status, row.last_error, row.later) == ("queued", "ValueError", True)
+        attempts = 1
+        while True:
+            time.sleep(0.05)
+            job = ctx.queue.claim("w")
+            if job is None:
+                continue
+            attempts = job.attempts
+            if not ctx.queue.fail(job, "ValueError"):
+                break
+        assert attempts == ctx.settings.job_max_attempts
+        with event_transaction(ctx.sessions, event_id) as s:
+            assert s.execute(text("SELECT status FROM jobs")).scalar() == "failed"
+        assert ctx.queue.claim("w") is None  # failed jobs are never claimed again
+    finally:
+        if isinstance(ctx.queue, PostgresJobQueue):
+            ctx.queue._retry_base = old_base
 
 
 def test_complete_and_stale_lock_recovery(ctx: AppContext) -> None:

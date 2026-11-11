@@ -10,9 +10,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import SESSION_COOKIE, CurrentUser, lookup_session
+from app.core.auth import SESSION_COOKIE, CurrentUser, admin_allowed, lookup_session
 from app.core.context import AppContext
+from app.db.event_scope import user_transaction
 from app.modules.events.models import EventMember
+from app.modules.identity.models import User as UserModel
 
 STAFF_ROLES = ("organiser", "photographer")
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
@@ -62,6 +64,23 @@ def passkey_user(user: User) -> CurrentUser:
 
 
 PasskeyUser = Annotated[CurrentUser, Depends(passkey_user)]
+
+
+def admin_user(user: PasskeyUser, ctx: Ctx) -> CurrentUser:
+    """
+    Purpose: require a staff member whose email is in FACESCAN_AUTH_ADMIN_EMAILS.
+    Inputs: user (PasskeyUser), ctx (AppContext).
+    Outputs: CurrentUser.
+    Side effects: raises HTTPException(403) if not authorized.
+    """
+    with user_transaction(ctx.sessions, user.user_id) as session:
+        account = session.get(UserModel, user.user_id)
+        if account is None or not admin_allowed(ctx.settings, ctx.keys, account):
+            raise HTTPException(status_code=403, detail="admin_required")
+    return user
+
+
+AdminUser = Annotated[CurrentUser, Depends(admin_user)]
 
 
 def roles_in_event(session: Session, event_id: UUID, user_id: UUID) -> set[str]:

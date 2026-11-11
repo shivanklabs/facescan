@@ -9,6 +9,7 @@ export interface Me {
   age_answered: boolean;
   is_minor: boolean;
   can_create_events: boolean;
+  is_admin?: boolean;
 }
 
 export function useMe(): { me: Me | null; loading: boolean; reload: () => void } {

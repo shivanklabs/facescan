@@ -80,6 +80,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     if settings.storage_signing_key is not None:
         app.include_router(create_download_router(build_local_storage(settings)))
 
+    from app.modules.admin.router import router as admin_router
     from app.modules.consent.router import router as consent_router
     from app.modules.events.router import router as events_router
     from app.modules.gallery.router import router as gallery_router
@@ -102,6 +103,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         gallery_router,
         scene_search_router,
         claims_router,
+        admin_router,
     ):
         app.include_router(router)
 

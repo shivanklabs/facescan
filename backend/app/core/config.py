@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     storage_signing_key: SecretStr | None = Field(default=None, min_length=32)
     storage_url_expiry_minutes: int = Field(default=5, ge=1, le=60)
     storage_public_base_url: str = "http://localhost:8000"
+    backup_dir: str | None = None
 
     # S3-compatible storage (production placeholder, decided in Phase 3).
     storage_endpoint: str | None = None
@@ -60,6 +61,9 @@ class Settings(BaseSettings):
     auth_cookie_secure: bool = True
     # Who may create events (comma-separated emails). Organisers must use a passkey.
     auth_organiser_emails: str = ""
+    # Who may view the platform admin health page (comma-separated emails).
+    # Admins must use a passkey.
+    auth_admin_emails: str = ""
     # Magic-link delivery: "console" (dev only) or "smtp_gmail" (production / public testing).
     email_adapter: Literal["console", "smtp_gmail"] = "console"
     email_smtp_user: str | None = None

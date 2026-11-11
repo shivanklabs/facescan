@@ -128,6 +128,7 @@ def get_me(user: User, ctx: Ctx) -> MeResponse:
         age_answered=m.age_answered,
         is_minor=m.is_minor,
         can_create_events=m.can_create_events,
+        is_admin=m.is_admin,
     )
 
 

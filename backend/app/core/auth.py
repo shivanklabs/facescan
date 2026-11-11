@@ -103,6 +103,21 @@ def organiser_allowed(settings: Settings, keys: KeyManager, user: User) -> bool:
     return any(hmac.compare_digest(user.email_hash, h) for h in allowed)
 
 
+def admin_allowed(settings: Settings, keys: KeyManager, user: User) -> bool:
+    """
+    Purpose: True if the user's email is on FACESCAN_AUTH_ADMIN_EMAILS.
+    Inputs: settings, keys, user.
+    Outputs: bool.
+    Side effects: none.
+    """
+    allowed = {
+        email_hash(keys, normalise_email(a))
+        for a in settings.auth_admin_emails.split(",")
+        if a.strip() and EMAIL_RE.fullmatch(a.strip().lower())
+    }
+    return any(hmac.compare_digest(user.email_hash, h) for h in allowed)
+
+
 def create_session(
     session: Session,
     settings: Settings,
@@ -195,6 +210,7 @@ __all__ = [
     "CurrentUser",
     "DecryptionError",
     "InvalidEmailError",
+    "admin_allowed",
     "clear_session_cookie",
     "create_session",
     "email_hash",
