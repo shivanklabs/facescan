@@ -7,7 +7,9 @@ Standard library only.
 import argparse
 import base64
 import contextlib
+import hashlib
 import io
+import json
 import os
 import re
 import secrets
@@ -21,9 +23,10 @@ import time
 import urllib.parse
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType
-from typing import IO
+from typing import IO, TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
@@ -302,28 +305,42 @@ def task_setup(_args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------- db-init
 
 
-def find_psql(env: dict[str, str]) -> str | None:
+def find_pg_tool(name: str, env: dict[str, str]) -> str | None:
     """
-    Purpose: locate psql: FACESCAN_DB_PSQL_DIR, then PATH, then the newest Windows install.
-    Outputs: path or None. Side effects: reads the filesystem.
+    Purpose: locate a PostgreSQL client tool (psql, pg_dump, pg_restore):
+        checks FACESCAN_DB_PSQL_DIR, then PATH, then Windows installs.
+    Inputs: name (tool name without extension), env (environment dictionary).
+    Outputs: path string or None.
+    Side effects: queries filesystem and environment.
     """
-    exe = "psql.exe" if IS_WINDOWS else "psql"
+    exe = f"{name}.exe" if IS_WINDOWS else name
     configured = env.get("FACESCAN_DB_PSQL_DIR", "").strip()
     if configured:
         candidate = Path(configured) / exe
-        return str(candidate) if candidate.is_file() else None
-    on_path = shutil.which("psql")
+        if candidate.is_file():
+            return str(candidate)
+    on_path = shutil.which(name)
     if on_path:
         return on_path
     if sys.platform == "win32":
         base = Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "PostgreSQL"
         installs = sorted(
-            base.glob("*/bin/psql.exe"),
+            base.glob(f"*/bin/{exe}"),
             key=lambda p: int(p.parent.parent.name) if p.parent.parent.name.isdigit() else 0,
         )
         if installs:
             return str(installs[-1])
     return None
+
+
+def find_psql(env: dict[str, str]) -> str | None:
+    """
+    Purpose: locate psql: FACESCAN_DB_PSQL_DIR, then PATH, then the newest Windows install.
+    Inputs: env (environment dictionary).
+    Outputs: path or None.
+    Side effects: reads the filesystem.
+    """
+    return find_pg_tool("psql", env)
 
 
 def task_db_init(_args: argparse.Namespace) -> None:
@@ -774,6 +791,198 @@ def task_licences(_args: argparse.Namespace) -> None:
 
 # ---------------------------------------------------------------- entry point
 
+
+class BackupFileEntry(TypedDict):
+    """File metadata in backup manifest."""
+
+    path: str
+    bytes: int
+    sha256: str
+
+
+def _is_relative_to(path: Path, base: Path) -> bool:
+    """
+    Purpose: test whether path is relative to base.
+    Inputs: path (Path), base (Path).
+    Outputs: bool.
+    Side effects: none.
+    """
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
+def task_backup(_args: argparse.Namespace) -> None:
+    """
+    Purpose: create an atomic, timestamped backup of the PostgreSQL database and photo storage.
+      1. Reads FACESCAN_BACKUP_DIR from .env (must be outside repo root and storage directory).
+      2. Dumps database using pg_dump -Fc with row security enabled.
+      3. Copies photo storage directory (excluding temporary spool and locks; never copying .env).
+      4. Generates manifest.json with file count, total size, and SHA-256 digests.
+      5. Verifies backup: re-checks SHA-256 digests and runs pg_restore --list.
+      6. Leaves original storage folder and database untouched.
+    Inputs: _args (argparse.Namespace, unused).
+    Outputs: None.
+    Side effects: writes timestamped backup folder under FACESCAN_BACKUP_DIR.
+    """
+    if not ENV_FILE.exists():
+        raise TaskError(".env is missing. Run: uv run tasks setup")
+    env = child_env()
+
+    backup_dir_val = env.get("FACESCAN_BACKUP_DIR", "").strip()
+    if not backup_dir_val:
+        raise TaskError(
+            "FACESCAN_BACKUP_DIR is not set in .env.\n"
+            "Please configure FACESCAN_BACKUP_DIR pointing to a folder outside "
+            "the repository and storage root."
+        )
+
+    backup_dir = (
+        Path(backup_dir_val) if Path(backup_dir_val).is_absolute() else (ROOT / backup_dir_val)
+    ).resolve()
+
+    if backup_dir == ROOT or _is_relative_to(backup_dir, ROOT):
+        raise TaskError(
+            f"FACESCAN_BACKUP_DIR ({backup_dir}) must be outside the repository root ({ROOT})."
+        )
+
+    storage_root_str = env.get("FACESCAN_STORAGE_ROOT", "var/storage")
+    storage_root = (
+        Path(storage_root_str)
+        if Path(storage_root_str).is_absolute()
+        else (ROOT / storage_root_str)
+    ).resolve()
+
+    if (
+        backup_dir == storage_root
+        or _is_relative_to(backup_dir, storage_root)
+        or _is_relative_to(storage_root, backup_dir)
+    ):
+        raise TaskError(
+            f"FACESCAN_BACKUP_DIR ({backup_dir}) must be outside the storage directory "
+            f"({storage_root})."
+        )
+
+    pg_dump = find_pg_tool("pg_dump", env)
+    if not pg_dump:
+        raise TaskError(
+            "pg_dump not found. Set FACESCAN_DB_PSQL_DIR in .env or add PostgreSQL bin to PATH."
+        )
+
+    pg_restore = find_pg_tool("pg_restore", env)
+    if not pg_restore:
+        raise TaskError(
+            "pg_restore not found. Set FACESCAN_DB_PSQL_DIR in .env or add PostgreSQL bin to PATH."
+        )
+
+    db_url = env.get("FACESCAN_DB_URL", "").strip()
+    if not db_url:
+        raise TaskError("FACESCAN_DB_URL is not set in .env.")
+    clean_db_url = db_url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%SZ")
+    dest_dir = backup_dir / f"backup_{timestamp}"
+    dest_dir.mkdir(parents=True, exist_ok=False)
+
+    print(f"Creating backup in {dest_dir}...", flush=True)
+
+    # 1. Database dump
+    dump_file = dest_dir / "database.dump"
+    print("Dumping PostgreSQL database (pg_dump -Fc)...", flush=True)
+    dump_cmd = [pg_dump, "-Fc", "--enable-row-security", "-d", clean_db_url, "-f", str(dump_file)]
+    dump_res = subprocess.run(  # noqa: S603
+        dump_cmd, capture_output=True, text=True, check=False
+    )
+    if dump_res.returncode != 0:
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        raise TaskError(
+            f"pg_dump failed with exit code {dump_res.returncode}: {dump_res.stderr.strip()}"
+        )
+
+    # 2. Storage directory copy
+    dest_storage = dest_dir / "storage"
+    print("Copying photo storage folder...", flush=True)
+    if storage_root.exists() and any(storage_root.iterdir()):
+        shutil.copytree(
+            storage_root,
+            dest_storage,
+            ignore=shutil.ignore_patterns(".env*", "*.tmp", "*.lock"),
+        )
+    else:
+        dest_storage.mkdir(parents=True, exist_ok=True)
+
+    # Invariant: Never copy .env into backup
+    for item in dest_dir.rglob("*"):
+        if item.is_file() and (item.name == ".env" or item.name.startswith(".env.")):
+            item.unlink()
+
+    # 3. Manifest creation
+    print("Writing backup manifest...", flush=True)
+    manifest_files: list[BackupFileEntry] = []
+    for p in sorted(dest_dir.rglob("*")):
+        if p.is_file() and p.name != "manifest.json":
+            rel_posix = p.relative_to(dest_dir).as_posix()
+            size = p.stat().st_size
+            h = hashlib.sha256()
+            with p.open("rb") as f:
+                while chunk := f.read(65536):
+                    h.update(chunk)
+            manifest_files.append(
+                {
+                    "path": rel_posix,
+                    "bytes": size,
+                    "sha256": h.hexdigest(),
+                }
+            )
+
+    total_bytes = sum(entry["bytes"] for entry in manifest_files)
+    manifest = {
+        "created_at": datetime.now(UTC).isoformat(),
+        "file_count": len(manifest_files),
+        "total_bytes": total_bytes,
+        "files": manifest_files,
+    }
+    manifest_path = dest_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    # 4. Verification before finishing
+    print("Verifying backup integrity...", flush=True)
+    for mf in manifest_files:
+        item_path = dest_dir / mf["path"]
+        if not item_path.is_file():
+            raise TaskError(f"Verification failed: missing file {mf['path']}")
+        h = hashlib.sha256()
+        with item_path.open("rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        actual_sha = h.hexdigest()
+        if actual_sha != mf["sha256"]:
+            raise TaskError(
+                f"Verification failed: SHA-256 mismatch for {mf['path']} "
+                f"(expected {mf['sha256']}, got {actual_sha})"
+            )
+
+    restore_cmd = [pg_restore, "--list", str(dump_file)]
+    restore_res = subprocess.run(  # noqa: S603
+        restore_cmd, capture_output=True, text=True, check=False
+    )
+    if restore_res.returncode != 0:
+        raise TaskError(
+            f"Verification failed: pg_restore --list failed: {restore_res.stderr.strip()}"
+        )
+
+    print("\n" + "=" * 70)
+    print("  BACKUP VERIFIED AND COMPLETE")
+    print(f"  Target:     {dest_dir}")
+    print(f"  Files:      {len(manifest_files)} (all SHA-256 verified)")
+    print(f"  Total size: {total_bytes / (1024 * 1024):.2f} MB")
+    print(f"  DB dump:    {dump_file.name} (pg_restore format valid)")
+    print("=" * 70 + "\n")
+
+
 TASKS: dict[str, tuple[Callable[[argparse.Namespace], None], str]] = {
     "setup": (task_setup, "first-time setup: .env, npm ci, pre-commit, var/storage"),
     "db-init": (task_db_init, "create the facescan role and database (asks for the PG password)"),
@@ -787,6 +996,10 @@ TASKS: dict[str, tuple[Callable[[argparse.Namespace], None], str]] = {
     "public": (
         task_public,
         "phone test mode: production frontend build, Cloudflare tunnel, api, worker",
+    ),
+    "backup": (
+        task_backup,
+        "backup database (pg_dump -Fc) and photo storage to FACESCAN_BACKUP_DIR with verification",
     ),
 }
 
