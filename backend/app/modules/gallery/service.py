@@ -22,6 +22,7 @@ from app.core.errors import NotFoundError
 from app.db.event_scope import event_transaction
 from app.modules.audit.service import record
 from app.modules.consent.service import FACE_SEARCH, active_consent
+from app.modules.gallery.schemas import ClaimNotice
 from app.modules.ingest.models import Photo
 from app.modules.matching.models import Match
 
@@ -35,6 +36,14 @@ class GalleryItem:
     expires_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class GalleryContent:
+    """The guest's released photos and rejected claim notices."""
+
+    photos: list[GalleryItem]
+    rejections: list[ClaimNotice]
+
+
 def _guest_with_consent(session: Session, event_id: UUID, user: CurrentUser) -> None:
     """Purpose: the permission check shared by gallery and download. Raises 403/404."""
     require_role(session, event_id, user.user_id, ("guest",))
@@ -42,8 +51,13 @@ def _guest_with_consent(session: Session, event_id: UUID, user: CurrentUser) -> 
         raise HTTPException(status_code=403, detail="consent_required")
 
 
-def gallery(ctx: AppContext, user: CurrentUser, event_id: UUID) -> list[GalleryItem]:
-    """Purpose: the guest's released photos as signed web-copy URLs. Side effects: audit."""
+def get_gallery_content(ctx: AppContext, user: CurrentUser, event_id: UUID) -> GalleryContent:
+    """
+    Purpose: retrieve guest's released photos and claim notices under event scope.
+    Inputs: ctx, user, event_id.
+    Outputs: GalleryContent with photo items and rejections.
+    Side effects: writes gallery.viewed audit record.
+    """
     bucket = ctx.settings.storage_bucket_derivatives
     with event_transaction(ctx.sessions, event_id) as session:
         _guest_with_consent(session, event_id, user)
@@ -62,14 +76,42 @@ def gallery(ctx: AppContext, user: CurrentUser, event_id: UUID) -> list[GalleryI
         for photo_id, web_key in rows:
             signed = ctx.storage.create_signed_download_url(bucket, event_id, str(web_key))
             items.append(GalleryItem(photo_id, signed.url, signed.expires_at))
+
+        from app.modules.gallery.models import Claim
+
+        claims_rejected = session.scalars(
+            select(Claim)
+            .where(
+                Claim.event_id == event_id,
+                Claim.user_id == user.user_id,
+                Claim.status == "rejected",
+            )
+            .order_by(Claim.reviewed_at.desc())
+        ).all()
+        rejections = [
+            ClaimNotice(
+                claim_id=c.id,
+                photo_id=c.photo_id,
+                status=c.status,
+                reason=c.reason,
+                reviewed_at=c.reviewed_at,
+            )
+            for c in claims_rejected
+        ]
+
         record(
             session,
             event_id=event_id,
             actor=user.actor,
             action="gallery.viewed",
-            details={"photos": len(items)},
+            details={"photos": len(items), "rejections": len(rejections)},
         )
-        return items
+        return GalleryContent(photos=items, rejections=rejections)
+
+
+def gallery(ctx: AppContext, user: CurrentUser, event_id: UUID) -> list[GalleryItem]:
+    """Purpose: the guest's released photos as signed web-copy URLs. Side effects: audit."""
+    return get_gallery_content(ctx, user, event_id).photos
 
 
 def download(ctx: AppContext, user: CurrentUser, event_id: UUID, photo_id: UUID) -> bytes:

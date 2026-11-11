@@ -247,3 +247,177 @@ def test_worker_retention_pruning(organiser: TestClient, ctx: AppContext) -> Non
         ).all()
         assert len(attempts_left) == 0
         assert len(candidates_left) == 0
+
+
+def test_organiser_claim_queue_and_approve_flow(organiser: TestClient, ctx: AppContext) -> None:
+    """
+    Purpose: verify organiser claim queue listing and approval flow:
+      1. Pending claim shows photo, face bbox, claimant email (read from users), reason.
+      2. Non-organisers (guest) cannot access organiser claims endpoints (403).
+      3. Organiser approves claim: moves pending -> approved, releases photo to guest gallery.
+      4. Cannot re-review resolved claim (409).
+      5. Audit log contains claim.approved.
+    """
+    event_id, invite_url, photos = searchable_event(
+        ctx, organiser, [make_png(1, 1), make_png(2, 1)]
+    )
+    guest = guest_client(ctx, "claimant_guest@example.test", event_id, invite_url)
+
+    # 1. Guest searches and fails 1:1 claim on photo 2
+    search_resp = guest.post(
+        f"/events/{event_id}/scene-search",
+        json={"query": "person smiling"},
+    )
+    candidates = search_resp.json()["candidates"]
+    cand_2 = next(c for c in candidates if c["photo_id"] == photos[1] and c["faces"])
+    photo_id_2 = cand_2["photo_id"]
+    face_id_2 = cand_2["faces"][0]["face_id"]
+
+    frames_fail = [make_selfie_b64(3), make_selfie_b64(3), make_selfie_b64(3)]
+    claim_resp = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": photo_id_2,
+            "face_id": face_id_2,
+            "frames": frames_fail,
+            "front_only": False,
+        },
+    )
+    assert claim_resp.status_code == 200
+    assert claim_resp.json()["status"] == "queued_for_review"
+
+    # 2. Non-organisers cannot view claim queue (403)
+    guest_queue_resp = guest.get(f"/events/{event_id}/claims")
+    assert guest_queue_resp.status_code in (403, 404)
+
+    # 3. Organiser lists pending claims
+    queue_resp = organiser.get(f"/events/{event_id}/claims")
+    assert queue_resp.status_code == 200
+    claims_list = queue_resp.json()["claims"]
+    assert len(claims_list) == 1
+    item = claims_list[0]
+    claim_id = item["claim_id"]
+    assert item["photo_id"] == photo_id_2
+    assert item["face_id"] == face_id_2
+    assert item["claimant_email"] == "claimant_guest@example.test"
+    assert item["reason"] == "face_check_failed"
+    assert item["status"] == "pending"
+    assert item["face_bbox"] is not None
+    assert "x" in item["face_bbox"]
+
+    # 4. Guest cannot review claims (403)
+    guest_review_resp = guest.post(
+        f"/events/{event_id}/claims/{claim_id}/review",
+        json={"action": "approve"},
+    )
+    assert guest_review_resp.status_code in (403, 404)
+
+    # 5. Organiser approves claim
+    approve_resp = organiser.post(
+        f"/events/{event_id}/claims/{claim_id}/review",
+        json={"action": "approve"},
+    )
+    assert approve_resp.status_code == 200
+    assert approve_resp.json()["status"] == "approved"
+
+    # Photo is now released in guest's gallery with source = 'claim'
+    gallery_resp = guest.get(f"/events/{event_id}/gallery")
+    assert gallery_resp.status_code == 200
+    released_photo_ids = [p["photo_id"] for p in gallery_resp.json()["photos"]]
+    assert photo_id_2 in released_photo_ids
+
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        match_row = s.scalar(
+            select(Match).where(
+                Match.event_id == UUID(event_id),
+                Match.photo_id == UUID(photo_id_2),
+            )
+        )
+        assert match_row is not None
+        assert match_row.source == "claim"
+        assert match_row.score_band == "release"
+
+        from app.modules.audit.models import AuditLog
+
+        audit_row = s.scalar(
+            select(AuditLog).where(
+                AuditLog.event_id == UUID(event_id),
+                AuditLog.action == "claim.approved",
+            )
+        )
+        assert audit_row is not None
+
+    # 6. Re-reviewing already resolved claim returns 409
+    dup_review_resp = organiser.post(
+        f"/events/{event_id}/claims/{claim_id}/review",
+        json={"action": "approve"},
+    )
+    assert dup_review_resp.status_code == 409
+
+
+def test_organiser_claim_queue_reject_flow(organiser: TestClient, ctx: AppContext) -> None:
+    """
+    Purpose: verify organiser claim rejection flow:
+      1. Organiser rejects claim: moves pending -> rejected.
+      2. Rejection notice is returned in guest gallery response.
+      3. Audit log contains claim.rejected.
+    """
+    event_id, invite_url, photos = searchable_event(
+        ctx, organiser, [make_png(1, 1), make_png(2, 1)]
+    )
+    guest = guest_client(ctx, "rejected_guest@example.test", event_id, invite_url)
+
+    # 1. Guest searches and fails 1:1 claim on photo 2 (front_only)
+    search_resp = guest.post(
+        f"/events/{event_id}/scene-search",
+        json={"query": "person standing"},
+    )
+    candidates = search_resp.json()["candidates"]
+    cand_2 = next(c for c in candidates if c["photo_id"] == photos[1] and c["faces"])
+    photo_id_2 = cand_2["photo_id"]
+    face_id_2 = cand_2["faces"][0]["face_id"]
+
+    frames_fail = [make_selfie_b64(3)]
+    claim_resp = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": photo_id_2,
+            "face_id": face_id_2,
+            "frames": frames_fail,
+            "front_only": True,
+        },
+    )
+    assert claim_resp.status_code == 200
+    assert claim_resp.json()["status"] == "queued_for_review"
+
+    # Organiser sees reason = front_only_scan
+    queue_resp = organiser.get(f"/events/{event_id}/claims")
+    item = queue_resp.json()["claims"][0]
+    claim_id = item["claim_id"]
+    assert item["reason"] == "front_only_scan"
+
+    # 2. Organiser rejects claim
+    reject_resp = organiser.post(
+        f"/events/{event_id}/claims/{claim_id}/review",
+        json={"action": "reject"},
+    )
+    assert reject_resp.status_code == 200
+    assert reject_resp.json()["status"] == "rejected"
+
+    # 3. Guest gallery now shows rejection notice in rejections array
+    gallery_resp = guest.get(f"/events/{event_id}/gallery")
+    assert gallery_resp.status_code == 200
+    rejections = gallery_resp.json()["rejections"]
+    assert len(rejections) >= 1
+    assert any(r["claim_id"] == claim_id for r in rejections)
+
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        from app.modules.audit.models import AuditLog
+
+        audit_row = s.scalar(
+            select(AuditLog).where(
+                AuditLog.event_id == UUID(event_id),
+                AuditLog.action == "claim.rejected",
+            )
+        )
+        assert audit_row is not None

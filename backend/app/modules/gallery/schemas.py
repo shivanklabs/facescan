@@ -15,7 +15,18 @@ class GalleryPhoto(BaseModel):
     download_path: str
 
 
+class ClaimNotice(BaseModel):
+    """Notice of a reviewed claim for the guest."""
+
+    claim_id: UUID
+    photo_id: UUID
+    status: str
+    reason: str
+    reviewed_at: datetime | None
+
+
 class GalleryResponse(BaseModel):
-    """The guest's released photos in one event."""
+    """The guest's released photos and claim notices in one event."""
 
     photos: list[GalleryPhoto]
+    rejections: list[ClaimNotice] = []

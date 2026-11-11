@@ -22,7 +22,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import numpy as np
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUser, open_email
 from app.core.config import Settings
 from app.core.context import AppContext
 from app.core.crypto import aad, open_sealed
@@ -43,6 +43,11 @@ from app.modules.scene_search.models import (
 )
 from app.modules.scene_search.schemas import (
     CandidateFace,
+    FaceBBox,
+    OrganiserClaimItem,
+    OrganiserClaimQueueResponse,
+    ReviewClaimRequest,
+    ReviewClaimResponse,
     SceneCandidateItem,
     SceneSearchRequest,
     SceneSearchResponse,
@@ -435,6 +440,7 @@ def submit_claim(
             return SubmitClaimResponse(status="released", photo_id=req.photo_id)
 
         # Failed 1:1 check: photo stays locked, claim queued for organiser review
+        reason = "front_only_scan" if req.front_only else "face_check_failed"
         session.add(
             Claim(
                 event_id=event_id,
@@ -442,7 +448,7 @@ def submit_claim(
                 photo_id=req.photo_id,
                 face_id=req.face_id,
                 status="pending",
-                reason="face_check_failed",
+                reason=reason,
             )
         )
         record(
@@ -453,6 +459,156 @@ def submit_claim(
             target=str(req.photo_id),
         )
         return SubmitClaimResponse(status="queued_for_review", photo_id=req.photo_id)
+
+
+def list_event_claims(
+    ctx: AppContext, user: CurrentUser, event_id: UUID
+) -> OrganiserClaimQueueResponse:
+    """
+    Purpose: list all pending claims for an event for the organiser.
+    Inputs: ctx, user (must be organiser), event_id.
+    Outputs: OrganiserClaimQueueResponse with photos, bounding boxes, decrypted email, and reason.
+    Side effects: none.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, user.user_id, ("organiser",))
+
+        claims = session.scalars(
+            select(Claim)
+            .where(Claim.event_id == event_id, Claim.status == "pending")
+            .order_by(Claim.created_at.asc())
+        ).all()
+
+        bucket = ctx.settings.storage_bucket_derivatives
+        items: list[OrganiserClaimItem] = []
+
+        for claim in claims:
+            account = session.get(User, claim.user_id)
+            claimant_email = open_email(ctx.keys, account.email_encrypted) if account else "unknown"
+
+            photo = session.get(Photo, claim.photo_id)
+            if photo and photo.web_object_key:
+                signed = ctx.storage.create_signed_download_url(
+                    bucket, event_id, str(photo.web_object_key)
+                )
+                photo_url = signed.url
+            else:
+                photo_url = ""
+
+            bbox_model: FaceBBox | None = None
+            if claim.face_id:
+                face = session.get(Face, claim.face_id)
+                if face:
+                    bbox_model = FaceBBox(
+                        x=face.bbox_x,
+                        y=face.bbox_y,
+                        width=face.bbox_w,
+                        height=face.bbox_h,
+                    )
+
+            items.append(
+                OrganiserClaimItem(
+                    claim_id=claim.id,
+                    photo_id=claim.photo_id,
+                    photo_url=photo_url,
+                    face_id=claim.face_id,
+                    face_bbox=bbox_model,
+                    claimant_email=claimant_email,
+                    reason=claim.reason,
+                    status=claim.status,
+                    created_at=claim.created_at,
+                )
+            )
+
+        return OrganiserClaimQueueResponse(claims=items)
+
+
+def review_claim(
+    ctx: AppContext,
+    user: CurrentUser,
+    event_id: UUID,
+    claim_id: UUID,
+    req: ReviewClaimRequest,
+) -> ReviewClaimResponse:
+    """
+    Purpose: atomically approve or reject a pending claim on behalf of the event organiser.
+    Inputs: ctx, user (must be organiser), event_id, claim_id, req (action: "approve" | "reject").
+    Outputs: ReviewClaimResponse.
+    Side effects: updates Claim status and reviewed_at/by, creates Match on approve,
+                  and logs audit event.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, user.user_id, ("organiser",))
+
+        claim = session.scalar(
+            select(Claim).where(Claim.id == claim_id, Claim.event_id == event_id).with_for_update()
+        )
+        if claim is None:
+            raise NotFoundError("claim_not_found")
+
+        if claim.status != "pending":
+            raise HTTPException(status_code=409, detail="claim_not_pending")
+
+        now = datetime.now(UTC)
+        claim.reviewed_at = now
+        claim.reviewed_by = user.user_id
+
+        if req.action == "approve":
+            claim.status = "approved"
+
+            existing_match = session.scalar(
+                select(Match)
+                .where(
+                    Match.event_id == event_id,
+                    Match.photo_id == claim.photo_id,
+                    Match.user_id == claim.user_id,
+                )
+                .limit(1)
+            )
+            if existing_match is None:
+                session.add(
+                    Match(
+                        event_id=event_id,
+                        user_id=claim.user_id,
+                        photo_id=claim.photo_id,
+                        score_band="release",
+                        source="claim",
+                        released_at=now,
+                    )
+                )
+            else:
+                existing_match.score_band = "release"
+                existing_match.source = "claim"
+                existing_match.released_at = now
+
+            record(
+                session,
+                event_id=event_id,
+                actor=user.actor,
+                action="claim.approved",
+                details={
+                    "claim_id": str(claim.id),
+                    "photo_id": str(claim.photo_id),
+                    "guest_user_id": str(claim.user_id),
+                    "face_id": str(claim.face_id) if claim.face_id else None,
+                },
+            )
+        else:
+            claim.status = "rejected"
+            record(
+                session,
+                event_id=event_id,
+                actor=user.actor,
+                action="claim.rejected",
+                details={
+                    "claim_id": str(claim.id),
+                    "photo_id": str(claim.photo_id),
+                    "guest_user_id": str(claim.user_id),
+                    "face_id": str(claim.face_id) if claim.face_id else None,
+                },
+            )
+
+        return ReviewClaimResponse(claim_id=claim.id, status=claim.status)
 
 
 def cleanup_expired_attempts(ctx: AppContext) -> int:

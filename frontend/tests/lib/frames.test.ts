@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  FRONT_ONLY_STEPS,
-  framesBody,
-  FRAMES_CONTENT_TYPE,
-  GUIDED_STEPS,
-} from '@/lib/frames';
+import { FRONT_ONLY_STEPS, framesBody, FRAMES_CONTENT_TYPE, GUIDED_STEPS } from '@/lib/frames';
 
 describe('framesBody', () => {
   it('prefixes every frame with its 4-byte big-endian length', async () => {
@@ -25,10 +20,6 @@ describe('framesBody', () => {
       'turnLeft',
       'turnRight',
     ]);
-    expect(FRONT_ONLY_STEPS.map((s) => s.key)).toEqual([
-      'lookStraight',
-      'blink',
-      'lookStraight',
-    ]);
+    expect(FRONT_ONLY_STEPS.map((s) => s.key)).toEqual(['lookStraight', 'blink', 'lookStraight']);
   });
 });

@@ -56,3 +56,48 @@ class SubmitClaimResponse(BaseModel):
 
     status: str = Field(description="'released' if face matched, or 'queued_for_review' if failed")
     photo_id: UUID
+
+
+class FaceBBox(BaseModel):
+    """Normalized or pixel bounding box coordinates for a face."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class OrganiserClaimItem(BaseModel):
+    """One pending claim item presented to the event organiser."""
+
+    claim_id: UUID
+    photo_id: UUID
+    photo_url: str
+    face_id: UUID | None
+    face_bbox: FaceBBox | None
+    claimant_email: str
+    reason: str
+    status: str
+    created_at: datetime
+
+
+class OrganiserClaimQueueResponse(BaseModel):
+    """Pending claims list returned to the event organiser."""
+
+    claims: list[OrganiserClaimItem]
+
+
+class ReviewClaimRequest(BaseModel):
+    """Review decision by the event organiser."""
+
+    action: str = Field(
+        pattern="^(approve|reject)$",
+        description="Review action: approve or reject",
+    )
+
+
+class ReviewClaimResponse(BaseModel):
+    """Result of organiser claim review."""
+
+    claim_id: UUID
+    status: str

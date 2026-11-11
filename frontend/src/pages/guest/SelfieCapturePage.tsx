@@ -6,12 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useGuestStatus } from '@/features/consent/useGuestStatus';
 import { api, ApiError } from '@/lib/apiClient';
-import {
-  captureGuidedFrames,
-  framesBody,
-  FRAMES_CONTENT_TYPE,
-  ScanStep,
-} from '@/lib/frames';
+import { captureGuidedFrames, framesBody, FRAMES_CONTENT_TYPE, ScanStep } from '@/lib/frames';
 
 type Phase = 'idle' | 'ready' | 'capturing' | 'searching';
 
@@ -149,11 +144,7 @@ export default function SelfieCapturePage() {
           <button type="button" onClick={() => void capture()} disabled={!status?.search_enabled}>
             {t('selfie.capture')}
           </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => setFrontOnly((prev) => !prev)}
-          >
+          <button type="button" className="secondary" onClick={() => setFrontOnly((prev) => !prev)}>
             {frontOnly ? t('selfie.guidedOption') : t('selfie.frontOnlyOption')}
           </button>
         </div>

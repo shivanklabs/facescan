@@ -26,6 +26,11 @@
 - Enforce strict request timeouts, retry logic, and max-token caps on all external AI/API calls.
 - Validate all LLM outputs against a strict JSON schema before parsing or storing in the database.
 
+## 7. Data Integrity & No Data Loss
+- The app NEVER deletes or modifies uploaded photos, events or user data.
+- The only automatic cleanups allowed are temporary upload spool files and the 7-day attempt and candidate records already approved.
+- A photo not reaching a user is a bug; losing data is never acceptable.
+
 # FaceScan: instructions for AI coding agents and humans
 
 FaceScan is an event-photo discovery web app: a guest takes a live selfie and finds their own

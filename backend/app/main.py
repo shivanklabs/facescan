@@ -83,7 +83,12 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     from app.modules.identity.router import router as identity_router
     from app.modules.ingest.router import router as ingest_router
     from app.modules.matching.router import router as matching_router
-    from app.modules.scene_search.router import router as scene_search_router
+    from app.modules.scene_search.router import (
+        claims_router,
+    )
+    from app.modules.scene_search.router import (
+        router as scene_search_router,
+    )
 
     for router in (
         identity_router,
@@ -93,6 +98,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         matching_router,
         gallery_router,
         scene_search_router,
+        claims_router,
     ):
         app.include_router(router)
     return app

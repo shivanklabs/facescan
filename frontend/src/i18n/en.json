@@ -74,7 +74,8 @@
     "title": "Your photos",
     "empty": "No photos found yet.",
     "download": "Download",
-    "missing": "Some photos missing? We only show photos we are sure about. Claims are coming soon.",
+    "missing": "Some photos missing? We only show photos we are sure about.",
+    "rejectionNotice": "A photo claim was reviewed by the organiser and not approved.",
     "searchAgain": "Search again"
   },
   "privacy": {
@@ -120,5 +121,17 @@
     "send": "Upload",
     "done": "Uploaded. The organiser will review them.",
     "sending": "Uploading…"
+  },
+  "claims": {
+    "title": "Review claims",
+    "empty": "No pending claims to review.",
+    "claimant": "Claimant",
+    "reason": "Reason",
+    "faceCheckFailed": "Face check failed",
+    "frontOnlyScan": "Front-only scan fallback",
+    "approve": "Approve claim",
+    "reject": "Reject claim",
+    "approved": "Claim approved. Photo released to guest's gallery.",
+    "rejected": "Claim rejected."
   }
 }

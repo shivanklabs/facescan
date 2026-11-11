@@ -13,7 +13,8 @@ router = APIRouter(prefix="/events/{event_id}/gallery", tags=["gallery"])
 
 @router.get("", response_model=GalleryResponse)
 def gallery(event_id: UUID, user: User, ctx: Ctx) -> GalleryResponse:
-    """Purpose: the guest's released photos as short-lived signed URLs."""
+    """Purpose: the guest's released photos and claim rejection notices."""
+    content = service.get_gallery_content(ctx, user, event_id)
     return GalleryResponse(
         photos=[
             GalleryPhoto(
@@ -22,8 +23,9 @@ def gallery(event_id: UUID, user: User, ctx: Ctx) -> GalleryResponse:
                 expires_at=item.expires_at,
                 download_path=f"/events/{event_id}/gallery/{item.photo_id}/download",
             )
-            for item in service.gallery(ctx, user, event_id)
-        ]
+            for item in content.photos
+        ],
+        rejections=content.rejections,
     )
 
 

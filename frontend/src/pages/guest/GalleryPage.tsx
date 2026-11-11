@@ -12,17 +12,34 @@ interface GalleryPhoto {
   download_path: string;
 }
 
+interface ClaimNotice {
+  claim_id: string;
+  photo_id: string;
+  status: string;
+  reason: string;
+  reviewed_at: string | null;
+}
+
+interface GalleryData {
+  photos: GalleryPhoto[];
+  rejections?: ClaimNotice[];
+}
+
 export default function GalleryPage() {
   const { t } = useTranslation();
   const { eventId = '' } = useParams();
   const location = useLocation();
   const someMissing = (location.state as { someMissing?: boolean } | null)?.someMissing === true;
   const [photos, setPhotos] = useState<GalleryPhoto[] | null>(null);
+  const [rejections, setRejections] = useState<ClaimNotice[]>([]);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    api<{ photos: GalleryPhoto[] }>(`/events/${eventId}/gallery`)
-      .then((data) => setPhotos(data.photos))
+    api<GalleryData>(`/events/${eventId}/gallery`)
+      .then((data) => {
+        setPhotos(data.photos);
+        setRejections(data.rejections || []);
+      })
       .catch(() => setError(true));
   }, [eventId]);
 
@@ -31,6 +48,13 @@ export default function GalleryPage() {
       <h1>{t('gallery.title')}</h1>
       {error && <p role="alert">{t('common.error')}</p>}
       {photos === null && !error && <p>{t('common.loading')}</p>}
+      {rejections.length > 0 && (
+        <div role="status" className="banner claim-rejections" style={{ marginBottom: '16px' }}>
+          {rejections.map((rej) => (
+            <p key={rej.claim_id}>{t('gallery.rejectionNotice')}</p>
+          ))}
+        </div>
+      )}
       {photos !== null && photos.length === 0 && <p>{t('gallery.empty')}</p>}
       {someMissing && <p className="banner">{t('gallery.missing')}</p>}
       <ul className="gallery">
