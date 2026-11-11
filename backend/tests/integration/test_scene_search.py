@@ -16,7 +16,7 @@ from app.modules.scene_search.models import (
 )
 from app.modules.scene_search.service import cleanup_expired_attempts
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from tests.conftest import make_png
 from tests.helpers import guest_client, searchable_event
 
@@ -443,3 +443,67 @@ def test_organiser_claim_queue_reject_flow(organiser: TestClient, ctx: AppContex
             )
         )
         assert audit_row is not None
+
+
+def test_submit_claim_liveness_failure_creates_no_match_or_claim(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify that a failed liveness verdict (passed=False) returns 422
+    and creates no Match or Claim records.
+    Inputs: organiser client, ctx.
+    Outputs: None.
+    Side effects: tests HTTP endpoint and database records.
+    """
+    from app.ports.liveness import LivenessVerdict
+
+    class FakeLivenessFailing:
+        def verify_liveness(
+            self, frames: list[bytes], front_only: bool = False
+        ) -> LivenessVerdict:
+            return LivenessVerdict(
+                passed=False,
+                is_live=False,
+                blink_detected=False,
+                turn_detected=False,
+                silent_face_score=0.0,
+                reasons=["spoof_detected"],
+            )
+
+    ctx.liveness = FakeLivenessFailing()
+    event_id, invite_url, photos = searchable_event(
+        ctx, organiser, [make_png(1, 1)]
+    )
+    guest = guest_client(ctx, "claim_liveness_fail@example.test", event_id, invite_url)
+
+    search_resp = guest.post(
+        f"/events/{event_id}/scene-search",
+        json={"query": "person"},
+    )
+    assert search_resp.status_code == 200
+    candidates = search_resp.json()["candidates"]
+    photo_id = candidates[0]["photo_id"]
+    face_id = candidates[0]["faces"][0]["face_id"]
+
+    frames = [make_selfie_b64(1), make_selfie_b64(1), make_selfie_b64(1)]
+    claim_resp = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": photo_id,
+            "face_id": face_id,
+            "frames": frames,
+            "front_only": False,
+        },
+    )
+    assert claim_resp.status_code == 422
+
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        match_count = s.scalar(
+            select(func.count(Match.id)).where(Match.event_id == UUID(event_id))
+        )
+        claim_count = s.scalar(
+            select(func.count(Claim.id)).where(Claim.event_id == UUID(event_id))
+        )
+        assert match_count == 0
+        assert claim_count == 0
+

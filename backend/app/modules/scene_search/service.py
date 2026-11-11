@@ -361,8 +361,8 @@ def submit_claim(
 
     # Liveness verification
     if ctx.liveness is not None:
-        liveness_ok = ctx.liveness.verify_liveness(decoded_frames, front_only=req.front_only)
-        if not liveness_ok:
+        verdict = ctx.liveness.verify_liveness(decoded_frames, front_only=req.front_only)
+        if not verdict.passed:
             raise HTTPException(status_code=422, detail="liveness_check_failed")
     elif ctx.settings.env != "dev":
         raise HTTPException(status_code=403, detail="liveness_required")
