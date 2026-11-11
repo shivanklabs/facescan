@@ -28,6 +28,7 @@ from app.core.context import AppContext
 from app.core.crypto import aad, open_sealed
 from app.core.deps import require_role
 from app.core.errors import NotFoundError
+from app.core.policy import load_country_policy
 from app.db.event_scope import ADMIN_SCOPE, event_transaction, scoped_transaction
 from app.modules.audit.service import record
 from app.modules.consent.service import FACE_SEARCH, active_consent
@@ -122,7 +123,9 @@ def verify_preview_signature(
 def _check_guest_search_access(session: Session, event_id: UUID, user: CurrentUser) -> None:
     """
     Purpose: verify guest has active face search consent and within search window.
-    Raises HTTPException (403) on violation.
+    Inputs: session, event_id, user.
+    Outputs: None.
+    Side effects: raises HTTPException (403) on violation.
     """
     require_role(session, event_id, user.user_id, ("guest",))
     event = events_repo.get_event(session, event_id)
@@ -132,11 +135,13 @@ def _check_guest_search_access(session: Session, event_id: UUID, user: CurrentUs
         and datetime.now(UTC) > event.search_window_ends_at
     ):
         raise HTTPException(status_code=403, detail="Search window for this event has closed")
+    policy = load_country_policy(event.country if event else "IN")
     account = session.get(User, user.user_id)
-    if account is None or account.age_answered_at is None:
-        raise HTTPException(status_code=403, detail="age_question_required")
-    if account.is_minor:
-        raise HTTPException(status_code=403, detail="under_18_blocked_from_search")
+    if not policy.minors_self_search_allowed:
+        if account is None or account.age_answered_at is None:
+            raise HTTPException(status_code=403, detail="age_question_required")
+        if account.is_minor:
+            raise HTTPException(status_code=403, detail="under_18_blocked_from_search")
     if active_consent(session, event_id, user.user_id, FACE_SEARCH) is None:
         raise HTTPException(status_code=403, detail="consent_required")
 

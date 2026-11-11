@@ -1,6 +1,7 @@
 # India policy (DPDP Act 2023). Research-based defaults, not legal advice. TODO: legal review.
 country: IN
 minor_age: 18                # under 18 => verifiable parental consent required
+minors_self_search: allowed  # MVP rule: no age restriction for now
 search_window_days: 30       # guests can search an event for this many days after it ends
 retention:
   selfie: none               # selfies are never stored (in memory only)

@@ -115,7 +115,8 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
         assert img.format in ("JPEG", "PNG") and not img.getexif() and "exif" not in img.info
         assert img.size == (64, 48) or img.size[1] == 48  # full resolution
 
-    # Withdrawal: matches deleted, sessions for this event ended, gallery empty.
+    # Withdrawal: matches hidden (marked withdrawn, not deleted),
+    # sessions for this event ended, gallery empty.
     withdrawn = guest.post(f"/events/{event_id}/consent/withdraw")
     assert withdrawn.status_code == 200
     assert withdrawn.json()["matches"] == 4 and withdrawn.json()["sessions"] >= 1
@@ -123,8 +124,16 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
     again = new_client(ctx)
     magic_sign_in(again, ctx, "guest@example.test")
     assert again.get(f"/events/{event_id}/gallery").status_code == 403  # no consent any more
+    assert search(again, event_id, selfie_frames(1)).status_code == 403
     with event_transaction(ctx.sessions, uuid.UUID(event_id)) as s:
-        assert s.execute(text("SELECT count(*) FROM matches")).scalar() == 0
+        assert (
+            s.execute(text("SELECT count(*) FROM matches WHERE score_band = 'withdrawn'")).scalar()
+            == 4
+        )
+        assert (
+            s.execute(text("SELECT count(*) FROM matches WHERE score_band = 'release'")).scalar()
+            == 0
+        )
         actions = {r[0] for r in s.execute(text("SELECT action FROM audit_log"))}
     assert {
         "invite.created",
@@ -135,6 +144,22 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
         "gallery.downloaded",
         "consent.withdrawn",
     } <= actions
+
+    # Re-granting consent restores matches and gallery access
+    notice = again.get("/consent/notice").json()
+    re_consent = again.post(
+        f"/events/{event_id}/consent",
+        json={"notice_version": notice["version"], "language": "en", "face_search": True},
+    )
+    assert re_consent.status_code == 204
+    with event_transaction(ctx.sessions, uuid.UUID(event_id)) as s:
+        assert (
+            s.execute(text("SELECT count(*) FROM matches WHERE score_band = 'release'")).scalar()
+            == 4
+        )
+    restored_gallery = again.get(f"/events/{event_id}/gallery")
+    assert restored_gallery.status_code == 200
+    assert len(restored_gallery.json()["photos"]) == 4
 
 
 def test_guests_never_see_each_others_matches(
@@ -163,26 +188,46 @@ def test_organisers_and_photographers_cannot_search(
     assert organiser.get(f"/events/{event_id}/gallery").status_code in (403, 404)
 
 
-def test_search_needs_consent_and_adults_only(
-    event: tuple[str, str, list[str]], ctx: AppContext
+def test_search_needs_consent_and_policy_governs_minors(
+    event: tuple[str, str, list[str]], ctx: AppContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     event_id, invite, _ = event
     no_consent = guest_client(ctx, "noconsent@example.test", event_id, invite, consent=False)
     response = search(no_consent, event_id, selfie_frames(1))
     assert response.status_code == 403 and response.json()["detail"] == "consent_required"
+
+    # With default policy (minors_self_search: allowed), minor can search successfully
     minor = guest_client(ctx, "minor@example.test", event_id, invite, adult=False)
     response = search(minor, event_id, selfie_frames(1))
-    assert (
-        response.status_code == 403
-        and response.json()["detail"] == "minor_guardian_consent_required"
+    assert response.status_code == 200
+
+    # When policy is restricted, minors are blocked
+    from app.core import policy as policy_module
+    from app.core.policy import CountryPolicy
+    from app.modules.consent import service as consent_service
+    from app.modules.matching import service as matching_service
+    from app.modules.scene_search import service as scene_service
+
+    restricted_policy = CountryPolicy(
+        country="IN", minor_age=18, minors_self_search="restricted", search_window_days=30
     )
-    notice = minor.get("/consent/notice").json()
-    consent = minor.post(
-        f"/events/{event_id}/consent",
-        json={"notice_version": notice["version"], "language": "en", "face_search": True},
+    monkeypatch.setattr(
+        policy_module, "load_country_policy", lambda *args, **kwargs: restricted_policy
     )
-    assert consent.status_code == 403
-    assert minor.get(f"/events/{event_id}/guest-status").json()["is_minor"] is True
+    monkeypatch.setattr(
+        consent_service, "load_country_policy", lambda *args, **kwargs: restricted_policy
+    )
+    monkeypatch.setattr(
+        matching_service, "load_country_policy", lambda *args, **kwargs: restricted_policy
+    )
+    monkeypatch.setattr(
+        scene_service, "load_country_policy", lambda *args, **kwargs: restricted_policy
+    )
+    restricted_minor = guest_client(
+        ctx, "restricted_minor@example.test", event_id, invite, adult=False, consent=False
+    )
+    resp = search(restricted_minor, event_id, selfie_frames(1))
+    assert resp.status_code == 403 and resp.json()["detail"] == "minor_guardian_consent_required"
 
 
 def test_search_limits_are_enforced_per_user_and_per_event(

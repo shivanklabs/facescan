@@ -193,7 +193,7 @@ def guest_client(
     magic_sign_in(client, ctx, address, next_path=f"/e/{event_id}")
     assert client.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 200
     assert client.post("/auth/age", json={"is_adult": adult}).status_code == 204
-    if consent and adult:
+    if consent:
         notice = client.get("/consent/notice").json()
         response = client.post(
             f"/events/{event_id}/consent",

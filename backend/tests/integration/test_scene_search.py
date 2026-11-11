@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import pytest
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
 from app.modules.gallery.models import Claim
@@ -192,16 +193,37 @@ def test_submit_claim_pass_and_fail_flow(organiser: TestClient, ctx: AppContext)
     assert dup_resp.status_code == 409
 
 
-def test_under_18_blocked_from_scene_search(organiser: TestClient, ctx: AppContext) -> None:
+def test_under_18_blocked_from_scene_search(
+    organiser: TestClient, ctx: AppContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """
-    Purpose: verify that guests answering under 18 remain strictly blocked from scene search.
+    Purpose: verify that under restricted policy guests answering under 18
+        remain blocked from scene search.
     """
+    from app.core import policy as policy_module
+    from app.core.policy import CountryPolicy
+    from app.modules.scene_search import service as scene_service
+
+    monkeypatch.setattr(
+        policy_module,
+        "load_country_policy",
+        lambda *args, **kwargs: CountryPolicy(
+            country="IN", minor_age=18, minors_self_search="restricted", search_window_days=30
+        ),
+    )
+    monkeypatch.setattr(
+        scene_service,
+        "load_country_policy",
+        lambda *args, **kwargs: CountryPolicy(
+            country="IN", minor_age=18, minors_self_search="restricted", search_window_days=30
+        ),
+    )
     event_id, invite_url, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
     guest = guest_client(
         ctx, "minor@example.test", event_id, invite_url, adult=False, consent=False
     )
 
-    # Search must be forbidden
+    # Search must be forbidden under restricted policy
     search_resp = guest.post(
         f"/events/{event_id}/scene-search",
         json={"query": "people in room"},

@@ -73,7 +73,10 @@ function Upload({ eventId }: { eventId: string }) {
 
   return (
     <form className="card" onSubmit={(e) => void send(e)}>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div
+        className="row"
+        style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}
+      >
         <h2>{t('organiser.upload')}</h2>
         <Link to={`/photographer/events/${eventId}/status`} className="link">
           Processing Status

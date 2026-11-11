@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { QRCodeCanvas } from 'qrcode.react';
 import { PasskeyGate } from '@/features/auth/PasskeyGate';
 import { api } from '@/lib/apiClient';
 
@@ -73,9 +74,38 @@ function EventAdmin({ event }: { event: EventSummary }) {
         {t('organiser.createInvite')}
       </button>
       {newUrl && (
-        <p className="banner">
-          {t('organiser.inviteOnce')} <code className="copyable">{newUrl}</code>
-        </p>
+        <div
+          className="banner"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            alignItems: 'flex-start',
+          }}
+        >
+          <div>
+            {t('organiser.inviteOnce')} <code className="copyable">{newUrl}</code>
+          </div>
+          <div style={{ background: '#ffffff', padding: '0.5rem', borderRadius: '4px' }}>
+            <QRCodeCanvas id={`qr-${event.event_id}`} value={newUrl} size={180} level="M" />
+          </div>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              const canvas = document.getElementById(
+                `qr-${event.event_id}`,
+              ) as HTMLCanvasElement | null;
+              if (!canvas) return;
+              const link = document.createElement('a');
+              link.href = canvas.toDataURL('image/png');
+              link.download = `${event.name.replace(/\s+/g, '_')}-invite-qr.png`;
+              link.click();
+            }}
+          >
+            Download QR Code for Printing
+          </button>
+        </div>
       )}
       <ul className="list">
         {invites.map((invite) => (

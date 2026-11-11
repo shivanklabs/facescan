@@ -16,19 +16,20 @@ from uuid import UUID
 
 import yaml
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser, revoke_sessions
 from app.core.context import AppContext, guest_search_allowed
 from app.core.deps import require_role
 from app.core.errors import ConflictError
+from app.core.policy import load_country_policy
 from app.db.event_scope import event_transaction, user_transaction
 from app.modules.audit.service import record
 from app.modules.consent.models import Consent
 from app.modules.events.models import Event
 from app.modules.identity.models import User
-from app.modules.matching.models import Match, UserTemplate
+from app.modules.matching.models import Match
 
 NOTICE = "notice"
 FACE_SEARCH = "face_search"
@@ -97,7 +98,12 @@ class GuestStatus:
 
 
 def guest_status(ctx: AppContext, user: CurrentUser, event_id: UUID) -> GuestStatus:
-    """Purpose: the guest's state in one event. 404 for non-members."""
+    """
+    Purpose: the guest's state in one event. 404 for non-members.
+    Inputs: ctx, user, event_id.
+    Outputs: GuestStatus with consent and search enablement flags.
+    Side effects: none.
+    """
     notice = notice_for(ctx)
     with event_transaction(ctx.sessions, event_id) as session:
         roles = require_role(
@@ -106,10 +112,17 @@ def guest_status(ctx: AppContext, user: CurrentUser, event_id: UUID) -> GuestSta
         account = session.get(User, user.user_id)
         event = session.get(Event, event_id)
         consent = active_consent(session, event_id, user.user_id, FACE_SEARCH)
+        policy = load_country_policy(
+            event.country if event else "IN", ctx.settings.config_policies_dir
+        )
+        age_answered = (
+            account is not None and account.age_answered_at is not None
+        ) or policy.minors_self_search_allowed
+        is_minor = (account is None or account.is_minor) and not policy.minors_self_search_allowed
         return GuestStatus(
             roles=tuple(sorted(roles)),
-            age_answered=account is not None and account.age_answered_at is not None,
-            is_minor=account is None or account.is_minor,
+            age_answered=age_answered,
+            is_minor=is_minor,
             consent_current=consent is not None and consent.notice_version == notice.version,
             notice_version=notice.version,
             search_enabled=guest_search_allowed(ctx.settings),
@@ -123,8 +136,9 @@ def grant(
 ) -> None:
     """
     Purpose: record the notice and the separate face-search consent for this event.
-    Raises 403 for non-guests and under-18s, 409 for an outdated notice version.
-    Side effects: inserts two consents rows and an audit row.
+    Inputs: ctx, user, event_id, notice_version, language.
+    Outputs: None.
+    Side effects: inserts consent rows, restores withdrawn matches, records audit log.
     """
     notice = notice_for(ctx)
     if notice_version != notice.version:
@@ -132,11 +146,16 @@ def grant(
     now = datetime.now(UTC)
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("guest",))
+        event = session.get(Event, event_id)
+        policy = load_country_policy(
+            event.country if event else "IN", ctx.settings.config_policies_dir
+        )
         account = session.get(User, user.user_id)
-        if account is None or account.age_answered_at is None:
-            raise HTTPException(status_code=403, detail="age_question_required")
-        if account.is_minor:
-            raise HTTPException(status_code=403, detail="minor_guardian_consent_required")
+        if not policy.minors_self_search_allowed:
+            if account is None or account.age_answered_at is None:
+                raise HTTPException(status_code=403, detail="age_question_required")
+            if account.is_minor:
+                raise HTTPException(status_code=403, detail="minor_guardian_consent_required")
         for purpose in (NOTICE, FACE_SEARCH):
             existing = active_consent(session, event_id, user.user_id, purpose)
             if existing is not None and existing.notice_version == notice.version:
@@ -153,6 +172,18 @@ def grant(
                     granted_at=now,
                 )
             )
+
+        # Restore matches previously marked as withdrawn
+        session.execute(
+            update(Match)
+            .where(
+                Match.event_id == event_id,
+                Match.user_id == user.user_id,
+                Match.score_band == "withdrawn",
+            )
+            .values(score_band="release")
+        )
+
         record(
             session,
             event_id=event_id,
@@ -164,10 +195,11 @@ def grant(
 
 def withdraw(ctx: AppContext, user: CurrentUser, event_id: UUID) -> dict[str, int]:
     """
-    Purpose: withdraw face-search consent for one event.
-    Side effects: marks consents withdrawn; deletes the guest's matches and templates for the
-        event; ends the guest's sessions for the event; writes an audit row.
-    Outputs: counts of what was removed.
+    Purpose: withdraw face-search consent for one event without deleting any data.
+    Inputs: ctx, user, event_id.
+    Outputs: dict of count of updated consents, matches, and revoked sessions.
+    Side effects: marks consents withdrawn, marks matches 'withdrawn',
+        ends event sessions, logs audit row.
     """
     now = datetime.now(UTC)
     with event_transaction(ctx.sessions, event_id) as session:
@@ -182,17 +214,18 @@ def withdraw(ctx: AppContext, user: CurrentUser, event_id: UUID) -> dict[str, in
         for consent in consents:
             consent.withdrawn_at = now
         matches = session.execute(
-            delete(Match).where(Match.event_id == event_id, Match.user_id == user.user_id)
-        )
-        templates = session.execute(
-            delete(UserTemplate).where(
-                UserTemplate.event_id == event_id, UserTemplate.user_id == user.user_id
+            update(Match)
+            .where(
+                Match.event_id == event_id,
+                Match.user_id == user.user_id,
+                Match.score_band == "release",
             )
+            .values(score_band="withdrawn")
         )
         counts = {
             "consents": len(consents),
             "matches": int(getattr(matches, "rowcount", 0) or 0),
-            "templates": int(getattr(templates, "rowcount", 0) or 0),
+            "templates": 0,
         }
         record(
             session, event_id=event_id, actor=user.actor, action="consent.withdrawn", details=counts

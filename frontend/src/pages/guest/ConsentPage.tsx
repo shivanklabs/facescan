@@ -16,7 +16,7 @@ export default function ConsentPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { eventId = '' } = useParams();
-  const { status, error, reload } = useGuestStatus(eventId);
+  const { status, error } = useGuestStatus(eventId);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [message, setMessage] = useState('');
@@ -36,11 +36,6 @@ export default function ConsentPage() {
   if (!status || !notice) return <p>{t('common.loading')}</p>;
   const text = notice.texts[lang] ?? notice.texts.en ?? {};
 
-  async function answerAge(isAdult: boolean) {
-    await api('/auth/age', { json: { is_adult: isAdult } });
-    reload();
-  }
-
   async function consent() {
     try {
       await api(`/events/${eventId}/consent`, {
@@ -51,23 +46,6 @@ export default function ConsentPage() {
       setMessage(t('consent.outdated'));
     }
   }
-
-  if (!status.age_answered) {
-    return (
-      <section className="card">
-        <h1>{text.age_question}</h1>
-        <div className="row">
-          <button type="button" onClick={() => void answerAge(true)}>
-            {t('consent.yes')}
-          </button>
-          <button type="button" className="secondary" onClick={() => void answerAge(false)}>
-            {t('consent.no')}
-          </button>
-        </div>
-      </section>
-    );
-  }
-  if (status.is_minor) return <p role="alert">{text.minor_message}</p>;
 
   return (
     <section className="card">
