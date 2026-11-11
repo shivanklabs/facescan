@@ -63,6 +63,18 @@ class Settings(BaseSettings):
     # Magic-link delivery. "console" prints links to the API terminal and only runs in dev.
     email_adapter: Literal["console"] = "console"
 
+    # Gemini scene query rewriting (optional; falls back to local query on failure/missing key).
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_timeout_seconds: float = Field(default=2.5, gt=0, le=10)
+
+    # Scene search and claims (B & C).
+    scene_search_per_guest_per_day: int = Field(default=10, ge=1, le=1000)
+    claims_per_guest_per_day: int = Field(default=5, ge=1, le=500)
+    preview_max_side: int = Field(default=480, ge=256, le=1024)
+    preview_jpeg_quality: int = Field(default=85, ge=50, le=100)
+    attempt_retention_days: int = Field(default=7, ge=1, le=90)
+
     # Event access and guest search.
     invite_default_days: int = Field(default=14, ge=1, le=90)
     search_per_user_per_hour: int = Field(default=10, ge=1, le=1000)

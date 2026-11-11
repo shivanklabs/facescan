@@ -2,7 +2,7 @@
 # DRAFT TEXT PENDING LEGAL REVIEW (India, DPDP Act 2023). Do not use with real guests until a
 # lawyer has approved both languages. Changing any text requires a new version: guests then
 # have to consent again.
-version: "2026-11-draft-1"
+version: "2026-11-draft-2"
 draft: true
 languages:
   en:
@@ -14,6 +14,7 @@ languages:
       Your selfie is processed in memory and never stored. We keep only the list of photos
       that matched you, so you can see them again. Organisers and photographers cannot see
       who matched which photo.
+      If you use scene search, your typed search description may be processed by Google to improve search terms; please do not include personal names or private details.
       You can withdraw at any time in Privacy settings. Withdrawing deletes your matches for
       this event and signs you out of it.
     consent_label: "I agree that FaceScan may use my live selfie to search this event's photos for me."
@@ -28,6 +29,7 @@ languages:
       आपकी सेल्फ़ी केवल मेमोरी में प्रोसेस होती है और कभी सहेजी नहीं जाती। हम केवल उन तस्वीरों की सूची रखते हैं
       जो आपसे मेल खाती हैं, ताकि आप उन्हें फिर से देख सकें। आयोजक और फ़ोटोग्राफ़र यह नहीं देख सकते कि
       कौन-सी तस्वीर किससे मेल खाई।
+      यदि आप दृश्य खोज (scene search) का उपयोग करते हैं, तो खोज शब्दों को बेहतर बनाने के लिए आपके द्वारा लिखे गए विवरण को Google द्वारा प्रोसेस किया जा सकता है; कृपया इसमें व्यक्तिगत नाम या निजी विवरण शामिल न करें।
       आप कभी भी गोपनीयता सेटिंग्स में अपनी सहमति वापस ले सकते हैं। सहमति वापस लेने पर इस कार्यक्रम के
       आपके मेल हटा दिए जाते हैं और आप इससे साइन आउट हो जाते हैं।
     consent_label: "मैं सहमत हूँ कि FaceScan मेरी लाइव सेल्फ़ी का उपयोग करके इस कार्यक्रम की तस्वीरों में मुझे खोज सकता है।"

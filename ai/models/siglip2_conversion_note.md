@@ -1,0 +1,26 @@
+# SigLIP 2 Conversion Note
+
+- **Upstream Model**: `google/siglip2-base-patch16-224` (Apache-2.0)
+- **Toolchain**:
+  - `torch==2.6.0+cpu`
+  - `transformers==5.22.2`
+  - `onnx==1.17.0`
+  - `onnxruntime==1.31.1`
+  - `opset=17`
+- **Exported Assets**:
+  - `siglip2_image_encoder.onnx`:
+    - Size: 371.8 MB
+    - SHA-256: `3875a39c90320d26f9bd7be8b79e90abe3453519ac4ec6d0de72d109a872593d`
+    - Input: `pixel_values` `(B, 3, 224, 224)` float32
+    - Output: `image_embeds` `(B, 768)` float32 (L2 normalized)
+  - `siglip2_text_encoder.onnx`:
+    - Size: 1129.4 MB
+    - SHA-256: `8a04c67626743c7e9899a82ee1740a10f6ebc777cbaa9fdd8d795d499bdc05f7`
+    - Input: `input_ids` `(B, 64)` int64
+    - Output: `text_embeds` `(B, 768)` float32 (L2 normalized)
+  - `tokenizer.json`:
+    - Size: 34.4 MB
+    - SHA-256: `cb9140fae3ac5122c972d37adf83e1248471a38147ad76f8215c8872c6fd8322`
+- **Verification**:
+  - Preprocessing and inference cosine similarity > 0.999 against Hugging Face PyTorch processor on scene images.
+  - Tokenizer IDs match Hugging Face tokenizer identically across English, Hindi, and Hinglish.

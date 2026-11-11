@@ -50,7 +50,9 @@ jobs:
       - name: Cache model weights
         uses: actions/cache@v4
         with:
-          path: ai/models/*.onnx
+          path: |
+            ai/models/*.onnx
+            ai/models/tokenizer.json
           key: models-${{ hashFiles('ai/models/models.lock.json') }}
       - name: Download model weights
         run: uv run tasks models

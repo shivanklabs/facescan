@@ -27,6 +27,7 @@ ai/models/**/*.onnx
 ai/models/**/*.pth
 ai/models/**/*.bin
 ai/models/weights/
+ai/models/tokenizer.json
 # Every file type in these folders (photos, videos, archives), not only image extensions.
 ai/benchmark/datasets/*
 !ai/benchmark/datasets/README.md

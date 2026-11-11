@@ -30,7 +30,7 @@ class InferenceSession:
     def run(
         self,
         output_names: Sequence[str] | None,
-        input_feed: dict[str, NDArray[np.float32]],
+        input_feed: dict[str, NDArray[np.float32] | NDArray[np.int64]],
     ) -> list[NDArray[np.float32]]: ...
 
 def set_default_logger_severity(severity: int) -> None: ...

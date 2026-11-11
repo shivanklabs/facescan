@@ -16,6 +16,12 @@ from app.modules.gallery.models import Claim
 from app.modules.identity.models import AuthChallenge, AuthSession, MagicLink, Passkey, User
 from app.modules.ingest.models import Photo
 from app.modules.matching.models import Match, SearchAttempt, UserTemplate
+from app.modules.scene_search.models import (
+    ClaimAttempt,
+    SceneEmbedding,
+    SceneSearchAttempt,
+    SceneSearchCandidate,
+)
 from app.modules.vision_pipeline.models import Cluster, EventCalibration, Face
 
 EVENT_SCOPED_TABLES = (
@@ -36,6 +42,10 @@ EVENT_SCOPED_TABLES = (
     "jobs",
     "event_invites",
     "search_attempts",
+    "scene_embeddings",
+    "scene_search_candidates",
+    "scene_search_attempts",
+    "claim_attempts",
 )
 
 __all__ = [
@@ -45,6 +55,7 @@ __all__ = [
     "AuthSession",
     "Base",
     "Claim",
+    "ClaimAttempt",
     "Cluster",
     "Collection",
     "Consent",
@@ -60,6 +71,9 @@ __all__ = [
     "Match",
     "Passkey",
     "Photo",
+    "SceneEmbedding",
+    "SceneSearchAttempt",
+    "SceneSearchCandidate",
     "SearchAttempt",
     "User",
     "UserTemplate",

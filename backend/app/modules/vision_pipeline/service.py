@@ -64,6 +64,7 @@ def index_event(ctx: AppContext, event_id: UUID) -> IndexSummary:
     for photo_id, bucket, object_key, old_web_key in photos:
         original = ctx.storage.get_object(bucket, event_id, object_key)
         faces = ctx.analyzer.analyse_photo(original)
+        scene_embedding = ctx.analyzer.embed_scene(original)
         web_key = ctx.storage.put_object(
             derivatives,
             event_id,
@@ -73,6 +74,7 @@ def index_event(ctx: AppContext, event_id: UUID) -> IndexSummary:
         del original
         with event_transaction(ctx.sessions, event_id) as session:
             repository.add_faces(session, event_id, photo_id, faces, key, key_version)
+            repository.save_scene_embedding(session, event_id, photo_id, scene_embedding, key)
             photo = session.get(Photo, photo_id)
             if photo is not None:
                 photo.web_object_key = web_key

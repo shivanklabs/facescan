@@ -8,11 +8,13 @@ Run every function inside the event's own transaction (RLS).
 import json
 from uuid import UUID
 
+import numpy as np
 from facescan_ai.index_store import decode_vector, encode_vector
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.core.crypto import aad, open_sealed, seal
+from app.core.crypto import MAGIC, NONCE_BYTES, aad, open_sealed, seal
+from app.modules.scene_search.models import SceneEmbedding, SceneSearchCandidate
 from app.modules.vision_pipeline.models import Cluster, EventCalibration, Face
 from app.ports.face_analyzer import AnalysedFace, BuiltCluster, BuiltEvent, StoredFace, Vector
 
@@ -30,10 +32,63 @@ def _unpack(packed: dict[str, str]) -> dict[str, Vector]:
 
 
 def delete_event_model(session: Session, event_id: UUID) -> None:
-    """Purpose: remove an event's faces, clusters and calibration before re-indexing."""
+    """Purpose: remove an event's faces, clusters, calibration and scene embeddings
+    before re-indexing."""
     session.execute(delete(Face).where(Face.event_id == event_id))
     session.execute(delete(Cluster).where(Cluster.event_id == event_id))
     session.execute(delete(EventCalibration).where(EventCalibration.event_id == event_id))
+    session.execute(delete(SceneEmbedding).where(SceneEmbedding.event_id == event_id))
+    session.execute(delete(SceneSearchCandidate).where(SceneSearchCandidate.event_id == event_id))
+
+
+def save_scene_embedding(
+    session: Session,
+    event_id: UUID,
+    photo_id: UUID,
+    vector: Vector,
+    data_key: bytes,
+    engine_version: str = "siglip2_base_patch16_224",
+) -> None:
+    """
+    Purpose: encrypt and store a photo's 768-dim SigLIP 2 scene embedding.
+    Inputs: db session, event_id, photo_id, float32 vector, event data key, engine_version.
+    Outputs: none. Side effects: inserts or updates scene_embeddings row.
+    """
+    plaintext = vector.astype(np.float32).tobytes()
+    associated = aad(event_id, "scene_embeddings", photo_id)
+    sealed = seal(data_key, plaintext, associated)
+    nonce = sealed[len(MAGIC) : len(MAGIC) + NONCE_BYTES]
+    ciphertext = sealed[len(MAGIC) + NONCE_BYTES :]
+    session.merge(
+        SceneEmbedding(
+            photo_id=photo_id,
+            event_id=event_id,
+            ciphertext=ciphertext,
+            nonce=nonce,
+            engine_version=engine_version,
+        )
+    )
+
+
+def load_scene_embeddings(session: Session, event_id: UUID, data_key: bytes) -> dict[UUID, Vector]:
+    """
+    Purpose: load and decrypt every scene embedding for the event into memory.
+    Inputs: db session, event_id, event data key.
+    Outputs: photo_id -> 768-dim FloatArray embedding.
+    Side effects: none.
+    """
+    embeddings: dict[UUID, Vector] = {}
+    rows = session.execute(
+        select(SceneEmbedding.photo_id, SceneEmbedding.ciphertext, SceneEmbedding.nonce).where(
+            SceneEmbedding.event_id == event_id
+        )
+    ).all()
+    for photo_id, ciphertext, nonce in rows:
+        sealed = MAGIC + bytes(nonce) + bytes(ciphertext)
+        associated = aad(event_id, "scene_embeddings", photo_id)
+        plaintext = open_sealed(data_key, sealed, associated)
+        embeddings[photo_id] = np.frombuffer(plaintext, dtype=np.float32)
+    return embeddings
 
 
 def add_faces(

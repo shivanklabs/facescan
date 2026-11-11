@@ -13,15 +13,20 @@ from uuid import UUID
 import cv2
 import numpy as np
 from facescan_ai.clustering.hdbscan_clusterer import EventCluster
+from facescan_ai.config import DetectorConfig
+from facescan_ai.detection.yunet import YuNetDetector
+from facescan_ai.embedding.base import cosine_similarity
 from facescan_ai.event_builder import EventBuildConfig, build_event
 from facescan_ai.image_io import ImageDecodeError, decode_image
 from facescan_ai.index_store import EventIndex, IndexedFace
 from facescan_ai.matching.bands import Band
-from facescan_ai.matching.calibration import EngineCalibration
+from facescan_ai.matching.calibration import DEFAULT_THRESHOLDS, EngineCalibration
 from facescan_ai.matching.matcher import MatchConfig, match_event
 from facescan_ai.matching.quality_gate import QualityGateConfig
 from facescan_ai.model_registry import ModelRegistry
 from facescan_ai.pipeline import FacePipeline, SelfieFaceCountError
+from facescan_ai.privacy.face_blur import create_blurred_preview
+from facescan_ai.scene import Siglip2SceneEmbedder
 from facescan_ai.types import BBox
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -77,6 +82,8 @@ class FacescanAiFaceAnalyzer:
         """Purpose: remember where models come from; nothing is loaded yet."""
         self._registry = registry
         self._pipeline: FacePipeline | None = None
+        self._scene_embedder: Siglip2SceneEmbedder | None = None
+        self._blur_detector: YuNetDetector | None = None
         self._lock = threading.Lock()
         self._gate = QualityGateConfig()
 
@@ -91,6 +98,23 @@ class FacescanAiFaceAnalyzer:
             if self._pipeline is None:
                 self._pipeline = FacePipeline(self._registry or ModelRegistry())
             return self._pipeline
+
+    def _get_scene_embedder(self) -> Siglip2SceneEmbedder:
+        """Purpose: load SigLIP 2 scene embedder once (thread-safe)."""
+        with self._lock:
+            if self._scene_embedder is None:
+                self._scene_embedder = Siglip2SceneEmbedder(self._registry or ModelRegistry())
+            return self._scene_embedder
+
+    def _get_blur_detector(self) -> YuNetDetector:
+        """Purpose: load YuNet detector with 0.35 threshold for candidate previews."""
+        with self._lock:
+            if self._blur_detector is None:
+                reg = self._registry or ModelRegistry()
+                spec, session = reg.create_session("yunet", threads=0)
+                cfg = DetectorConfig(score_threshold=0.35)
+                self._blur_detector = YuNetDetector(session, spec.version, cfg)
+            return self._blur_detector
 
     @property
     def engine_versions(self) -> dict[str, str]:
@@ -319,3 +343,89 @@ class FacescanAiFaceAnalyzer:
             some_photos_missing=has_borderline,
             frames_agree=True,
         )
+
+    def embed_scene(self, data: bytes) -> np.ndarray:
+        """Purpose: compute 768-dim SigLIP 2 scene embedding for photo. In memory only."""
+        image = decode_image(data)
+        return self._get_scene_embedder().embed_image(image)
+
+    def embed_scene_query(self, text: str) -> np.ndarray:
+        """Purpose: compute 768-dim SigLIP 2 scene embedding for search query text."""
+        return self._get_scene_embedder().embed_text(text)
+
+    def blurred_preview(self, data: bytes, max_side: int = 480, jpeg_quality: int = 85) -> bytes:
+        """
+        Purpose: low-resolution scene search candidate preview with every face blurred on server.
+        Uses YuNet with 0.35 threshold and tiling, enlarges boxes by 25%, and heavily blurs.
+        """
+        image = decode_image(data)
+        detector = self._get_blur_detector()
+        return create_blurred_preview(
+            image,
+            detector,
+            max_side=max_side,
+            jpeg_quality=jpeg_quality,
+            margin=0.25,
+        )
+
+    def match_face_1to1(
+        self,
+        candidate_embeddings: dict[str, np.ndarray],
+        calibration: dict[str, dict[str, float | int | bool | None]],
+        selfie_queries: list[SelfieQuery],
+        front_only: bool = False,
+        threshold_offset: float = 0.0,
+    ) -> bool:
+        """
+        Purpose: 1:1 check comparing fresh selfie against a candidate face applying all release
+            rules: quality gate (selfie_strong), calibrated release threshold on AuraFace, and
+            SFace second opinion.
+        Inputs: candidate face embeddings, calibration, selfie queries, front_only flag,
+            threshold_offset.
+        Outputs: bool (True = release, False = failed check).
+        Side effects: none.
+        """
+        if not selfie_queries:
+            return False
+
+        # Must have both primary and second engine embeddings for candidate face
+        cand_primary = candidate_embeddings.get("auraface")
+        cand_second = candidate_embeddings.get("sface")
+        if cand_primary is None or cand_second is None:
+            return False
+
+        # Extract calibrated release thresholds
+        def get_threshold(engine: str) -> float:
+            cal = calibration.get(engine)
+            if (
+                cal is not None
+                and "release_threshold" in cal
+                and isinstance(cal["release_threshold"], (int, float))
+            ):
+                return float(cal["release_threshold"]) + threshold_offset
+            return DEFAULT_THRESHOLDS[engine].release + threshold_offset
+
+        primary_thresh = get_threshold("auraface")
+        second_thresh = get_threshold("sface")
+
+        # In guided scan: test front queries (first 2 frames)
+        # In front-only fallback: all frames are front frames with stricter offset
+        eval_queries = (
+            selfie_queries[:2] if (not front_only and len(selfie_queries) >= 2) else selfie_queries
+        )
+
+        for q in eval_queries:
+            if not q.strong:
+                return False
+            q_primary = q.vectors.get("auraface")
+            q_second = q.vectors.get("sface")
+            if q_primary is None or q_second is None:
+                return False
+
+            score_primary = cosine_similarity(q_primary, cand_primary)
+            score_second = cosine_similarity(q_second, cand_second)
+
+            if score_primary < primary_thresh or score_second < second_thresh:
+                return False
+
+        return True

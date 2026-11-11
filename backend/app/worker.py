@@ -18,6 +18,7 @@ from app.core.config import Settings, get_settings
 from app.core.context import AppContext, ContextConfigError, build_context
 from app.core.logging import configure_logging
 from app.jobs.handlers import ON_FINAL_FAILURE, dispatch
+from app.modules.scene_search.service import cleanup_expired_attempts
 from app.ports.capabilities import Capabilities
 
 logger = logging.getLogger("facescan.worker")
@@ -58,6 +59,7 @@ def run_one(ctx: AppContext, worker: str) -> bool:
         logger.warning(
             "job failed",
             extra={"job_id": str(job.job_id), "error": type(exc).__name__, "retry": retry},
+            exc_info=True,
         )
         if not retry:
             handler = ON_FINAL_FAILURE.get(job.type)
@@ -91,6 +93,11 @@ def run(
         if max_iterations is not None and iterations >= max_iterations:
             break
         if not busy:
+            if ctx is not None:
+                try:
+                    cleanup_expired_attempts(ctx)
+                except Exception:  # noqa: BLE001
+                    logger.warning("cleanup_expired_attempts failed", exc_info=True)
             stop.wait(settings.worker_poll_interval_seconds)
     logger.info("worker stopped")
     return iterations

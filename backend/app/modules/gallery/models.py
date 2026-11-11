@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,7 +16,7 @@ class Claim(Base):
 
     __tablename__ = "claims"
     __table_args__ = (
-        CheckConstraint("status IN ('pending', 'accepted', 'rejected')", name="status"),
+        CheckConstraint("status IN ('pending', 'accepted', 'approved', 'rejected')", name="status"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -27,7 +27,14 @@ class Claim(Base):
     photo_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("photos.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    face_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("faces.id", ondelete="CASCADE"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    reason: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default="face_check_failed"
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )

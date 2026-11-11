@@ -41,6 +41,30 @@
       "licence": "Apache-2.0"
     },
     {
+      "name": "siglip2_image_encoder",
+      "version": "patch16-224",
+      "file": "siglip2_image_encoder.onnx",
+      "source_url": "https://github.com/shivanklabs/facescan/releases/download/models-v2/siglip2_image_encoder.onnx",
+      "sha256": "3875a39c90320d26f9bd7be8b79e90abe3453519ac4ec6d0de72d109a872593d",
+      "licence": "Apache-2.0"
+    },
+    {
+      "name": "siglip2_text_encoder",
+      "version": "patch16-224",
+      "file": "siglip2_text_encoder.onnx",
+      "source_url": "https://github.com/shivanklabs/facescan/releases/download/models-v2/siglip2_text_encoder.onnx",
+      "sha256": "8a04c67626743c7e9899a82ee1740a10f6ebc777cbaa9fdd8d795d499bdc05f7",
+      "licence": "Apache-2.0"
+    },
+    {
+      "name": "siglip2_tokenizer",
+      "version": "patch16-224",
+      "file": "tokenizer.json",
+      "source_url": "https://github.com/shivanklabs/facescan/releases/download/models-v2/tokenizer.json",
+      "sha256": "cb9140fae3ac5122c972d37adf83e1248471a38147ad76f8215c8872c6fd8322",
+      "licence": "Apache-2.0"
+    },
+    {
       "name": "ofiq",
       "version": "TODO",
       "file": "TODO",

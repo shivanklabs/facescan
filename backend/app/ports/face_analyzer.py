@@ -166,3 +166,29 @@ class FaceAnalyzer(Protocol):
         Outputs: FramesMatch (no scores, no vectors).
         """
         ...
+
+    def embed_scene(self, data: bytes) -> Vector:
+        """Purpose: compute 768-dim SigLIP 2 scene embedding for a photo. In memory only."""
+        ...
+
+    def embed_scene_query(self, text: str) -> Vector:
+        """Purpose: compute 768-dim SigLIP 2 scene embedding for search query text."""
+        ...
+
+    def blurred_preview(self, data: bytes, max_side: int = 480, jpeg_quality: int = 85) -> bytes:
+        """Purpose: return low-resolution blurred preview with every face blurred on server."""
+        ...
+
+    def match_face_1to1(
+        self,
+        candidate_embeddings: dict[str, Vector],
+        calibration: dict[str, dict[str, float | int | bool | None]],
+        selfie_queries: list[SelfieQuery],
+        front_only: bool = False,
+        threshold_offset: float = 0.0,
+    ) -> bool:
+        """
+        Purpose: 1:1 check comparing selfie against single candidate face applying all
+            release rules.
+        """
+        ...

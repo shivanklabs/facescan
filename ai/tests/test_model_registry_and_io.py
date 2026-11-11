@@ -60,7 +60,7 @@ def test_registry_verifies_checksums(tmp_path: Path) -> None:
 
 def test_real_lock_marks_liveness_pinned_and_ofiq_unverified() -> None:
     """
-    Purpose: verify that minifasnet models are pinned while ofiq remains unverified.
+    Purpose: verify that minifasnet and siglip2 models are pinned while ofiq remains unverified.
     Inputs: none. Outputs: none. Side effects: none.
     """
     registry = ModelRegistry()
@@ -70,6 +70,9 @@ def test_real_lock_marks_liveness_pinned_and_ofiq_unverified() -> None:
         "auraface",
         "minifasnet_v2",
         "minifasnet_v1se",
+        "siglip2_image_encoder",
+        "siglip2_text_encoder",
+        "siglip2_tokenizer",
     }
     with pytest.raises(UnverifiedModelError):
         registry.spec("ofiq")

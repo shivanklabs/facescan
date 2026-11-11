@@ -124,6 +124,24 @@ class ModelRegistry:
             raise ModelChecksumError(f"{spec.file} does not match the pinned SHA-256")
         return spec, data
 
+    def verified_path(self, name: str) -> Path:
+        """
+        Purpose: return path to model asset after verifying its SHA-256.
+        Inputs: model asset name.
+        Outputs: Path. Side effects: reads and hashes file.
+        """
+        spec = self.spec(name)
+        path = self.models_dir / spec.file
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError as exc:
+            raise ModelFileMissingError(
+                f"{spec.file} is missing; run `uv run tasks models`"
+            ) from exc
+        if hashlib.sha256(data).hexdigest() != spec.sha256:
+            raise ModelChecksumError(f"{spec.file} does not match the pinned SHA-256")
+        return path
+
     def create_session(self, name: str, threads: int = 0) -> tuple[ModelSpec, ort.InferenceSession]:
         """
         Purpose: build a CPU ONNX Runtime session from verified bytes.

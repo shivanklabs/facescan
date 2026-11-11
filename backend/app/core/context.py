@@ -20,6 +20,7 @@ from app.ports.job_queue import JobQueue
 from app.ports.key_manager import KeyManager
 from app.ports.liveness import Liveness
 from app.ports.object_storage import ObjectStorage
+from app.ports.query_rewriter import QueryRewriter
 
 
 class ContextConfigError(RuntimeError):
@@ -39,6 +40,7 @@ class AppContext:
     analyzer: FaceAnalyzer
     email: EmailSender
     liveness: Liveness | None = None
+    rewriter: QueryRewriter | None = None
 
 
 def build_context(
@@ -47,6 +49,7 @@ def build_context(
     search_path: str | None = None,
     email: EmailSender | None = None,
     liveness: Liveness | None = None,
+    rewriter: QueryRewriter | None = None,
 ) -> AppContext:
     """
     Purpose: build the adapters from settings (adapters.yaml defaults: local storage,
@@ -83,6 +86,14 @@ def build_context(
         from app.adapters.liveness.silent_face_liveness import SilentFaceLiveness
 
         liveness = SilentFaceLiveness()
+    if rewriter is None:
+        from app.adapters.query_rewriter.gemini_query_rewriter import GeminiQueryRewriter
+
+        rewriter = GeminiQueryRewriter(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            timeout_seconds=settings.gemini_timeout_seconds,
+        )
     return AppContext(
         settings=settings,
         engine=engine,
@@ -98,6 +109,7 @@ def build_context(
         analyzer=analyzer,
         email=email,
         liveness=liveness,
+        rewriter=rewriter,
     )
 
 

@@ -107,9 +107,15 @@ class FakeFaceAnalyzer(FacescanAiFaceAnalyzer):
     def analyse_photo(self, data: bytes) -> list[AnalysedFace]:
         person, count = _decode_marker(data)
         faces = []
+        # Standard seed for synthetic faces across PNG and JPEG container formats
+        canon_seed = int.from_bytes(b"IEND\xaeB\x60\x82", "little")
         for k in range(count):
             who = person if k == 0 else 200 + k  # extra faces are strangers
-            seed = int.from_bytes(data[-8:], "little") + k
+            seed = (
+                canon_seed + k
+                if data[-2:] == b"\xff\xd9"
+                else int.from_bytes(data[-8:], "little") + k
+            )
             faces.append(
                 AnalysedFace(
                     bbox=(10.0 + 120 * k, 10.0, 100.0, 120.0),
@@ -126,6 +132,43 @@ class FakeFaceAnalyzer(FacescanAiFaceAnalyzer):
         if count != 1:
             raise SelfieRejectedError(count)
         return SelfieQuery(vectors={e: person_vector(person, e, 99) for e in DIMS}, strong=True)
+
+    def embed_scene(self, data: bytes) -> np.ndarray:
+        """
+        Purpose: deterministic 768-dim normalized vector for tests without models.
+        Inputs: data (bytes). Outputs: np.ndarray shape (768,). Side effects: none.
+        """
+        seed = int.from_bytes(data[-8:], "little") if len(data) >= 8 else len(data)
+        rng = np.random.default_rng(seed)
+        v = rng.standard_normal(768).astype(np.float32)
+        return (v / np.linalg.norm(v)).astype(np.float32)
+
+    def embed_scene_query(self, text: str) -> np.ndarray:
+        """
+        Purpose: deterministic 768-dim normalized vector for query text without models.
+        Inputs: text (str). Outputs: np.ndarray shape (768,). Side effects: none.
+        """
+        import hashlib
+
+        h = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "little")
+        rng = np.random.default_rng(h)
+        v = rng.standard_normal(768).astype(np.float32)
+        return (v / np.linalg.norm(v)).astype(np.float32)
+
+    def blurred_preview(self, data: bytes, max_side: int = 480, jpeg_quality: int = 85) -> bytes:
+        """
+        Purpose: blurred JPEG preview for tests without requiring ONNX models.
+        Inputs: data (bytes), max_side (int), jpeg_quality (int).
+        Outputs: bytes. Side effects: none.
+        """
+        from PIL import ImageFilter
+
+        with Image.open(io.BytesIO(data)) as img:
+            img.thumbnail((max_side, max_side))
+            blurred = img.filter(ImageFilter.GaussianBlur(radius=15))
+            buf = io.BytesIO()
+            blurred.convert("RGB").save(buf, format="JPEG", quality=jpeg_quality)
+            return buf.getvalue()
 
 
 # ---------------------------------------------------------------- database
