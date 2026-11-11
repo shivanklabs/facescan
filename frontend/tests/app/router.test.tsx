@@ -43,6 +43,12 @@ describe('router', () => {
     expect(screen.getByRole('heading', { name: 'Take a selfie' })).toBeInTheDocument();
   });
 
+  it('renders the selfie page with no link to scene-search', () => {
+    const eventId = '11111111-1111-1111-1111-111111111111';
+    renderAt(`/events/${eventId}/selfie`);
+    expect(document.querySelector(`a[href*="/events/${eventId}/scene-search"]`)).toBeNull();
+  });
+
   it('shows an invalid-invite message for a bad link', async () => {
     renderAt('/e/00000000-0000-0000-0000-000000000000?k=bad');
     expect(await screen.findByRole('alert')).toHaveTextContent('invalid or has expired');

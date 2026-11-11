@@ -22,7 +22,6 @@ export default function SelfieCapturePage() {
   const [frontOnly, setFrontOnly] = useState(false);
   const [message, setMessage] = useState('');
   const [borderlineAttempts, setBorderlineAttempts] = useState(0);
-  const [offerSceneSearch, setOfferSceneSearch] = useState(false);
 
   useEffect(
     () => () => {
@@ -101,7 +100,6 @@ export default function SelfieCapturePage() {
         } else {
           setPhase('idle');
           stream.current?.getTracks().forEach((track) => track.stop());
-          setOfferSceneSearch(true);
           setMessage(t('selfie.borderlineSecond'));
           return;
         }
@@ -175,17 +173,7 @@ export default function SelfieCapturePage() {
 
       {phase === 'searching' && <p role="status">{t('selfie.searching')}</p>}
       {message && <p role="alert">{message}</p>}
-      {offerSceneSearch && (
-        <div className="card" style={{ marginTop: '16px', textAlign: 'center' }}>
-          <button
-            type="button"
-            className="button"
-            onClick={() => navigate(`/events/${eventId}/scene-search`)}
-          >
-            {t('selfie.goToSceneSearch')}
-          </button>
-        </div>
-      )}
+      {/* TODO(#scene-search): /events/{id}/scene-search page is not built yet; hide button to avoid 404 */}
     </>
   );
 }
