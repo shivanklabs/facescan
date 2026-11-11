@@ -21,8 +21,10 @@ from sqlalchemy import func, select, update
 from tests.conftest import make_png
 from tests.helpers import (
     FRAMES_HEADERS,
+    ORGANISER_EMAIL,
     frames_body,
     guest_client,
+    magic_sign_in,
     new_client,
     searchable_event,
 )
@@ -676,3 +678,60 @@ def test_face_search_preserves_claimed_photos(organiser: TestClient, ctx: AppCon
         assert claimed_match is not None
         assert claimed_match.source == "claim"
         assert claimed_match.score_band == "release"
+
+
+def test_claim_review_without_passkey_is_refused(organiser: TestClient, ctx: AppContext) -> None:
+    """
+    Purpose: verify that claim listing and review require a PasskeyUser session;
+    an organiser session without a passkey (magic link only) receives 403 passkey_required.
+    Inputs: organiser client, ctx.
+    Outputs: None.
+    Side effects: tests HTTP endpoints.
+    """
+    event_id, invite_url, photos = searchable_event(
+        ctx, organiser, [make_png(1, 1), make_png(2, 1)]
+    )
+    guest = guest_client(ctx, "claimant_guest2@example.test", event_id, invite_url)
+
+    # Guest submits a claim that goes to pending review
+    search_resp = guest.post(
+        f"/events/{event_id}/scene-search",
+        json={"query": "person"},
+    )
+    assert search_resp.status_code == 200
+    cand = search_resp.json()["candidates"][0]
+    photo_id = cand["photo_id"]
+    face_id = cand["faces"][0]["face_id"]
+
+    frames_fail = [make_selfie_b64(3), make_selfie_b64(3), make_selfie_b64(3)]
+    claim_resp = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": photo_id,
+            "face_id": face_id,
+            "frames": frames_fail,
+            "front_only": False,
+        },
+    )
+    assert claim_resp.status_code == 200
+
+    # Organiser signed in with magic link only (auth_method == "magic_link", not "passkey")
+    magic_client = new_client(ctx)
+    magic_sign_in(magic_client, ctx, ORGANISER_EMAIL)
+
+    # 1. Listing claims without passkey returns 403 passkey_required
+    list_resp = magic_client.get(f"/events/{event_id}/claims")
+    assert list_resp.status_code == 403
+    assert list_resp.json()["detail"] == "passkey_required"
+
+    # Get claim_id using passkey-authenticated organiser client
+    queue = organiser.get(f"/events/{event_id}/claims").json()
+    claim_id = queue["claims"][0]["claim_id"]
+
+    # 2. Reviewing claim without passkey returns 403 passkey_required
+    review_resp = magic_client.post(
+        f"/events/{event_id}/claims/{claim_id}/review",
+        json={"action": "approve"},
+    )
+    assert review_resp.status_code == 403
+    assert review_resp.json()["detail"] == "passkey_required"

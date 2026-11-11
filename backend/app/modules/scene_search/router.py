@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from app.core.deps import Ctx, User
+from app.core.deps import Ctx, PasskeyUser, User
 from app.core.rate_limit import RateLimiter
 from app.modules.scene_search import service
 from app.modules.scene_search.schemas import (
@@ -86,10 +86,10 @@ claims_router = APIRouter(prefix="/events/{event_id}/claims", tags=["claims"])
 
 
 @claims_router.get("", response_model=OrganiserClaimQueueResponse)
-def list_claims(event_id: UUID, user: User, ctx: Ctx) -> OrganiserClaimQueueResponse:
+def list_claims(event_id: UUID, user: PasskeyUser, ctx: Ctx) -> OrganiserClaimQueueResponse:
     """
     Purpose: list pending photo claims for the event organiser.
-    Inputs: event_id, authenticated user (must be organiser), app context.
+    Inputs: event_id, authenticated user (must be organiser with passkey), app context.
     Outputs: OrganiserClaimQueueResponse.
     Side effects: none.
     """
@@ -98,11 +98,12 @@ def list_claims(event_id: UUID, user: User, ctx: Ctx) -> OrganiserClaimQueueResp
 
 @claims_router.post("/{claim_id}/review", response_model=ReviewClaimResponse)
 def review_claim(
-    event_id: UUID, claim_id: UUID, req: ReviewClaimRequest, user: User, ctx: Ctx
+    event_id: UUID, claim_id: UUID, req: ReviewClaimRequest, user: PasskeyUser, ctx: Ctx
 ) -> ReviewClaimResponse:
     """
     Purpose: review a pending claim (approve or reject) by the event organiser.
-    Inputs: event_id, claim_id, review action, authenticated user (must be organiser), app context.
+    Inputs: event_id, claim_id, review action, authenticated user (must be
+        organiser with passkey), app context.
     Outputs: ReviewClaimResponse.
     Side effects: updates Claim status, adds Match if approved, records audit log.
     """
