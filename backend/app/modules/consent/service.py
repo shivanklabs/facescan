@@ -4,8 +4,8 @@
   guest records two consents per event: 'notice' (read the notice) and 'face_search'.
 - A face search needs a current, non-withdrawn face_search consent for the current notice
   version, an adult age answer, and the guest role.
-- Withdrawal sets withdrawn_at, deletes the guest's matches and any template for the event,
-  ends their sessions for the event, and is audit-logged.
+- Withdrawal (POST /events/{id}/consent/withdraw) sets withdrawn_at, marks matches
+  'withdrawn', ends event sessions, and is audit-logged.
 """
 
 from dataclasses import dataclass

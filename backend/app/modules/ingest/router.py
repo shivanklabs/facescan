@@ -253,7 +253,7 @@ def complete_chunked_upload(
     return UploadCompleteResponse(
         collection_id=result.collection_id,
         photo_id=result.photo_ids[0] if result.photo_ids else None,
-        status="approved" if result.photo_ids else "already_uploaded",
+        status="quarantined" if result.photo_ids else "already_uploaded",
         already_uploaded=bool(result.already_uploaded and not result.photo_ids),
         message=result.message,
     )

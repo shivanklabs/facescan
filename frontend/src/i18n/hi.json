@@ -127,7 +127,10 @@
     "send": "अपलोड करें",
     "done": "अपलोड हो गया। आयोजक उनकी समीक्षा करेंगे।",
     "alreadyUploaded": "पहले से अपलोड की गई: {{names}}",
-    "sending": "अपलोड हो रहा है…"
+    "sending": "अपलोड हो रहा है…",
+    "processingStatus": "प्रसंस्करण स्थिति",
+    "uploadingProgress": "अपलोड हो रहा है {{current}}/{{total}} ({{name}})…",
+    "failedUploading": "\"{{name}}\" अपलोड करने में विफल: {{msg}}। कृपया पुनः प्रयास करें।"
   },
   "claims": {
     "title": "दावों की समीक्षा",

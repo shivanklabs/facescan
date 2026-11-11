@@ -59,8 +59,8 @@ function Upload({ eventId }: { eventId: string }) {
           setDuplicates((prev) => [...prev, file.name]);
         }
       } catch (error) {
-        const msg = error instanceof Error ? error.message : 'Upload failed';
-        setDetail(`Failed uploading "${file.name}": ${msg}. Please retry.`);
+        const msg = error instanceof Error ? error.message : t('upload.failedUploading', { name: file.name, msg: '' });
+        setDetail(t('upload.failedUploading', { name: file.name, msg }));
         setState('error');
         setProgress(null);
         return;
@@ -79,7 +79,7 @@ function Upload({ eventId }: { eventId: string }) {
       >
         <h2>{t('organiser.upload')}</h2>
         <Link to={`/photographer/events/${eventId}/status`} className="link">
-          Processing Status
+          {t('upload.processingStatus')}
         </Link>
       </div>
       <label htmlFor="photos">{t('upload.choose')}</label>
@@ -93,7 +93,11 @@ function Upload({ eventId }: { eventId: string }) {
       <button type="submit" disabled={state === 'sending'}>
         {state === 'sending'
           ? progress
-            ? `Uploading ${progress.current}/${progress.total} (${progress.name})…`
+            ? t('upload.uploadingProgress', {
+                current: progress.current,
+                total: progress.total,
+                name: progress.name,
+              })
             : t('upload.sending')
           : t('upload.send')}
       </button>

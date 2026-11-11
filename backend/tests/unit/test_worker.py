@@ -1,8 +1,10 @@
 import threading
 from unittest.mock import MagicMock, patch
 
+import pytest
 from app.core.config import Settings
-from app.worker import run
+from app.core.context import ContextConfigError
+from app.worker import main, run
 
 
 def test_worker_idle_loop_runs_and_stops(settings: Settings) -> None:
@@ -33,3 +35,19 @@ def test_worker_cleanup_runs_at_most_once_an_hour(settings: Settings) -> None:
         assert iterations == 5
         # Even across 5 idle polls, cleanup runs exactly once
         assert mock_cleanup.call_count == 1
+
+
+def test_worker_fails_fast_in_prod_when_context_config_fails() -> None:
+    """
+    Purpose: verify that worker main() raises ContextConfigError in production.
+    Inputs: none.
+    Outputs: none.
+    Side effects: tests main() exception behavior.
+    """
+    with (
+        patch("app.worker.get_settings") as mock_settings,
+        patch("app.worker.build_context", side_effect=ContextConfigError("missing key")),
+    ):
+        mock_settings.return_value = Settings(env="prod", log_level="INFO")
+        with pytest.raises(ContextConfigError, match="missing key"):
+            main()

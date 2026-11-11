@@ -192,3 +192,45 @@ def test_chunked_upload_sha256_mismatch_persists_failed_status(
         upload_sess = session.get(UploadSession, UUID(upload_id))
         assert upload_sess is not None
         assert upload_sess.status == "failed"
+
+
+def test_chunk_init_total_chunks_and_complete_status_quarantined(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify chunk init returns total_chunks and complete returns status 'quarantined'.
+    Inputs: organiser client, ctx.
+    Outputs: None.
+    Side effects: performs chunked upload workflow and verifies response fields.
+    """
+    event_id, _, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
+    photo_data = make_png(2, 1)
+    photo_sha = hashlib.sha256(photo_data).hexdigest()
+
+    init_res = organiser.post(
+        f"/events/{event_id}/uploads/init",
+        json={
+            "filename": "sample.png",
+            "byte_size": len(photo_data),
+            "total_chunks": 1,
+            "expected_sha256": photo_sha,
+        },
+    )
+    assert init_res.status_code == 201
+    init_json = init_res.json()
+    assert "total_chunks" in init_json
+    assert init_json["total_chunks"] == 1
+    upload_id = init_json["upload_id"]
+
+    chunk_res = organiser.post(
+        f"/events/{event_id}/uploads/{upload_id}/chunk?chunk_index=0&chunk_sha256={photo_sha}",
+        content=photo_data,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert chunk_res.status_code == 200
+
+    complete_res = organiser.post(f"/events/{event_id}/uploads/{upload_id}/complete")
+    assert complete_res.status_code == 200
+    complete_json = complete_res.json()
+    assert complete_json["status"] == "quarantined"
+    assert complete_json["photo_id"] is not None

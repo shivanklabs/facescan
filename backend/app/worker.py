@@ -129,6 +129,8 @@ def main() -> None:
     try:
         ctx: AppContext | None = build_context(settings, email=NoEmailSender())
     except ContextConfigError as exc:
+        if settings.env != "dev":
+            raise
         logger.warning("database features disabled: %s", exc)
         ctx = None
     run(settings, stop, ctx=ctx)

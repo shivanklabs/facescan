@@ -18,6 +18,7 @@ from uuid import UUID
 import numpy as np
 from PIL import Image
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser
 from app.core.context import AppContext
@@ -140,6 +141,28 @@ def validate_files(ctx: AppContext, files: list[bytes]) -> list[ImageInfo]:
     return infos
 
 
+def _get_or_create_collection(
+    session: Session, event_id: UUID, collection_id: UUID | None
+) -> Collection:
+    """
+    Purpose: load an open collection or create a new one.
+    Inputs: session, event_id, collection_id (UUID | None).
+    Outputs: Collection model.
+    Side effects: adds Collection to session if new.
+    """
+    if collection_id is None:
+        collection = Collection(event_id=event_id)
+        session.add(collection)
+        session.flush()
+        return collection
+    found = session.get(Collection, collection_id)
+    if found is None or found.event_id != event_id:
+        raise NotFoundError("collection not found")
+    if found.status != "open":
+        raise ConflictError("collection is already approved")
+    return found
+
+
 def upload_photos(
     ctx: AppContext,
     event_id: UUID,
@@ -165,17 +188,7 @@ def upload_photos(
                 raise NotFoundError("event not found")
             if event.status == "closed":
                 raise ConflictError("event is closed")
-            if collection_id is None:
-                collection = Collection(event_id=event_id)
-                session.add(collection)
-                session.flush()
-            else:
-                found = session.get(Collection, collection_id)
-                if found is None or found.event_id != event_id:
-                    raise NotFoundError("collection not found")
-                if found.status != "open":
-                    raise ConflictError("collection is already approved")
-                collection = found
+            collection = _get_or_create_collection(session, event_id, collection_id)
             # Query existing SHA-256 digests and perceptual hashes in this event
             existing_sha256s = set(
                 session.scalars(
@@ -433,17 +446,7 @@ def init_upload_session(
             raise NotFoundError("event not found")
         if event.status == "closed":
             raise ConflictError("event is closed")
-        if collection_id is None:
-            collection = Collection(event_id=event_id)
-            session.add(collection)
-            session.flush()
-        else:
-            coll = session.get(Collection, collection_id)
-            if coll is None or coll.event_id != event_id:
-                raise NotFoundError("collection not found")
-            if coll.status != "open":
-                raise ConflictError("collection is already approved")
-            collection = coll
+        collection = _get_or_create_collection(session, event_id, collection_id)
 
         upload_session = UploadSession(
             event_id=event_id,

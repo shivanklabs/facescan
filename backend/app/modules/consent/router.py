@@ -52,7 +52,10 @@ def give_consent(event_id: UUID, body: ConsentRequest, user: User, ctx: Ctx) -> 
 
 @router.post("/events/{event_id}/consent/withdraw", response_model=WithdrawResponse)
 def withdraw(event_id: UUID, user: User, ctx: Ctx) -> JSONResponse:
-    """Purpose: withdraw consent; deletes matches and ends this event's sessions."""
+    """
+    Purpose: withdraw consent (POST /events/{id}/consent/withdraw); marks matches 'withdrawn'
+        and ends event sessions.
+    """
     counts = service.withdraw(ctx, user, event_id)
     response = JSONResponse(WithdrawResponse(**counts).model_dump())
     if user.session_event_id == event_id:

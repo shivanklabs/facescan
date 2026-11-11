@@ -111,11 +111,6 @@ def get_gallery_content(ctx: AppContext, user: CurrentUser, event_id: UUID) -> G
         return GalleryContent(photos=items, rejections=rejections)
 
 
-def gallery(ctx: AppContext, user: CurrentUser, event_id: UUID) -> list[GalleryItem]:
-    """Purpose: the guest's released photos as signed web-copy URLs. Side effects: audit."""
-    return get_gallery_content(ctx, user, event_id).photos
-
-
 def download(ctx: AppContext, user: CurrentUser, event_id: UUID, photo_id: UUID) -> bytes:
     """
     Purpose: full-resolution, metadata-free copy of one of the guest's released photos.

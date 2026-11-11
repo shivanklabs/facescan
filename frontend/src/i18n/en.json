@@ -127,7 +127,10 @@
     "send": "Upload",
     "done": "Uploaded. The organiser will review them.",
     "alreadyUploaded": "Already uploaded: {{names}}",
-    "sending": "Uploading…"
+    "sending": "Uploading…",
+    "processingStatus": "Processing Status",
+    "uploadingProgress": "Uploading {{current}}/{{total}} ({{name}})…",
+    "failedUploading": "Failed uploading \"{{name}}\": {{msg}}. Please retry."
   },
   "claims": {
     "title": "Review claims",
