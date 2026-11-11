@@ -9,8 +9,11 @@ from app.core.rate_limit import RateLimiter
 from app.modules.events import service
 from app.modules.events.schemas import (
     AddStaffRequest,
+    CameraInfo,
+    CameraListResponse,
     CreateEventRequest,
     CreateInviteRequest,
+    CreateSectionRequest,
     EventDetailResponse,
     EventListResponse,
     EventResponse,
@@ -18,6 +21,12 @@ from app.modules.events.schemas import (
     InviteListResponse,
     InviteResponse,
     PublicEventResponse,
+    SectionListResponse,
+    SectionResponse,
+    SetCameraOffsetRequest,
+    SetCameraOffsetResponse,
+    SetSearchWindowRequest,
+    SetSearchWindowResponse,
 )
 
 router = APIRouter(tags=["events"])
@@ -114,3 +123,81 @@ def resolve_invite(event_id: UUID, body: InviteKey, ctx: Ctx) -> PublicEventResp
 def join(event_id: UUID, body: InviteKey, user: User, ctx: Ctx) -> EventResponse:
     """Purpose: become a guest of the event through its invite link."""
     return _response(service.join_with_invite(ctx, user, event_id, body.key))
+
+
+@router.post("/events/{event_id}/sections", status_code=201, response_model=SectionResponse)
+def create_section(
+    event_id: UUID, body: CreateSectionRequest, user: PasskeyUser, ctx: Ctx
+) -> SectionResponse:
+    """Purpose: organiser creates an event section with optional time boundaries."""
+    section, count = service.create_section(
+        ctx, user, event_id, body.name, body.starts_at, body.ends_at
+    )
+    return SectionResponse(
+        id=section.id,
+        name=section.name,
+        starts_at=section.starts_at,
+        ends_at=section.ends_at,
+        photo_count=count,
+    )
+
+
+@router.get("/events/{event_id}/sections", response_model=SectionListResponse)
+def list_sections(event_id: UUID, user: User, ctx: Ctx) -> SectionListResponse:
+    """Purpose: list sections for an event."""
+    items = service.list_sections(ctx, user, event_id)
+    return SectionListResponse(
+        sections=[
+            SectionResponse(
+                id=sec.id,
+                name=sec.name,
+                starts_at=sec.starts_at,
+                ends_at=sec.ends_at,
+                photo_count=count,
+            )
+            for sec, count in items
+        ]
+    )
+
+
+@router.get("/events/{event_id}/cameras", response_model=CameraListResponse)
+def list_cameras(event_id: UUID, user: PasskeyUser, ctx: Ctx) -> CameraListResponse:
+    """Purpose: list cameras detected in event photos with clock sync offsets."""
+    cameras = service.list_cameras(ctx, user, event_id)
+    return CameraListResponse(
+        cameras=[
+            CameraInfo(
+                camera_make=c.camera_make,
+                camera_model=c.camera_model,
+                camera_serial=c.camera_serial,
+                photo_count=c.photo_count,
+                offset_seconds=c.offset_seconds,
+            )
+            for c in cameras
+        ]
+    )
+
+
+@router.post("/events/{event_id}/cameras/offset", response_model=SetCameraOffsetResponse)
+def set_camera_offset(
+    event_id: UUID, body: SetCameraOffsetRequest, user: PasskeyUser, ctx: Ctx
+) -> SetCameraOffsetResponse:
+    """Purpose: set camera clock sync offset in seconds."""
+    updated = service.set_camera_offset(
+        ctx, user, event_id, body.camera_model, body.camera_serial, body.offset_seconds
+    )
+    return SetCameraOffsetResponse(
+        camera_model=body.camera_model,
+        camera_serial=body.camera_serial,
+        offset_seconds=body.offset_seconds,
+        updated_photos=updated,
+    )
+
+
+@router.post("/events/{event_id}/search-window", response_model=SetSearchWindowResponse)
+def set_search_window(
+    event_id: UUID, body: SetSearchWindowRequest, user: PasskeyUser, ctx: Ctx
+) -> SetSearchWindowResponse:
+    """Purpose: organiser sets search window end date."""
+    ends_at = service.set_search_window(ctx, user, event_id, body.search_window_ends_at)
+    return SetSearchWindowResponse(event_id=event_id, search_window_ends_at=ends_at)

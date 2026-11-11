@@ -31,6 +31,7 @@ from app.core.errors import NotFoundError
 from app.db.event_scope import ADMIN_SCOPE, event_transaction, scoped_transaction
 from app.modules.audit.service import record
 from app.modules.consent.service import FACE_SEARCH, active_consent
+from app.modules.events import repository as events_repo
 from app.modules.events.service import data_key
 from app.modules.gallery.models import Claim
 from app.modules.identity.models import User
@@ -120,10 +121,17 @@ def verify_preview_signature(
 
 def _check_guest_search_access(session: Session, event_id: UUID, user: CurrentUser) -> None:
     """
-    Purpose: verify caller is an adult guest with active face search consent.
+    Purpose: verify guest has active face search consent and within search window.
     Raises HTTPException (403) on violation.
     """
     require_role(session, event_id, user.user_id, ("guest",))
+    event = events_repo.get_event(session, event_id)
+    if (
+        event is not None
+        and event.search_window_ends_at is not None
+        and datetime.now(UTC) > event.search_window_ends_at
+    ):
+        raise HTTPException(status_code=403, detail="Search window for this event has closed")
     account = session.get(User, user.user_id)
     if account is None or account.age_answered_at is None:
         raise HTTPException(status_code=403, detail="age_question_required")
@@ -188,10 +196,11 @@ async def search_scene(
         )
         if req.section_id is not None:
             stmt = stmt.where(Photo.section_id == req.section_id)
+        photo_time = func.coalesce(Photo.corrected_time, Photo.taken_at, Photo.created_at)
         if req.time_from is not None:
-            stmt = stmt.where(Photo.taken_at >= req.time_from)
+            stmt = stmt.where(photo_time >= req.time_from)
         if req.time_to is not None:
-            stmt = stmt.where(Photo.taken_at <= req.time_to)
+            stmt = stmt.where(photo_time <= req.time_to)
 
         eligible_photo_ids = set(session.scalars(stmt.with_only_columns(Photo.id)))
 

@@ -4,13 +4,14 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 from app.db.columns import created_at, event_fk, uuid_pk
 
 PHOTO_STATUSES = ("quarantined", "approved", "indexed", "failed")
+UPLOAD_SESSION_STATUSES = ("in_progress", "completed", "failed")
 
 
 class Photo(Base):
@@ -48,4 +49,37 @@ class Photo(Base):
     phash: Mapped[str | None] = mapped_column(String(16))
     is_near_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    camera_make: Mapped[str | None] = mapped_column(String(64))
+    camera_model: Mapped[str | None] = mapped_column(String(64))
+    camera_serial: Mapped[str | None] = mapped_column(String(64))
+    corrected_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = created_at()
+
+
+class UploadSession(Base):
+    """Tracks a resumable chunked upload for an event collection."""
+
+    __tablename__ = "upload_sessions"
+    __table_args__ = (CheckConstraint(f"status IN {UPLOAD_SESSION_STATUSES}", name="status"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    event_id: Mapped[uuid.UUID] = event_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_chunks: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_chunks: Mapped[list[int]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="in_progress")
     created_at: Mapped[datetime] = created_at()

@@ -5,6 +5,7 @@ from app.jobs.models import Job
 from app.modules.audit.models import AuditLog
 from app.modules.consent.models import Consent
 from app.modules.events.models import (
+    CameraOffset,
     Collection,
     Event,
     EventInvite,
@@ -14,7 +15,7 @@ from app.modules.events.models import (
 )
 from app.modules.gallery.models import Claim
 from app.modules.identity.models import AuthChallenge, AuthSession, MagicLink, Passkey, User
-from app.modules.ingest.models import Photo
+from app.modules.ingest.models import Photo, UploadSession
 from app.modules.matching.models import CannotLink, Match, SearchAttempt, UserTemplate
 from app.modules.scene_search.models import (
     ClaimAttempt,
@@ -47,6 +48,8 @@ EVENT_SCOPED_TABLES = (
     "scene_search_attempts",
     "claim_attempts",
     "cannot_links",
+    "camera_offsets",
+    "upload_sessions",
 )
 
 __all__ = [
@@ -55,6 +58,7 @@ __all__ = [
     "AuthChallenge",
     "AuthSession",
     "Base",
+    "CameraOffset",
     "CannotLink",
     "Claim",
     "ClaimAttempt",
@@ -77,6 +81,7 @@ __all__ = [
     "SceneSearchAttempt",
     "SceneSearchCandidate",
     "SearchAttempt",
+    "UploadSession",
     "User",
     "UserTemplate",
 ]

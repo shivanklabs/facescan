@@ -31,6 +31,13 @@ class NotFoundError(DomainError):
     code = "not_found"
 
 
+class ForbiddenError(DomainError):
+    """The caller is authenticated but not allowed to perform this action."""
+
+    status_code = 403
+    code = "forbidden"
+
+
 class ConflictError(DomainError):
     """The resource is in a state that does not allow the action."""
 

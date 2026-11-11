@@ -10,7 +10,7 @@ when the request ends (app/core/multipart.py). Selfies never take this path.
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from starlette.datastructures import UploadFile
 
 from app.core.deps import Ctx, PasskeyUser
@@ -22,7 +22,15 @@ from app.modules.ingest.schemas import (
     ApproveResponse,
     CollectionListResponse,
     CollectionResponse,
+    FailedPhotoInfo,
+    ProcessingStatusResponse,
+    RetryPhotoResponse,
+    UploadChunkResponse,
+    UploadCompleteResponse,
+    UploadInitRequest,
+    UploadInitResponse,
     UploadResponse,
+    UploadStatusResponse,
 )
 
 router = APIRouter(prefix="/events/{event_id}", tags=["upload"])
@@ -121,4 +129,111 @@ def list_collections(event_id: UUID, user: PasskeyUser, ctx: Ctx) -> CollectionL
             )
             for c in service.list_collections(ctx, event_id, user)
         ]
+    )
+
+
+@router.post("/uploads/init", status_code=201, response_model=UploadInitResponse)
+def init_chunked_upload(
+    event_id: UUID, body: UploadInitRequest, user: PasskeyUser, ctx: Ctx
+) -> UploadInitResponse:
+    """Purpose: initialize a resumable chunked upload session."""
+    session, chunk_size = service.init_upload_session(
+        ctx,
+        event_id,
+        body.collection_id,
+        body.filename,
+        body.byte_size,
+        body.total_chunks,
+        body.expected_sha256,
+        user,
+    )
+    return UploadInitResponse(
+        upload_id=session.id,
+        collection_id=session.collection_id,
+        chunk_size=chunk_size,
+        total_chunks=session.total_chunks,
+        received_chunks=list(session.received_chunks),
+    )
+
+
+@router.post("/uploads/{upload_id}/chunk", response_model=UploadChunkResponse)
+async def upload_chunk_part(
+    event_id: UUID,
+    upload_id: UUID,
+    request: Request,
+    user: PasskeyUser,
+    ctx: Ctx,
+    chunk_index: int = Query(..., ge=0),
+    chunk_sha256: str | None = Query(default=None),
+) -> UploadChunkResponse:
+    """Purpose: receive and verify a single chunk in a chunked upload."""
+    chunk_data = await request.body()
+    if not chunk_data:
+        raise UnprocessableError("empty chunk data")
+    received = service.upload_chunk(
+        ctx, event_id, upload_id, chunk_index, chunk_sha256, chunk_data, user
+    )
+    upload_sess = service.get_upload_session(ctx, event_id, upload_id, user)
+    return UploadChunkResponse(
+        received_chunks=received,
+        complete=len(received) == upload_sess.total_chunks,
+    )
+
+
+@router.get("/uploads/{upload_id}", response_model=UploadStatusResponse)
+def get_chunked_upload_status(
+    event_id: UUID, upload_id: UUID, user: PasskeyUser, ctx: Ctx
+) -> UploadStatusResponse:
+    """Purpose: inspect state of a chunked upload for resuming."""
+    sess = service.get_upload_session(ctx, event_id, upload_id, user)
+    return UploadStatusResponse(
+        upload_id=sess.id,
+        filename=sess.filename,
+        byte_size=sess.byte_size,
+        total_chunks=sess.total_chunks,
+        received_chunks=list(sess.received_chunks),
+        status=sess.status,
+    )
+
+
+@router.post("/uploads/{upload_id}/complete", response_model=UploadCompleteResponse)
+def complete_chunked_upload(
+    event_id: UUID, upload_id: UUID, user: PasskeyUser, ctx: Ctx
+) -> UploadCompleteResponse:
+    """Purpose: finalize chunked upload, verify full SHA-256 and ingest photo."""
+    result = service.complete_upload_session(ctx, event_id, upload_id, user)
+    return UploadCompleteResponse(
+        collection_id=result.collection_id,
+        photo_id=result.photo_ids[0] if result.photo_ids else None,
+        status="approved" if result.photo_ids else "already_uploaded",
+        already_uploaded=bool(result.already_uploaded and not result.photo_ids),
+        message=result.message,
+    )
+
+
+@router.get("/processing-status", response_model=ProcessingStatusResponse)
+def get_processing_status(event_id: UUID, user: PasskeyUser, ctx: Ctx) -> ProcessingStatusResponse:
+    """Purpose: photographer processing status counts and failed photos."""
+    view = service.get_processing_status(ctx, event_id, user)
+    return ProcessingStatusResponse(
+        quarantined=view.quarantined,
+        approved=view.approved,
+        indexed=view.indexed,
+        failed=view.failed,
+        near_duplicates=view.near_duplicates,
+        failed_photos=[
+            FailedPhotoInfo(id=pid, filename=fname, created_at=fcreated)
+            for pid, fname, fcreated in view.failed_photos
+        ],
+    )
+
+
+@router.post("/photos/{photo_id}/retry", response_model=RetryPhotoResponse)
+def retry_photo(event_id: UUID, photo_id: UUID, user: PasskeyUser, ctx: Ctx) -> RetryPhotoResponse:
+    """Purpose: retry a failed photo by setting it to approved and queueing index_event."""
+    status = service.retry_failed_photo(ctx, event_id, photo_id, user)
+    return RetryPhotoResponse(
+        photo_id=photo_id,
+        status=status,
+        message="Photo queued for retry",
     )

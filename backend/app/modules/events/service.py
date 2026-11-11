@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser, find_or_create_user, hash_token, new_token, normalise_email
@@ -26,8 +26,16 @@ from app.core.errors import ConflictError, NotFoundError, UnprocessableError
 from app.db.event_scope import event_transaction, user_transaction
 from app.modules.audit.service import record
 from app.modules.events import repository
-from app.modules.events.models import Event, EventInvite, EventKey, EventMember
+from app.modules.events.models import (
+    CameraOffset,
+    Event,
+    EventInvite,
+    EventKey,
+    EventMember,
+    EventSection,
+)
 from app.modules.identity.models import User
+from app.modules.ingest.models import Photo
 from app.ports.key_manager import KeyManager
 
 
@@ -301,3 +309,261 @@ def destroy_event_key(ctx: AppContext, event_id: UUID, actor: str) -> None:
         row.destroyed_at = datetime.now(UTC)
         event.status = "closed"
         record(session, event_id=event_id, actor=actor, action="event.key_destroyed")
+
+
+def create_section(
+    ctx: AppContext,
+    user: CurrentUser,
+    event_id: UUID,
+    name: str,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+) -> tuple[EventSection, int]:
+    """
+    Purpose: create an event section (name, optional time boundaries) and auto-assign photos.
+    Inputs: event_id, name, starts_at, ends_at, user.
+    Outputs: tuple of (EventSection, assigned photo count).
+    Side effects: inserts event_sections row; updates photo.section_id; writes audit row.
+    """
+    if starts_at and ends_at and starts_at > ends_at:
+        raise UnprocessableError("starts_at must be earlier than ends_at")
+
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, user.user_id, ("organiser",))
+        event = repository.get_event(session, event_id)
+        if event is None or event.status == "closed":
+            raise NotFoundError("event not found or closed")
+
+        section = EventSection(
+            event_id=event_id,
+            name=name,
+            starts_at=starts_at,
+            ends_at=ends_at,
+        )
+        session.add(section)
+        session.flush()
+
+        assigned_count = 0
+        if starts_at and ends_at:
+            photos = session.scalars(
+                select(Photo).where(
+                    Photo.event_id == event_id,
+                    Photo.corrected_time >= starts_at,
+                    Photo.corrected_time <= ends_at,
+                )
+            ).all()
+            for photo in photos:
+                photo.section_id = section.id
+                assigned_count += 1
+
+        record(
+            session,
+            event_id=event_id,
+            actor=user.actor,
+            action="section.created",
+            target=str(section.id),
+            details={"name": name, "assigned_photos": assigned_count},
+        )
+        return section, assigned_count
+
+
+def list_sections(
+    ctx: AppContext,
+    user: CurrentUser,
+    event_id: UUID,
+) -> list[tuple[EventSection, int]]:
+    """
+    Purpose: list all sections for an event with assigned photo counts.
+    Inputs: event_id, user.
+    Outputs: list of (EventSection, photo_count) tuples.
+    Side effects: none.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, user.user_id, ("organiser", "photographer", "guest"))
+        sections = list(
+            session.scalars(
+                select(EventSection)
+                .where(EventSection.event_id == event_id)
+                .order_by(EventSection.starts_at.asc().nulls_last(), EventSection.created_at.asc())
+            )
+        )
+        counts = dict(
+            session.execute(
+                select(Photo.section_id, func.count(Photo.id))
+                .where(Photo.event_id == event_id, Photo.section_id.is_not(None))
+                .group_by(Photo.section_id)
+            ).all()
+        )
+        return [(sec, counts.get(sec.id, 0)) for sec in sections]
+
+
+@dataclass(frozen=True, slots=True)
+class CameraView:
+    """Camera detected from photo EXIF with clock sync offset and photo count."""
+
+    camera_make: str | None
+    camera_model: str
+    camera_serial: str | None
+    photo_count: int
+    offset_seconds: int
+
+
+def list_cameras(
+    ctx: AppContext,
+    user: CurrentUser,
+    event_id: UUID,
+) -> list[CameraView]:
+    """
+    Purpose: list distinct cameras detected from photo EXIF in this event along with offsets.
+    Inputs: event_id, user.
+    Outputs: list of CameraView objects with make, model, serial, photo_count, offset_seconds.
+    Side effects: none.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, user.user_id, ("organiser", "photographer"))
+        # Group photos by camera
+        rows = session.execute(
+            select(
+                Photo.camera_make,
+                Photo.camera_model,
+                Photo.camera_serial,
+                func.count(Photo.id),
+            )
+            .where(Photo.event_id == event_id, Photo.camera_model.is_not(None))
+            .group_by(Photo.camera_make, Photo.camera_model, Photo.camera_serial)
+        ).all()
+
+        offsets = list(
+            session.scalars(select(CameraOffset).where(CameraOffset.event_id == event_id))
+        )
+        result: list[CameraView] = []
+        for make, model, serial, count in rows:
+            offset_sec = 0
+            for off in offsets:
+                if off.camera_model == model and (
+                    off.camera_serial is None or off.camera_serial == serial
+                ):
+                    offset_sec = off.offset_seconds
+                    break
+            result.append(
+                CameraView(
+                    camera_make=str(make) if make is not None else None,
+                    camera_model=str(model),
+                    camera_serial=str(serial) if serial is not None else None,
+                    photo_count=int(count),
+                    offset_seconds=offset_sec,
+                )
+            )
+        return result
+
+
+def set_camera_offset(
+    ctx: AppContext,
+    user: CurrentUser,
+    event_id: UUID,
+    camera_model: str,
+    camera_serial: str | None,
+    offset_seconds: int,
+) -> int:
+    """
+    Purpose: upsert clock offset for camera and recompute photo corrected_time and sections.
+    Inputs: event_id, camera_model, camera_serial, offset_seconds, user.
+    Outputs: count of updated photos.
+    Side effects: upserts camera_offsets; updates photos; writes audit row.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, user.user_id, ("organiser", "photographer"))
+        # Upsert camera_offsets
+        existing = session.scalars(
+            select(CameraOffset).where(
+                CameraOffset.event_id == event_id,
+                CameraOffset.camera_model == camera_model,
+                CameraOffset.camera_serial == camera_serial,
+            )
+        ).first()
+        if existing is not None:
+            existing.offset_seconds = offset_seconds
+        else:
+            session.add(
+                CameraOffset(
+                    event_id=event_id,
+                    camera_model=camera_model,
+                    camera_serial=camera_serial,
+                    offset_seconds=offset_seconds,
+                )
+            )
+        session.flush()
+
+        sections = list(
+            session.scalars(select(EventSection).where(EventSection.event_id == event_id))
+        )
+
+        stmt = select(Photo).where(
+            Photo.event_id == event_id,
+            Photo.camera_model == camera_model,
+        )
+        if camera_serial is not None:
+            stmt = stmt.where(Photo.camera_serial == camera_serial)
+
+        photos = session.scalars(stmt).all()
+        updated_count = 0
+        for photo in photos:
+            if photo.taken_at is not None:
+                photo.corrected_time = photo.taken_at + timedelta(seconds=offset_seconds)
+            else:
+                photo.corrected_time = photo.created_at
+
+            # Re-evaluate section assignment
+            matched_section_id: UUID | None = None
+            for s in sections:
+                if s.starts_at and s.ends_at and s.starts_at <= photo.corrected_time <= s.ends_at:
+                    matched_section_id = s.id
+                    break
+            photo.section_id = matched_section_id
+            updated_count += 1
+
+        record(
+            session,
+            event_id=event_id,
+            actor=user.actor,
+            action="camera.offset_updated",
+            details={
+                "camera_model": camera_model,
+                "camera_serial": camera_serial,
+                "offset_seconds": offset_seconds,
+                "updated_photos": updated_count,
+            },
+        )
+        return updated_count
+
+
+def set_search_window(
+    ctx: AppContext,
+    user: CurrentUser,
+    event_id: UUID,
+    search_window_ends_at: datetime | None,
+) -> datetime | None:
+    """
+    Purpose: set search window end date on an event.
+    Inputs: event_id, search_window_ends_at (datetime or None), user.
+    Outputs: updated search_window_ends_at.
+    Side effects: updates events.search_window_ends_at; writes audit row.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, user.user_id, ("organiser",))
+        event = repository.get_event(session, event_id)
+        if event is None or event.status == "closed":
+            raise NotFoundError("event not found or closed")
+        event.search_window_ends_at = search_window_ends_at
+        record(
+            session,
+            event_id=event_id,
+            actor=user.actor,
+            action="event.search_window_updated",
+            details={
+                "search_window_ends_at": (
+                    search_window_ends_at.isoformat() if search_window_ends_at else None
+                )
+            },
+        )
+        return event.search_window_ends_at

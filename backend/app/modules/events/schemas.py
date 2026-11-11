@@ -83,3 +83,76 @@ class PublicEventResponse(BaseModel):
     event_id: UUID
     name: str
     status: str
+
+
+class CreateSectionRequest(BaseModel):
+    """Body: create an event section with optional time boundary."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+
+class SectionResponse(BaseModel):
+    """Section metadata and assigned photo count."""
+
+    id: UUID
+    name: str
+    starts_at: datetime | None
+    ends_at: datetime | None
+    photo_count: int = 0
+
+
+class SectionListResponse(BaseModel):
+    """List of sections for an event."""
+
+    sections: list[SectionResponse]
+
+
+class CameraInfo(BaseModel):
+    """Camera detected from photo EXIF with offset and photo count."""
+
+    camera_make: str | None = None
+    camera_model: str
+    camera_serial: str | None = None
+    photo_count: int
+    offset_seconds: int
+
+
+class CameraListResponse(BaseModel):
+    """List of cameras detected in an event."""
+
+    cameras: list[CameraInfo]
+
+
+class SetCameraOffsetRequest(BaseModel):
+    """Body: set clock sync offset in seconds for a camera model / serial."""
+
+    model_config = ConfigDict(extra="forbid")
+    camera_model: str = Field(min_length=1, max_length=64)
+    camera_serial: str | None = Field(default=None, max_length=64)
+    offset_seconds: int = Field(ge=-86400, le=86400)
+
+
+class SetCameraOffsetResponse(BaseModel):
+    """Result of setting camera clock sync offset."""
+
+    camera_model: str
+    camera_serial: str | None
+    offset_seconds: int
+    updated_photos: int
+
+
+class SetSearchWindowRequest(BaseModel):
+    """Body: set search window end date."""
+
+    model_config = ConfigDict(extra="forbid")
+    search_window_ends_at: datetime | None = None
+
+
+class SetSearchWindowResponse(BaseModel):
+    """Response after updating search window."""
+
+    event_id: UUID
+    search_window_ends_at: datetime | None

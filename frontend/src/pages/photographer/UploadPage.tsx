@@ -1,7 +1,7 @@
 // UploadPage (photographer or organiser): upload event photos into quarantine for approval.
 // Requires a passkey session.
 import { useState, type FormEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PasskeyGate } from '@/features/auth/PasskeyGate';
 import { api } from '@/lib/apiClient';
@@ -73,6 +73,12 @@ function Upload({ eventId }: { eventId: string }) {
 
   return (
     <form className="card" onSubmit={(e) => void send(e)}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h2>{t('organiser.upload')}</h2>
+        <Link to={`/photographer/events/${eventId}/status`} className="link">
+          Processing Status
+        </Link>
+      </div>
       <label htmlFor="photos">{t('upload.choose')}</label>
       <input
         id="photos"

@@ -66,6 +66,7 @@ function EventAdmin({ event }: { event: EventSummary }) {
       <div className="row">
         <Link to={`/organiser/events/${event.event_id}/approval`}>{t('organiser.approval')}</Link>
         <Link to={`/photographer/events/${event.event_id}/upload`}>{t('organiser.upload')}</Link>
+        <Link to={`/photographer/events/${event.event_id}/status`}>Processing Status</Link>
       </div>
       <h3>{t('organiser.invites')}</h3>
       <button type="button" onClick={() => void createInvite()}>

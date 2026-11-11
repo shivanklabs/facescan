@@ -62,6 +62,8 @@ def _check_and_count(ctx: AppContext, user: CurrentUser, event_id: UUID) -> None
         event = events_repo.get_event(session, event_id)
         if event is None or event.status != "searchable":
             raise ConflictError("this event's photos are not ready yet")
+        if event.search_window_ends_at is not None and now > event.search_window_ends_at:
+            raise HTTPException(status_code=403, detail="Search window for this event has closed")
         mine = session.scalar(
             select(func.count())
             .select_from(SearchAttempt)

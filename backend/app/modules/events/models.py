@@ -69,6 +69,21 @@ class EventSection(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     event_id: Mapped[uuid.UUID] = event_fk()
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+
+
+class CameraOffset(Base):
+    """Per-camera clock sync offset for an event."""
+
+    __tablename__ = "camera_offsets"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    event_id: Mapped[uuid.UUID] = event_fk()
+    camera_model: Mapped[str] = mapped_column(String(64), nullable=False)
+    camera_serial: Mapped[str | None] = mapped_column(String(64))
+    offset_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = created_at()
 
 
