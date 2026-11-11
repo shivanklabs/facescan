@@ -62,6 +62,7 @@
     "guidedOption": "Switch to full guided scan",
     "cameraError": "The camera could not be opened. Allow camera access and try again.",
     "tooMany": "Too many searches. Please try again later.",
+    "errSpoof": "Live face not detected. Printed photos or screens are not allowed. Please present your real face directly to the camera.",
     "errBlurry": "The scan was blurry. Please hold steady and try again.",
     "errDark": "Too dark. Please move to a brighter, well-lit area.",
     "errBright": "Too bright or overexposed. Please adjust your lighting.",

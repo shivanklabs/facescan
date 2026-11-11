@@ -51,8 +51,15 @@ export default function SelfieCapturePage() {
     }
   }
 
+  /**
+   * Purpose: translate API rejection reason strings into user-friendly localized messages.
+   * Inputs: detail string from backend UnprocessableError.
+   * Outputs: localized UI error string.
+   * Side effects: none.
+   */
   function formatError(detail: string): string {
     const d = detail.toLowerCase();
+    if (d.includes('spoof')) return t('selfie.errSpoof');
     if (d.includes('blurry')) return t('selfie.errBlurry');
     if (d.includes('too_dark')) return t('selfie.errDark');
     if (d.includes('overexposed') || d.includes('too_bright')) return t('selfie.errBright');
