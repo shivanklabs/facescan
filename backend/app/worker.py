@@ -12,6 +12,7 @@ import os
 import signal
 import socket
 import threading
+import time
 from types import FrameType
 
 from app.core.config import Settings, get_settings
@@ -71,6 +72,9 @@ def run_one(ctx: AppContext, worker: str) -> bool:
     return True
 
 
+CLEANUP_INTERVAL_SECONDS = 3600.0
+
+
 def run(
     settings: Settings,
     stop: threading.Event,
@@ -78,14 +82,15 @@ def run(
     ctx: AppContext | None = None,
 ) -> int:
     """
-    Purpose: main poll loop.
+    Purpose: main poll loop with hourly expired attempt cleanup.
     Inputs: settings (poll interval), a stop event, optional iteration cap (tests), optional
         application context (None = idle loop without a database).
     Outputs: number of poll iterations performed.
-    Side effects: runs jobs; sleeps between empty polls; logs start/stop and job outcomes.
+    Side effects: runs jobs; cleans expired attempts at most hourly; sleeps between empty polls.
     """
     iterations = 0
     worker = worker_id()
+    last_cleanup: float = 0.0
     logger.info("worker started", extra={"poll_interval": settings.worker_poll_interval_seconds})
     while not stop.is_set():
         busy = run_one(ctx, worker) if ctx is not None else False
@@ -94,10 +99,13 @@ def run(
             break
         if not busy:
             if ctx is not None:
-                try:
-                    cleanup_expired_attempts(ctx)
-                except Exception:  # noqa: BLE001
-                    logger.warning("cleanup_expired_attempts failed", exc_info=True)
+                now = time.monotonic()
+                if now - last_cleanup >= CLEANUP_INTERVAL_SECONDS:
+                    last_cleanup = now
+                    try:
+                        cleanup_expired_attempts(ctx)
+                    except Exception:  # noqa: BLE001
+                        logger.warning("cleanup_expired_attempts failed", exc_info=True)
             stop.wait(settings.worker_poll_interval_seconds)
     logger.info("worker stopped")
     return iterations
