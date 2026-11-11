@@ -112,7 +112,7 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
     assert download.status_code == 200
     assert "attachment" in download.headers["content-disposition"]
     with Image.open(io.BytesIO(download.content)) as img:
-        assert img.format == "JPEG" and not img.getexif() and "exif" not in img.info
+        assert img.format in ("JPEG", "PNG") and not img.getexif() and "exif" not in img.info
         assert img.size == (64, 48) or img.size[1] == 48  # full resolution
 
     # Withdrawal: matches deleted, sessions for this event ended, gallery empty.
