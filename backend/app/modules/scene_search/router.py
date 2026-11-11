@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from app.core.deps import Ctx, User
+from app.core.rate_limit import RateLimiter
 from app.modules.scene_search import service
 from app.modules.scene_search.schemas import (
     OrganiserClaimQueueResponse,
@@ -14,12 +15,14 @@ from app.modules.scene_search.schemas import (
     SubmitClaimRequest,
     SubmitClaimResponse,
 )
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 router = APIRouter(prefix="/events/{event_id}/scene-search", tags=["scene search"])
+search_limiter = RateLimiter("search", limit=30, window_seconds=60)
+claim_limiter = RateLimiter("claim", limit=30, window_seconds=60)
 
 
-@router.post("", response_model=SceneSearchResponse)
+@router.post("", response_model=SceneSearchResponse, dependencies=[Depends(search_limiter)])
 async def scene_search(
     event_id: UUID, req: SceneSearchRequest, user: User, ctx: Ctx
 ) -> SceneSearchResponse:
@@ -66,7 +69,7 @@ def candidate_preview(
     )
 
 
-@router.post("/claims", response_model=SubmitClaimResponse)
+@router.post("/claims", response_model=SubmitClaimResponse, dependencies=[Depends(claim_limiter)])
 def submit_claim(
     event_id: UUID, req: SubmitClaimRequest, user: User, ctx: Ctx
 ) -> SubmitClaimResponse:

@@ -1,6 +1,7 @@
 """Integration tests for scene search, preview blurring, 1:1 claims, and rate limits."""
 
 import base64
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -18,7 +19,7 @@ from app.modules.scene_search.service import cleanup_expired_attempts
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 from tests.conftest import make_png
-from tests.helpers import guest_client, searchable_event
+from tests.helpers import guest_client, new_client, searchable_event
 
 
 def make_selfie_b64(person: int = 1) -> str:
@@ -458,9 +459,7 @@ def test_submit_claim_liveness_failure_creates_no_match_or_claim(
     from app.ports.liveness import LivenessVerdict
 
     class FakeLivenessFailing:
-        def verify_liveness(
-            self, frames: list[bytes], front_only: bool = False
-        ) -> LivenessVerdict:
+        def verify_liveness(self, frames: list[bytes], front_only: bool = False) -> LivenessVerdict:
             return LivenessVerdict(
                 passed=False,
                 is_live=False,
@@ -471,9 +470,7 @@ def test_submit_claim_liveness_failure_creates_no_match_or_claim(
             )
 
     ctx.liveness = FakeLivenessFailing()
-    event_id, invite_url, photos = searchable_event(
-        ctx, organiser, [make_png(1, 1)]
-    )
+    event_id, invite_url, photos = searchable_event(ctx, organiser, [make_png(1, 1)])
     guest = guest_client(ctx, "claim_liveness_fail@example.test", event_id, invite_url)
 
     search_resp = guest.post(
@@ -498,12 +495,106 @@ def test_submit_claim_liveness_failure_creates_no_match_or_claim(
     assert claim_resp.status_code == 422
 
     with event_transaction(ctx.sessions, UUID(event_id)) as s:
-        match_count = s.scalar(
-            select(func.count(Match.id)).where(Match.event_id == UUID(event_id))
-        )
-        claim_count = s.scalar(
-            select(func.count(Claim.id)).where(Claim.event_id == UUID(event_id))
-        )
+        match_count = s.scalar(select(func.count(Match.id)).where(Match.event_id == UUID(event_id)))
+        claim_count = s.scalar(select(func.count(Claim.id)).where(Claim.event_id == UUID(event_id)))
         assert match_count == 0
         assert claim_count == 0
 
+
+def test_submit_claim_no_consent_never_calls_liveness_or_analyzer(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify that when consent is missing, claim checks fail immediately (403)
+    and liveness / face analyzer are never called.
+    Inputs: organiser client, ctx.
+    Outputs: None.
+    Side effects: tests HTTP endpoints.
+    """
+    event_id, invite_url, photos = searchable_event(ctx, organiser, [make_png(1, 1)])
+    # Join event without granting consent
+    key = invite_url.split("?k=")[1]
+    guest = new_client(ctx)
+    guest.post(f"/invites/{event_id}/join", json={"key": key})
+
+    called = {"liveness": False, "analyzer": False}
+
+    class SpyLiveness:
+        def verify_liveness(self, frames: list[bytes], front_only: bool = False) -> object:
+            called["liveness"] = True
+            pytest.fail("liveness must never be called without consent")
+
+    ctx.liveness = SpyLiveness()
+
+    old_selfie_query = ctx.analyzer.selfie_query
+
+    def fail_analyzer(frame: bytes) -> object:
+        called["analyzer"] = True
+        pytest.fail("analyzer must never be called without consent")
+
+    ctx.analyzer.selfie_query = fail_analyzer
+
+    try:
+        frames = [make_selfie_b64(1), make_selfie_b64(1), make_selfie_b64(1)]
+        res = guest.post(
+            f"/events/{event_id}/scene-search/claims",
+            json={
+                "photo_id": photos[0],
+                "face_id": str(uuid.uuid4()),
+                "frames": frames,
+                "front_only": False,
+            },
+        )
+        assert res.status_code == 403
+        assert called["liveness"] is False
+        assert called["analyzer"] is False
+    finally:
+        ctx.analyzer.selfie_query = old_selfie_query
+
+
+def test_submit_claim_selfie_no_face_gives_422_not_500(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify that a selfie frame with no face raises 422 UnprocessableError
+    with clear message, rather than a 500 error.
+    Inputs: organiser client, ctx.
+    Outputs: None.
+    Side effects: tests HTTP endpoints.
+    """
+    from app.ports.face_analyzer import SelfieRejectedError
+
+    event_id, invite_url, photos = searchable_event(ctx, organiser, [make_png(1, 1)])
+    guest = guest_client(ctx, "claim_noface@example.test", event_id, invite_url)
+
+    search_resp = guest.post(
+        f"/events/{event_id}/scene-search",
+        json={"query": "person"},
+    )
+    assert search_resp.status_code == 200
+    candidates = search_resp.json()["candidates"]
+    photo_id = candidates[0]["photo_id"]
+    face_id = candidates[0]["faces"][0]["face_id"]
+
+    old_selfie_query = ctx.analyzer.selfie_query
+
+    def no_face_selfie(frame: bytes) -> object:
+        raise SelfieRejectedError(face_count=0)
+
+    ctx.analyzer.selfie_query = no_face_selfie
+
+    try:
+        frames = [make_selfie_b64(1), make_selfie_b64(1), make_selfie_b64(1)]
+        res = guest.post(
+            f"/events/{event_id}/scene-search/claims",
+            json={
+                "photo_id": photo_id,
+                "face_id": face_id,
+                "frames": frames,
+                "front_only": False,
+            },
+        )
+        assert res.status_code == 422
+        assert "the selfie must show exactly one face; found 0" in res.text
+    finally:
+        ctx.analyzer.selfie_query = old_selfie_query

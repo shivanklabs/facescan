@@ -27,11 +27,16 @@ from app.core.config import Settings
 from app.core.context import AppContext
 from app.core.crypto import aad, open_sealed
 from app.core.deps import require_role
-from app.core.errors import NotFoundError
+from app.core.errors import (
+    DomainError,
+    NotFoundError,
+    PayloadTooLargeError,
+    UnprocessableError,
+)
 from app.core.policy import load_country_policy
 from app.db.event_scope import ADMIN_SCOPE, event_transaction, scoped_transaction
 from app.modules.audit.service import record
-from app.modules.consent.service import FACE_SEARCH, active_consent
+from app.modules.consent.service import FACE_SEARCH, active_consent, notice_for
 from app.modules.events import repository as events_repo
 from app.modules.events.service import data_key
 from app.modules.gallery.models import Claim
@@ -44,6 +49,7 @@ from app.modules.scene_search.models import (
     SceneSearchCandidate,
 )
 from app.modules.scene_search.schemas import (
+    MAX_FRAME_B64_CHARS,
     CandidateFace,
     FaceBBox,
     OrganiserClaimItem,
@@ -58,7 +64,7 @@ from app.modules.scene_search.schemas import (
 )
 from app.modules.vision_pipeline import repository as vision_repo
 from app.modules.vision_pipeline.models import Face
-from app.ports.face_analyzer import SelfieQuery
+from app.ports.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejectedError
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -120,10 +126,12 @@ def verify_preview_signature(
     return hmac.compare_digest(expected, signature)
 
 
-def _check_guest_search_access(session: Session, event_id: UUID, user: CurrentUser) -> None:
+def _check_guest_search_access(
+    session: Session, event_id: UUID, user: CurrentUser, ctx: AppContext | None = None
+) -> None:
     """
     Purpose: verify guest has active face search consent and within search window.
-    Inputs: session, event_id, user.
+    Inputs: session, event_id, user, optional ctx.
     Outputs: None.
     Side effects: raises HTTPException (403) on violation.
     """
@@ -142,8 +150,13 @@ def _check_guest_search_access(session: Session, event_id: UUID, user: CurrentUs
             raise HTTPException(status_code=403, detail="age_question_required")
         if account.is_minor:
             raise HTTPException(status_code=403, detail="under_18_blocked_from_search")
-    if active_consent(session, event_id, user.user_id, FACE_SEARCH) is None:
+    consent = active_consent(session, event_id, user.user_id, FACE_SEARCH)
+    if consent is None:
         raise HTTPException(status_code=403, detail="consent_required")
+    if ctx is not None:
+        notice = notice_for(ctx)
+        if consent.notice_version != notice.version:
+            raise HTTPException(status_code=403, detail="consent_required")
 
 
 async def search_scene(
@@ -351,32 +364,12 @@ def submit_claim(
     Outputs: SubmitClaimResponse (status: "released" or "queued_for_review").
     Side effects: inserts Match or Claim row, records ClaimAttempt, logs audit event.
     """
-    # Decode selfie frames in memory
-    decoded_frames: list[bytes] = []
-    for f_b64 in req.frames:
-        try:
-            decoded_frames.append(base64.b64decode(f_b64))
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail="invalid_base64_frame") from exc
-
-    # Liveness verification
-    if ctx.liveness is not None:
-        verdict = ctx.liveness.verify_liveness(decoded_frames, front_only=req.front_only)
-        if not verdict.passed:
-            raise HTTPException(status_code=422, detail="liveness_check_failed")
-    elif ctx.settings.env != "dev":
-        raise HTTPException(status_code=403, detail="liveness_required")
-
-    # Embed selfie frames in memory
-    selfie_queries: list[SelfieQuery] = []
-    for frame_data in decoded_frames:
-        selfie_queries.append(ctx.analyzer.selfie_query(frame_data))
-    del decoded_frames  # Invariant: raw frames discarded immediately from memory
-
+    # 1. Authorization, age, consent, search window, advisory lock and daily limit
+    # must all happen before frame decoding, liveness or embeddings (same order as guest_search).
     with event_transaction(ctx.sessions, event_id) as session:
-        _check_guest_search_access(session, event_id, user)
+        _check_guest_search_access(session, event_id, user, ctx)
 
-        # 1. Acquire transaction advisory lock for atomic claim limit enforcement
+        # Acquire transaction advisory lock for atomic claim limit enforcement
         lock_key = _advisory_lock_key(event_id, user.user_id, "claim")
         session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key})
 
@@ -396,7 +389,46 @@ def submit_claim(
 
         session.add(ClaimAttempt(event_id=event_id, user_id=user.user_id))
 
-        # 2. Invariant: face must belong to photo and event
+    # 2. Decode selfie frames in memory with size caps
+    decoded_frames: list[bytes] = []
+    for f_b64 in req.frames:
+        if len(f_b64) > MAX_FRAME_B64_CHARS:
+            raise PayloadTooLargeError("selfie frame exceeds maximum allowed size")
+        try:
+            raw = base64.b64decode(f_b64)
+            if len(raw) > ctx.settings.selfie_max_bytes:
+                raise PayloadTooLargeError("selfie frame exceeds maximum allowed size")
+            decoded_frames.append(raw)
+        except DomainError:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="invalid_base64_frame") from exc
+
+    # 3. Liveness verification
+    if ctx.liveness is not None:
+        verdict = ctx.liveness.verify_liveness(decoded_frames, front_only=req.front_only)
+        if not verdict.passed:
+            raise HTTPException(status_code=422, detail="liveness_check_failed")
+    elif ctx.settings.env != "dev":
+        raise HTTPException(status_code=403, detail="liveness_required")
+
+    # 4. Embed selfie frames in memory
+    selfie_queries: list[SelfieQuery] = []
+    try:
+        for number, frame_data in enumerate(decoded_frames, start=1):
+            try:
+                selfie_queries.append(ctx.analyzer.selfie_query(frame_data))
+            except SelfieRejectedError as exc:
+                raise UnprocessableError(
+                    f"frame {number}: the selfie must show exactly one face; found {exc.face_count}"
+                ) from exc
+            except ImageRejectedError as exc:
+                raise UnprocessableError(f"frame {number} is not a usable image") from exc
+    finally:
+        del decoded_frames  # Invariant: raw frames discarded immediately from memory
+
+    with event_transaction(ctx.sessions, event_id) as session:
+        # Invariant: face must belong to photo and event
         face = session.get(Face, req.face_id)
         if face is None or face.photo_id != req.photo_id or face.event_id != event_id:
             raise HTTPException(status_code=400, detail="invalid_candidate_face")

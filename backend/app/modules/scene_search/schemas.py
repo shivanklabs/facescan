@@ -1,9 +1,14 @@
 """Pydantic schemas for scene search, candidate tracking, and 1:1 claims."""
 
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+# Base64 length limit matching Settings.selfie_max_bytes (10 MB).
+# ceil(10485760 / 3) * 4 = 13_981_016 characters.
+MAX_FRAME_B64_CHARS = 13_981_016
 
 
 class SceneSearchRequest(BaseModel):
@@ -42,7 +47,7 @@ class SubmitClaimRequest(BaseModel):
 
     photo_id: UUID
     face_id: UUID
-    frames: list[str] = Field(
+    frames: list[Annotated[str, Field(max_length=MAX_FRAME_B64_CHARS)]] = Field(
         min_length=1, max_length=10, description="Base64 encoded selfie frames from guided scan"
     )
     front_only: bool = Field(default=False, description="Whether front-only fallback was used")
