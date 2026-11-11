@@ -31,6 +31,7 @@ from app.modules.ingest.models import Photo, UploadSession
 from app.ports.face_analyzer import ImageInfo, ImageRejectedError
 
 INDEX_EVENT_JOB = "index_event"
+CHUNK_SIZE = 5 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,6 +415,8 @@ def init_upload_session(
     """
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("photographer", "organiser"))
+        if byte_size > ctx.settings.upload_max_bytes:
+            raise PayloadTooLargeError("file size exceeds upload limit")
         event = events_repo.get_event(session, event_id)
         if event is None:
             raise NotFoundError("event not found")
@@ -446,7 +449,7 @@ def init_upload_session(
         session.flush()
         chunk_dir = Path(ctx.settings.upload_spool_dir) / "chunks" / str(upload_session.id)
         chunk_dir.mkdir(parents=True, exist_ok=True)
-        return upload_session, 5 * 1024 * 1024
+        return upload_session, CHUNK_SIZE
 
 
 def upload_chunk(
@@ -459,14 +462,16 @@ def upload_chunk(
     user: CurrentUser,
 ) -> list[int]:
     """
-    Purpose: store one validated chunk of a chunked upload.
+    Purpose: store one validated chunk of a chunked upload using row-level locking.
     Inputs: event_id, upload_id, chunk_index, chunk_sha256, chunk_data, user.
     Outputs: sorted list of received chunk indices.
     Side effects: writes chunk to disk spool; updates upload_sessions.received_chunks.
     """
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("photographer", "organiser"))
-        upload_sess = session.get(UploadSession, upload_id)
+        upload_sess = session.scalar(
+            select(UploadSession).where(UploadSession.id == upload_id).with_for_update()
+        )
         if upload_sess is None or upload_sess.event_id != event_id:
             raise NotFoundError("upload session not found")
         if upload_sess.status != "in_progress":
@@ -519,15 +524,21 @@ def complete_upload_session(
     user: CurrentUser,
 ) -> UploadResult:
     """
-    Purpose: assemble all chunks, verify full SHA-256, ingest photo, and clean spool files.
+    Purpose: assemble chunks, verify SHA-256, ingest photo, and clean spool files safely.
     Inputs: event_id, upload_id, user.
     Outputs: UploadResult.
     Side effects: stores photo in quarantine; deletes chunk files; updates session status.
     """
     chunk_dir = Path(ctx.settings.upload_spool_dir) / "chunks" / str(upload_id)
+    buffer = bytearray()
+    collection_id: UUID
+    mismatch = False
+
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("photographer", "organiser"))
-        upload_sess = session.get(UploadSession, upload_id)
+        upload_sess = session.scalar(
+            select(UploadSession).where(UploadSession.id == upload_id).with_for_update()
+        )
         if upload_sess is None or upload_sess.event_id != event_id:
             raise NotFoundError("upload session not found")
         if upload_sess.status != "in_progress":
@@ -540,7 +551,6 @@ def complete_upload_session(
 
         # Reassemble chunks in sequential order
         hasher = hashlib.sha256()
-        buffer = bytearray()
         for idx in range(upload_sess.total_chunks):
             chunk_file = chunk_dir / f"{idx}.chunk"
             if not chunk_file.exists():
@@ -552,18 +562,24 @@ def complete_upload_session(
         assembled_sha256 = hasher.hexdigest().lower()
         if assembled_sha256 != upload_sess.expected_sha256.lower():
             upload_sess.status = "failed"
-            session.flush()
-            raise UnprocessableError("assembled file SHA-256 mismatch")
+            mismatch = True
+        else:
+            collection_id = upload_sess.collection_id
 
-        collection_id = upload_sess.collection_id
-        upload_sess.status = "completed"
-        session.flush()
+    if mismatch:
+        raise UnprocessableError("assembled file SHA-256 mismatch")
 
-    # Clean up chunk files from disk
+    # Ingest the assembled file; if it raises, session remains in_progress and chunk_dir stays
+    result = upload_photos(ctx, event_id, [bytes(buffer)], collection_id, user)
+
+    # After upload_photos returns successfully, mark completed and remove chunk folder
+    with event_transaction(ctx.sessions, event_id) as session:
+        sess = session.get(UploadSession, upload_id)
+        if sess is not None:
+            sess.status = "completed"
+
     shutil.rmtree(chunk_dir, ignore_errors=True)
-
-    # Ingest the assembled file
-    return upload_photos(ctx, event_id, [bytes(buffer)], collection_id, user)
+    return result
 
 
 @dataclass(frozen=True, slots=True)

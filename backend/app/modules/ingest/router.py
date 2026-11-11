@@ -164,7 +164,11 @@ def init_chunked_upload(
     )
 
 
-@router.post("/uploads/{upload_id}/chunk", response_model=UploadChunkResponse)
+@router.post(
+    "/uploads/{upload_id}/chunk",
+    response_model=UploadChunkResponse,
+    dependencies=[Depends(upload_limiter)],
+)
 async def upload_chunk_part(
     event_id: UUID,
     upload_id: UUID,
@@ -180,7 +184,20 @@ async def upload_chunk_part(
     Outputs: UploadChunkResponse with received_chunks and complete flag.
     Side effects: writes chunk to storage and updates upload session in database.
     """
-    chunk_data = await request.body()
+    max_chunk = service.CHUNK_SIZE
+    content_length = request.headers.get("content-length")
+    if content_length is not None and content_length.isdigit() and int(content_length) > max_chunk:
+        raise PayloadTooLargeError("chunk exceeds maximum chunk size")
+
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > max_chunk:
+            raise PayloadTooLargeError("chunk exceeds maximum chunk size")
+        chunks.append(chunk)
+
+    chunk_data = b"".join(chunks)
     if not chunk_data:
         raise UnprocessableError("empty chunk data")
     received = await run_in_threadpool(
@@ -218,11 +235,20 @@ def get_chunked_upload_status(
     )
 
 
-@router.post("/uploads/{upload_id}/complete", response_model=UploadCompleteResponse)
+@router.post(
+    "/uploads/{upload_id}/complete",
+    response_model=UploadCompleteResponse,
+    dependencies=[Depends(upload_limiter)],
+)
 def complete_chunked_upload(
     event_id: UUID, upload_id: UUID, user: PasskeyUser, ctx: Ctx
 ) -> UploadCompleteResponse:
-    """Purpose: finalize chunked upload, verify full SHA-256 and ingest photo."""
+    """
+    Purpose: finalize chunked upload, verify full SHA-256 and ingest photo.
+    Inputs: event_id, upload_id, user, ctx.
+    Outputs: UploadCompleteResponse.
+    Side effects: assembles photo in quarantine; removes chunk files on success.
+    """
     result = service.complete_upload_session(ctx, event_id, upload_id, user)
     return UploadCompleteResponse(
         collection_id=result.collection_id,
