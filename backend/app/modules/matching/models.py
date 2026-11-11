@@ -1,4 +1,4 @@
-"""Tables: matches (release band only, photo ids), user_templates, search_attempts."""
+"""Tables: matches (release band only, photo ids), user_templates, search_attempts, cannot_links."""
 
 import uuid
 from datetime import datetime
@@ -16,7 +16,10 @@ class Match(Base):
 
     __tablename__ = "matches"
     __table_args__ = (
-        CheckConstraint("score_band IN ('release', 'borderline', 'none')", name="score_band"),
+        CheckConstraint(
+            "score_band IN ('release', 'borderline', 'none', 'not_me', 'withdrawn')",
+            name="ck_matches_score_band",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -30,6 +33,25 @@ class Match(Base):
     score_band: Mapped[str] = mapped_column(String(20), nullable=False)
     source: Mapped[str] = mapped_column(String(20), server_default="search", nullable=False)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+
+
+class CannotLink(Base):
+    """A face and/or photo marked as 'not me' for a guest in one event."""
+
+    __tablename__ = "cannot_links"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    event_id: Mapped[uuid.UUID] = event_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    photo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("photos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    face_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("faces.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = created_at()
 
 

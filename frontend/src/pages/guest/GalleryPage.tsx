@@ -33,6 +33,8 @@ export default function GalleryPage() {
   const [photos, setPhotos] = useState<GalleryPhoto[] | null>(null);
   const [rejections, setRejections] = useState<ClaimNotice[]>([]);
   const [error, setError] = useState(false);
+  const [submittingNotMe, setSubmittingNotMe] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     api<GalleryData>(`/events/${eventId}/gallery`)
@@ -43,10 +45,30 @@ export default function GalleryPage() {
       .catch(() => setError(true));
   }, [eventId]);
 
+  async function handleNotMe(photoId: string) {
+    if (!window.confirm(t('gallery.notMeConfirm'))) return;
+    setSubmittingNotMe(photoId);
+    setActionMessage(null);
+    try {
+      await api(`/events/${eventId}/gallery/${photoId}/not-me`, { method: 'POST' });
+      setPhotos((prev) => (prev ? prev.filter((p) => p.photo_id !== photoId) : []));
+      setActionMessage(t('gallery.notMeDone'));
+    } catch {
+      setError(true);
+    } finally {
+      setSubmittingNotMe(null);
+    }
+  }
+
   return (
     <>
       <h1>{t('gallery.title')}</h1>
       {error && <p role="alert">{t('common.error')}</p>}
+      {actionMessage && (
+        <p role="status" className="banner" style={{ marginBottom: '16px' }}>
+          {actionMessage}
+        </p>
+      )}
       {photos === null && !error && <p>{t('common.loading')}</p>}
       {rejections.length > 0 && (
         <div role="status" className="banner claim-rejections" style={{ marginBottom: '16px' }}>
@@ -61,9 +83,19 @@ export default function GalleryPage() {
         {photos?.map((photo) => (
           <li key={photo.photo_id}>
             <img src={photo.url} alt="" loading="lazy" />
-            <a href={apiUrl(photo.download_path)} download>
-              {t('gallery.download')}
-            </a>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+              <a href={apiUrl(photo.download_path)} download>
+                {t('gallery.download')}
+              </a>
+              <button
+                type="button"
+                onClick={() => void handleNotMe(photo.photo_id)}
+                disabled={submittingNotMe === photo.photo_id}
+                style={{ fontSize: '0.85rem', padding: '2px 8px' }}
+              >
+                {t('gallery.notMe')}
+              </button>
+            </div>
           </li>
         ))}
       </ul>

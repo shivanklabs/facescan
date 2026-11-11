@@ -29,7 +29,7 @@ from app.modules.consent.service import FACE_SEARCH, active_consent, notice_for
 from app.modules.events import repository as events_repo
 from app.modules.events.service import data_key
 from app.modules.identity.models import User
-from app.modules.matching.models import Match, SearchAttempt
+from app.modules.matching.models import CannotLink, Match, SearchAttempt
 from app.modules.vision_pipeline import repository
 from app.ports.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejectedError
 
@@ -133,20 +133,65 @@ def guest_search(
             front_only=front_only,
             threshold_offset=settings.search_front_only_threshold_offset,
         )
+        if not result.release:
+            # A borderline result or no-match never releases a photo
+            record(
+                session,
+                event_id=event_id,
+                actor=user.actor,
+                action="search",
+                details={
+                    "frames": len(queries),
+                    "released": 0,
+                    "some_photos_missing": result.some_photos_missing,
+                    "frames_agree": result.frames_agree,
+                    "front_only": front_only,
+                },
+            )
+            return SearchResult(release=[], some_photos_missing=result.some_photos_missing)
+
+        cannot_links = session.scalars(
+            select(CannotLink).where(
+                CannotLink.event_id == event_id,
+                CannotLink.user_id == user.user_id,
+            )
+        ).all()
+        cannot_photo_ids = {cl.photo_id for cl in cannot_links}
+
+        clean_release = [pid for pid in result.release if pid not in cannot_photo_ids]
+
+        # Preserve not_me and withdrawn matches; only replace search matches
         session.execute(
-            delete(Match).where(Match.event_id == event_id, Match.user_id == user.user_id)
+            delete(Match).where(
+                Match.event_id == event_id,
+                Match.user_id == user.user_id,
+                Match.score_band.not_in(["not_me", "withdrawn"]),
+            )
         )
         now = datetime.now(UTC)
-        for photo_id in result.release:
-            session.add(
-                Match(
-                    event_id=event_id,
-                    user_id=user.user_id,
-                    photo_id=photo_id,
-                    score_band="release",
-                    released_at=now,
+        for photo_id in clean_release:
+            existing = session.scalars(
+                select(Match).where(
+                    Match.event_id == event_id,
+                    Match.user_id == user.user_id,
+                    Match.photo_id == photo_id,
                 )
-            )
+            ).first()
+            if existing is not None:
+                if existing.score_band in ("not_me", "withdrawn"):
+                    continue
+                existing.score_band = "release"
+                existing.released_at = now
+            else:
+                session.add(
+                    Match(
+                        event_id=event_id,
+                        user_id=user.user_id,
+                        photo_id=photo_id,
+                        score_band="release",
+                        released_at=now,
+                    )
+                )
         record(
             session,
             event_id=event_id,
@@ -154,10 +199,13 @@ def guest_search(
             action="search",
             details={
                 "frames": len(queries),
-                "released": len(result.release),
+                "released": len(clean_release),
                 "some_photos_missing": result.some_photos_missing,
                 "frames_agree": result.frames_agree,
                 "front_only": front_only,
             },
         )
-    return SearchResult(release=result.release, some_photos_missing=result.some_photos_missing)
+    return SearchResult(
+        release=clean_release,
+        some_photos_missing=result.some_photos_missing,
+    )

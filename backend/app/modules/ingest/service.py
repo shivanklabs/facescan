@@ -6,10 +6,14 @@ random object keys. Approving a collection moves its photos to the photos bucket
 the index_event job. Every action writes an audit row.
 """
 
-from dataclasses import dataclass
+import hashlib
+import io
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID
 
+import numpy as np
+from PIL import Image
 from sqlalchemy import select
 
 from app.core.auth import CurrentUser
@@ -32,6 +36,41 @@ class UploadResult:
 
     collection_id: UUID
     photo_ids: list[UUID]
+    already_uploaded: list[int] = field(default_factory=list)
+    message: str | None = None
+
+
+def compute_phash(data: bytes) -> str:
+    """
+    Purpose: compute 64-bit perceptual hash (pHash) using 2D DCT via Pillow and NumPy.
+    Inputs: image bytes (JPEG, PNG, WebP).
+    Outputs: 16-character hex string representing 64-bit perceptual hash.
+    Side effects: none.
+    """
+    with Image.open(io.BytesIO(data)) as img:
+        small = img.convert("L").resize((32, 32), Image.Resampling.BILINEAR)
+        pixels = np.asarray(small, dtype=np.float32)
+
+    n = np.arange(32, dtype=np.float32)
+    k = np.arange(32, dtype=np.float32).reshape(-1, 1)
+    dct_mat = np.cos((np.pi / 32.0) * (n + 0.5) * k)
+
+    dct = dct_mat @ pixels @ dct_mat.T
+    dct_low = dct[:8, :8]
+    med = float(np.median(dct_low.flatten()[1:]))
+    bits = (dct_low > med).flatten()
+    packed = np.packbits(bits).tobytes()
+    return packed.hex()
+
+
+def phash_distance(h1: str, h2: str) -> int:
+    """
+    Purpose: calculate Hamming distance between two 16-character hex pHashes.
+    Inputs: h1, h2 (16 hex chars each).
+    Outputs: int Hamming distance (0 to 64).
+    Side effects: none.
+    """
+    return (int(h1, 16) ^ int(h2, 16)).bit_count()
 
 
 def validate_files(ctx: AppContext, files: list[bytes]) -> list[ImageInfo]:
@@ -91,8 +130,40 @@ def upload_photos(
                 if found.status != "open":
                     raise ConflictError("collection is already approved")
                 collection = found
-            photo_ids = []
-            for data, info in zip(files, infos, strict=True):
+            # Query existing SHA-256 digests and perceptual hashes in this event
+            existing_sha256s = set(
+                session.scalars(
+                    select(Photo.sha256).where(
+                        Photo.event_id == event_id,
+                        Photo.sha256.is_not(None),
+                    )
+                ).all()
+            )
+            existing_phashes: list[tuple[UUID, str]] = [
+                (row[0], str(row[1]))
+                for row in session.execute(
+                    select(Photo.id, Photo.phash).where(
+                        Photo.event_id == event_id,
+                        Photo.phash.is_not(None),
+                    )
+                ).all()
+                if row[1] is not None
+            ]
+
+            photo_ids: list[UUID] = []
+            already_uploaded: list[int] = []
+
+            for idx, (data, info) in enumerate(zip(files, infos, strict=True), start=1):
+                digest = hashlib.sha256(data).hexdigest()
+                if digest in existing_sha256s:
+                    already_uploaded.append(idx)
+                    continue
+
+                curr_phash = compute_phash(data)
+                is_near_dup = any(
+                    phash_distance(curr_phash, prev_hash) <= 10 for _, prev_hash in existing_phashes
+                )
+
                 key = ctx.storage.put_object(bucket, event_id, data, info.content_type)
                 stored.append(key)
                 photo = Photo(
@@ -104,19 +175,40 @@ def upload_photos(
                     byte_size=len(data),
                     width=info.width,
                     height=info.height,
+                    sha256=digest,
+                    phash=curr_phash,
+                    is_near_duplicate=is_near_dup,
                 )
                 session.add(photo)
                 session.flush()
                 photo_ids.append(photo.id)
+                existing_sha256s.add(digest)
+                existing_phashes.append((photo.id, curr_phash))
+
+            message = None
+            if already_uploaded:
+                if not photo_ids:
+                    message = "already uploaded"
+                else:
+                    message = f"{len(already_uploaded)} file(s) already uploaded"
+
             record(
                 session,
                 event_id=event_id,
                 actor=user.actor,
                 action="photos.uploaded",
                 target=str(collection.id),
-                details={"count": len(photo_ids)},
+                details={
+                    "count": len(photo_ids),
+                    "already_uploaded": len(already_uploaded),
+                },
             )
-            return UploadResult(collection.id, photo_ids)
+            return UploadResult(
+                collection_id=collection.id,
+                photo_ids=photo_ids,
+                already_uploaded=already_uploaded,
+                message=message,
+            )
     except Exception:
         for key in stored:
             ctx.storage.delete_object(bucket, event_id, key)

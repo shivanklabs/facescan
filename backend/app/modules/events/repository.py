@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.events.models import Collection, Event, EventKey
 from app.modules.ingest.models import Photo
+from app.modules.matching.models import Match
 from app.modules.vision_pipeline.models import Cluster, Face
 
 
@@ -38,9 +39,19 @@ def counts(session: Session, event_id: UUID) -> dict[str, int]:
             or 0
         )
 
+    not_me_count = int(
+        session.scalar(
+            select(func.count(Match.id)).where(
+                Match.event_id == event_id, Match.score_band == "not_me"
+            )
+        )
+        or 0
+    )
+
     return {
         "collections": count(Collection),
         "photos": count(Photo),
         "faces": count(Face),
         "clusters": count(Cluster),
+        "not_me": not_me_count,
     }

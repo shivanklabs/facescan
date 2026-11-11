@@ -6,10 +6,12 @@ from pydantic import BaseModel
 
 
 class UploadResponse(BaseModel):
-    """Stored photos (random ids) and their collection."""
+    """Stored photos (random ids), duplicate status, and their collection."""
 
     collection_id: UUID
     photo_ids: list[UUID]
+    already_uploaded: list[int] = []
+    message: str | None = None
 
 
 class ApproveResponse(BaseModel):

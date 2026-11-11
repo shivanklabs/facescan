@@ -29,6 +29,19 @@ def gallery(event_id: UUID, user: User, ctx: Ctx) -> GalleryResponse:
     )
 
 
+@router.post("/{photo_id}/not-me")
+def not_me(event_id: UUID, photo_id: UUID, user: User, ctx: Ctx) -> dict[str, str]:
+    """
+    Purpose: mark a photo as 'not me' for the guest, immediately removing it from gallery
+        and preventing future release or claims.
+    Inputs: event_id, photo_id, user, ctx.
+    Outputs: {"status": "ok", "photo_id": str(photo_id)}.
+    Side effects: updates match to not_me, inserts cannot_links, writes audit row.
+    """
+    service.mark_not_me(ctx, user, event_id, photo_id)
+    return {"status": "ok", "photo_id": str(photo_id)}
+
+
 @router.get("/{photo_id}/download")
 def download(event_id: UUID, photo_id: UUID, user: User, ctx: Ctx) -> Response:
     """

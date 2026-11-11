@@ -6,14 +6,22 @@ import { useTranslation } from 'react-i18next';
 import { PasskeyGate } from '@/features/auth/PasskeyGate';
 import { api } from '@/lib/apiClient';
 
+interface UploadResult {
+  collection_id: string;
+  photo_ids?: string[];
+  already_uploaded?: number[];
+  message?: string;
+}
+
 function Upload({ eventId }: { eventId: string }) {
   const { t } = useTranslation();
   const [files, setFiles] = useState<FileList | null>(null);
   const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
   const [progress, setProgress] = useState<{ current: number; total: number; name: string } | null>(
-    null
+    null,
   );
   const [detail, setDetail] = useState('');
+  const [duplicates, setDuplicates] = useState<string[]>([]);
 
   async function send(e: FormEvent) {
     e.preventDefault();
@@ -21,6 +29,7 @@ function Upload({ eventId }: { eventId: string }) {
     const fileList = Array.from(files);
     setState('sending');
     setDetail('');
+    setDuplicates([]);
 
     let collectionId: string | null = null;
 
@@ -36,12 +45,18 @@ function Upload({ eventId }: { eventId: string }) {
       }
 
       try {
-        const resp = await api<{ collection_id: string }>(`/events/${eventId}/photos`, {
+        const resp = await api<UploadResult>(`/events/${eventId}/photos`, {
           body: form,
           timeoutMs: 120_000,
         });
         if (!collectionId && resp.collection_id) {
           collectionId = resp.collection_id;
+        }
+        if (
+          resp.message === 'already uploaded' ||
+          (resp.already_uploaded && resp.already_uploaded.length > 0)
+        ) {
+          setDuplicates((prev) => [...prev, file.name]);
         }
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Upload failed';
@@ -74,6 +89,11 @@ function Upload({ eventId }: { eventId: string }) {
           : t('upload.send')}
       </button>
       {state === 'done' && <p role="status">{t('upload.done')}</p>}
+      {duplicates.length > 0 && (
+        <p role="status" className="banner">
+          {t('upload.alreadyUploaded', { names: duplicates.join(', ') })}
+        </p>
+      )}
       {state === 'error' && (
         <p role="alert">
           {t('common.error')} {detail}

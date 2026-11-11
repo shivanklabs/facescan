@@ -21,6 +21,8 @@ export default function SelfieCapturePage() {
   const [currentStep, setCurrentStep] = useState<ScanStep['key'] | null>(null);
   const [frontOnly, setFrontOnly] = useState(false);
   const [message, setMessage] = useState('');
+  const [borderlineAttempts, setBorderlineAttempts] = useState(0);
+  const [offerSceneSearch, setOfferSceneSearch] = useState(false);
 
   useEffect(
     () => () => {
@@ -79,11 +81,32 @@ export default function SelfieCapturePage() {
       setPhase('searching');
       const body = await framesBody(frames);
       const url = `/events/${eventId}/search${frontOnly ? '?mode=front-only' : '?mode=guided'}`;
-      const result = await api<{ release: string[]; some_photos_missing: boolean }>(url, {
+      const result = await api<{
+        release: string[];
+        some_photos_missing: boolean;
+      }>(url, {
         body,
         headers: { 'Content-Type': FRAMES_CONTENT_TYPE },
         timeoutMs: 120_000,
       });
+
+      const isBorderline = result.release.length === 0 && result.some_photos_missing;
+      if (isBorderline) {
+        if (borderlineAttempts === 0) {
+          setBorderlineAttempts(1);
+          setPhase('ready');
+          setCurrentStep(null);
+          setMessage(t('selfie.borderlineFirst'));
+          return;
+        } else {
+          setPhase('idle');
+          stream.current?.getTracks().forEach((track) => track.stop());
+          setOfferSceneSearch(true);
+          setMessage(t('selfie.borderlineSecond'));
+          return;
+        }
+      }
+
       stream.current?.getTracks().forEach((track) => track.stop());
       navigate(`/events/${eventId}/gallery`, {
         state: { someMissing: result.some_photos_missing },
@@ -152,6 +175,17 @@ export default function SelfieCapturePage() {
 
       {phase === 'searching' && <p role="status">{t('selfie.searching')}</p>}
       {message && <p role="alert">{message}</p>}
+      {offerSceneSearch && (
+        <div className="card" style={{ marginTop: '16px', textAlign: 'center' }}>
+          <button
+            type="button"
+            className="button"
+            onClick={() => navigate(`/events/${eventId}/scene-search`)}
+          >
+            {t('selfie.goToSceneSearch')}
+          </button>
+        </div>
+      )}
     </>
   );
 }

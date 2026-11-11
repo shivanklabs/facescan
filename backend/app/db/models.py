@@ -15,7 +15,7 @@ from app.modules.events.models import (
 from app.modules.gallery.models import Claim
 from app.modules.identity.models import AuthChallenge, AuthSession, MagicLink, Passkey, User
 from app.modules.ingest.models import Photo
-from app.modules.matching.models import Match, SearchAttempt, UserTemplate
+from app.modules.matching.models import CannotLink, Match, SearchAttempt, UserTemplate
 from app.modules.scene_search.models import (
     ClaimAttempt,
     SceneEmbedding,
@@ -46,6 +46,7 @@ EVENT_SCOPED_TABLES = (
     "scene_search_candidates",
     "scene_search_attempts",
     "claim_attempts",
+    "cannot_links",
 )
 
 __all__ = [
@@ -54,6 +55,7 @@ __all__ = [
     "AuthChallenge",
     "AuthSession",
     "Base",
+    "CannotLink",
     "Claim",
     "ClaimAttempt",
     "Cluster",

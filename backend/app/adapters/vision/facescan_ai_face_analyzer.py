@@ -410,8 +410,14 @@ class FacescanAiFaceAnalyzer:
         )
         front_cluster = front_result.cluster_id
 
-        if front_cluster is None or not front_result.release_photos:
-            return FramesMatch(release=[], some_photos_missing=True, frames_agree=False)
+        if front_cluster is None:
+            return FramesMatch(release=[], some_photos_missing=False, frames_agree=False)
+
+        if not front_result.release_photos:
+            is_bord = front_result.cluster_band is Band.BORDERLINE or bool(
+                front_result.borderline_photos
+            )
+            return FramesMatch(release=[], some_photos_missing=is_bord, frames_agree=False)
 
         released_photos = set(front_result.release_photos)
         has_borderline = bool(front_result.borderline_photos)

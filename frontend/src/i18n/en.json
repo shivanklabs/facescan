@@ -68,12 +68,18 @@
     "errBright": "Too bright or overexposed. Please adjust your lighting.",
     "errBlink": "Blink was not detected. Please make sure to blink clearly.",
     "errTurn": "Head turns were not completed. Please follow prompts or use front-only scan.",
-    "errFaceCount": "Please make sure only one face is visible without sunglasses or mask."
+    "errFaceCount": "Please make sure only one face is visible without sunglasses or mask.",
+    "borderlineFirst": "Possible match found, but not clear enough to safely release photos. Please try a second scan from a slightly different angle or lighting.",
+    "borderlineSecond": "We still couldn't confirm your match with enough certainty to release photos. You can search by scene description and claim your photos.",
+    "goToSceneSearch": "Search scenes & claim photos"
   },
   "gallery": {
     "title": "Your photos",
     "empty": "No photos found yet.",
     "download": "Download",
+    "notMe": "Not me",
+    "notMeConfirm": "Are you sure this is not you? This photo will be removed immediately and will never be released to you again.",
+    "notMeDone": "Photo removed and excluded from future matches.",
     "missing": "Some photos missing? We only show photos we are sure about.",
     "rejectionNotice": "A photo claim was reviewed by the organiser and not approved.",
     "searchAgain": "Search again"
@@ -120,6 +126,7 @@
     "choose": "Choose photos",
     "send": "Upload",
     "done": "Uploaded. The organiser will review them.",
+    "alreadyUploaded": "Already uploaded: {{names}}",
     "sending": "Uploading…"
   },
   "claims": {

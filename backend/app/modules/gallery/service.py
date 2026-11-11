@@ -142,3 +142,81 @@ def download(ctx: AppContext, user: CurrentUser, event_id: UUID, photo_id: UUID)
         )
         bucket, key = row
     return ctx.analyzer.full_copy(ctx.storage.get_object(bucket, event_id, key))
+
+
+def mark_not_me(ctx: AppContext, user: CurrentUser, event_id: UUID, photo_id: UUID) -> None:
+    """
+    Purpose: mark a matched photo as 'not me' for a guest.
+    Inputs: ctx, user, event_id, photo_id.
+    Outputs: None.
+    Side effects: updates Match.score_band to 'not_me', inserts CannotLink rows,
+        records gallery.not_me in audit_log.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        _guest_with_consent(session, event_id, user)
+        match = session.scalars(
+            select(Match).where(
+                Match.event_id == event_id,
+                Match.user_id == user.user_id,
+                Match.photo_id == photo_id,
+            )
+        ).first()
+        if match is None or match.score_band not in ("release", "borderline"):
+            raise NotFoundError("photo not found in your gallery")
+
+        match.score_band = "not_me"
+
+        from app.modules.gallery.models import Claim
+        from app.modules.matching.models import CannotLink
+        from app.modules.vision_pipeline.models import Face
+
+        claimed_face_id = session.scalar(
+            select(Claim.face_id).where(
+                Claim.event_id == event_id,
+                Claim.user_id == user.user_id,
+                Claim.photo_id == photo_id,
+                Claim.face_id.is_not(None),
+            )
+        )
+
+        faces = session.scalars(
+            select(Face).where(Face.event_id == event_id, Face.photo_id == photo_id)
+        ).all()
+
+        if claimed_face_id is not None:
+            session.add(
+                CannotLink(
+                    event_id=event_id,
+                    user_id=user.user_id,
+                    photo_id=photo_id,
+                    face_id=claimed_face_id,
+                )
+            )
+        elif faces:
+            for f in faces:
+                session.add(
+                    CannotLink(
+                        event_id=event_id,
+                        user_id=user.user_id,
+                        photo_id=photo_id,
+                        face_id=f.id,
+                    )
+                )
+        else:
+            session.add(
+                CannotLink(
+                    event_id=event_id,
+                    user_id=user.user_id,
+                    photo_id=photo_id,
+                    face_id=None,
+                )
+            )
+
+        record(
+            session,
+            event_id=event_id,
+            actor=user.actor,
+            action="gallery.not_me",
+            target=str(photo_id),
+            details={"photo_id": str(photo_id)},
+        )

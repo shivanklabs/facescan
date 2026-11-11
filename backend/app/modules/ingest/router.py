@@ -94,7 +94,12 @@ async def upload_photos(
         Path(settings.upload_spool_dir),
     )
     result = service.upload_photos(ctx, event_id, files, collection_id, user)
-    return UploadResponse(collection_id=result.collection_id, photo_ids=result.photo_ids)
+    return UploadResponse(
+        collection_id=result.collection_id,
+        photo_ids=result.photo_ids,
+        already_uploaded=list(result.already_uploaded),
+        message=result.message,
+    )
 
 
 @router.post("/collections/{collection_id}/approve", response_model=ApproveResponse)

@@ -35,7 +35,7 @@ from app.modules.events.service import data_key
 from app.modules.gallery.models import Claim
 from app.modules.identity.models import User
 from app.modules.ingest.models import Photo
-from app.modules.matching.models import Match
+from app.modules.matching.models import CannotLink, Match
 from app.modules.scene_search.models import (
     ClaimAttempt,
     SceneSearchAttempt,
@@ -223,12 +223,25 @@ async def search_scene(
 
     # 5. Load faces for top photos, record server-side candidate history, and build response
     with event_transaction(ctx.sessions, event_id) as session:
-        faces_by_photo: dict[UUID, list[CandidateFace]] = {pid: [] for pid in top_candidates}
+        cannot_links = session.scalars(
+            select(CannotLink).where(
+                CannotLink.event_id == event_id,
+                CannotLink.user_id == user.user_id,
+            )
+        ).all()
+        cannot_photo_ids = {cl.photo_id for cl in cannot_links}
+        cannot_face_ids = {cl.face_id for cl in cannot_links if cl.face_id is not None}
+
+        filtered_candidates = [pid for pid in top_candidates if pid not in cannot_photo_ids]
+
+        faces_by_photo: dict[UUID, list[CandidateFace]] = {pid: [] for pid in filtered_candidates}
         all_faces = session.scalars(
-            select(Face).where(Face.event_id == event_id, Face.photo_id.in_(top_candidates))
+            select(Face).where(Face.event_id == event_id, Face.photo_id.in_(filtered_candidates))
         ).all()
 
         for f in all_faces:
+            if f.id in cannot_face_ids:
+                continue
             faces_by_photo[f.photo_id].append(
                 CandidateFace(
                     face_id=f.id,
@@ -246,7 +259,9 @@ async def search_scene(
             )
 
         items: list[SceneCandidateItem] = []
-        for pid in top_candidates:
+        for pid in filtered_candidates:
+            if not faces_by_photo[pid]:
+                continue
             preview_url = sign_preview_url(ctx.settings, event_id, pid)
             items.append(
                 SceneCandidateItem(
@@ -371,6 +386,17 @@ def submit_claim(
         face = session.get(Face, req.face_id)
         if face is None or face.photo_id != req.photo_id or face.event_id != event_id:
             raise HTTPException(status_code=400, detail="invalid_candidate_face")
+
+        # Invariant: cannot claim a photo or face previously marked as 'not me'
+        is_cannot = session.scalar(
+            select(func.count(CannotLink.id)).where(
+                CannotLink.event_id == event_id,
+                CannotLink.user_id == user.user_id,
+                (CannotLink.photo_id == req.photo_id) | (CannotLink.face_id == req.face_id),
+            )
+        )
+        if is_cannot:
+            raise HTTPException(status_code=400, detail="cannot_claim_marked_not_me")
 
         # 3. Invariant: candidate must have been presented to this guest in scene search
         cand = session.scalar(
