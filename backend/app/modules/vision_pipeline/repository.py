@@ -263,3 +263,26 @@ def load_event_model(
         calibration = payload["calibration"]
         versions = payload["engine_versions"]
     return faces, clusters, calibration, versions
+
+
+def load_event_calibration(session: Session, event_id: UUID, data_key: bytes) -> CalibrationDict:
+    """
+    Purpose: load and decrypt only the calibration for an event (used for 1:1 claims).
+    Inputs: session (Session), event_id (UUID), data_key (bytes).
+    Outputs: CalibrationDict.
+    Side effects: queries database and decrypts payload; raises DecryptionError on bad key.
+    """
+    row_cal = session.scalars(
+        select(EventCalibration).where(EventCalibration.event_id == event_id)
+    ).first()
+    if row_cal is None:
+        return {}
+    payload = json.loads(
+        open_sealed(
+            data_key,
+            row_cal.payload_encrypted,
+            aad(event_id, "event_calibrations", row_cal.id),
+        )
+    )
+    cal: CalibrationDict = payload["calibration"]
+    return cal

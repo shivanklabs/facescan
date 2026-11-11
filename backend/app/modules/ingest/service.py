@@ -375,26 +375,36 @@ def list_collections(ctx: AppContext, event_id: UUID, user: CurrentUser) -> list
     """
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("organiser",))
+        counts = dict(
+            session.execute(
+                select(Photo.collection_id, func.count(Photo.id))
+                .where(Photo.event_id == event_id)
+                .group_by(Photo.collection_id)
+            ).all()
+        )
         result = []
         for collection in session.scalars(
             select(Collection)
             .where(Collection.event_id == event_id)
             .order_by(Collection.created_at.desc())
         ):
-            photos = list(
-                session.scalars(
-                    select(Photo)
-                    .where(Photo.collection_id == collection.id)
-                    .order_by(Photo.created_at)
-                )
-            )
+            preview_photos = session.scalars(
+                select(Photo)
+                .where(Photo.collection_id == collection.id)
+                .order_by(Photo.created_at)
+                .limit(PREVIEWS_PER_COLLECTION)
+            ).all()
             previews = []
-            for photo in photos[:PREVIEWS_PER_COLLECTION]:
+            for photo in preview_photos:
                 bucket, key = photo.bucket, photo.object_key
                 if photo.web_object_key is not None:
                     bucket, key = ctx.settings.storage_bucket_derivatives, photo.web_object_key
                 previews.append(ctx.storage.create_signed_download_url(bucket, event_id, key).url)
-            result.append(CollectionView(collection.id, collection.status, len(photos), previews))
+            result.append(
+                CollectionView(
+                    collection.id, collection.status, counts.get(collection.id, 0), previews
+                )
+            )
         return result
 
 

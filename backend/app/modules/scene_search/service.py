@@ -66,6 +66,7 @@ from app.modules.scene_search.schemas import (
 from app.modules.vision_pipeline import repository as vision_repo
 from app.modules.vision_pipeline.models import Face
 from app.ports.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejectedError
+from app.ports.object_storage import ObjectNotFoundError
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from starlette.concurrency import run_in_threadpool
@@ -358,10 +359,21 @@ def get_candidate_preview(
         if photo is None:
             raise NotFoundError("photo not found")
         bucket, object_key = photo.bucket, photo.object_key
+        web_key = photo.web_object_key
 
-    original = ctx.storage.get_object(bucket, event_id, object_key)
+    image_bytes: bytes | None = None
+    if web_key is not None:
+        try:
+            image_bytes = ctx.storage.get_object(
+                ctx.settings.storage_bucket_derivatives, event_id, web_key
+            )
+        except ObjectNotFoundError:
+            image_bytes = None
+    if image_bytes is None:
+        image_bytes = ctx.storage.get_object(bucket, event_id, object_key)
+
     return ctx.analyzer.blurred_preview(
-        original,
+        image_bytes,
         max_side=ctx.settings.preview_max_side,
         jpeg_quality=ctx.settings.preview_jpeg_quality,
     )
@@ -490,7 +502,7 @@ def submit_claim(
         face_payload = json.loads(open_sealed(key, face.embedding_encrypted, associated))
         cand_embeddings = vision_repo._unpack(face_payload["embeddings"])
 
-        _, _, calibration, _ = vision_repo.load_event_model(session, event_id, key)
+        calibration = vision_repo.load_event_calibration(session, event_id, key)
 
         # 6. Perform 1:1 match applying all automatic release rules
         offset = ctx.settings.search_front_only_threshold_offset if req.front_only else 0.0
@@ -557,8 +569,9 @@ def list_event_claims(
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("organiser",))
 
-        claims = session.scalars(
-            select(Claim)
+        claims_with_photos = session.execute(
+            select(Claim, Photo)
+            .outerjoin(Photo, Claim.photo_id == Photo.id)
             .where(Claim.event_id == event_id, Claim.status == "pending")
             .order_by(Claim.created_at.asc())
         ).all()
@@ -567,7 +580,7 @@ def list_event_claims(
         items: list[OrganiserClaimItem] = []
         guest_numbers: dict[UUID, int] = {}
 
-        for claim in claims:
+        for claim, photo in claims_with_photos:
             account = session.get(User, claim.user_id)
             raw_email = open_email(ctx.keys, account.email_encrypted) if account else ""
             if raw_email and is_anonymous_email(raw_email):
@@ -577,7 +590,6 @@ def list_event_claims(
             else:
                 claimant_email = raw_email or "unknown"
 
-            photo = session.get(Photo, claim.photo_id)
             if photo and photo.web_object_key:
                 signed = ctx.storage.create_signed_download_url(
                     bucket, event_id, str(photo.web_object_key)

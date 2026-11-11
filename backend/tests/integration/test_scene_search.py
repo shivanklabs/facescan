@@ -12,6 +12,7 @@ from app.db.event_scope import event_transaction
 from app.modules.consent.models import Consent
 from app.modules.events.models import EventMember
 from app.modules.gallery.models import Claim
+from app.modules.ingest.models import Photo
 from app.modules.matching.models import Match
 from app.modules.scene_search.models import (
     SceneSearchAttempt,
@@ -19,6 +20,7 @@ from app.modules.scene_search.models import (
 )
 from app.modules.scene_search.service import cleanup_expired_attempts
 from fastapi.testclient import TestClient
+from sqlalchemy import event as sa_event
 from sqlalchemy import func, select, update
 from tests.conftest import make_png
 from tests.helpers import (
@@ -810,3 +812,93 @@ def test_old_notice_version_refused_by_scene_search_and_claim(
     )
     assert claim_resp.status_code == 403
     assert claim_resp.json()["detail"] == "consent_required"
+
+
+def test_preview_falls_back_to_original_when_web_copy_is_missing(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: verify candidate preview falls back to original photo when web derivative is missing.
+    Inputs: organiser (TestClient), ctx (AppContext).
+    Outputs: None.
+    Side effects: tests HTTP candidate preview endpoint.
+    """
+    event_id, invite_url, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
+    guest = guest_client(ctx, "preview_fallback@example.test", event_id, invite_url)
+
+    search_resp = guest.post(
+        f"/events/{event_id}/scene-search",
+        json={"query": "person"},
+    )
+    assert search_resp.status_code == 200
+    candidate = search_resp.json()["candidates"][0]
+    preview_url = candidate["preview_url"]
+    photo_uuid = UUID(candidate["photo_id"])
+
+    # 1. Clear web_object_key in database: preview must fall back to original
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        photo = s.get(Photo, photo_uuid)
+        assert photo is not None
+        photo.web_object_key = None
+
+    resp = guest.get(preview_url)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/jpeg"
+
+    # 2. Point web_object_key to missing file in derivatives: preview must fall back to original
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        photo = s.get(Photo, photo_uuid)
+        assert photo is not None
+        photo.web_object_key = "a" * 43 + ".jpg"
+
+    resp2 = guest.get(preview_url)
+    assert resp2.status_code == 200
+    assert resp2.headers["content-type"] == "image/jpeg"
+
+
+def test_ten_claims_produce_one_select_for_photos(organiser: TestClient, ctx: AppContext) -> None:
+    """
+    Purpose: verify that listing claims joins Photo so 10 claims produce only 1 photo SELECT.
+    Inputs: organiser (TestClient), ctx (AppContext).
+    Outputs: None.
+    Side effects: adds test claims to database and measures SQL execution count.
+    """
+    event_id, invite_url, photos = searchable_event(ctx, organiser, [make_png(1, 1)])
+    _ = guest_client(ctx, "claim_ten@example.test", event_id, invite_url)
+
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        consent_row = s.scalar(select(Consent).where(Consent.event_id == UUID(event_id)))
+        user_id = consent_row.user_id if consent_row else uuid.uuid4()
+        for i in range(10):
+            s.add(
+                Claim(
+                    event_id=UUID(event_id),
+                    user_id=user_id,
+                    photo_id=UUID(photos[0]),
+                    face_id=None,
+                    status="pending",
+                    reason=f"test claim {i}",
+                )
+            )
+
+    captured_queries: list[str] = []
+
+    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        captured_queries.append(statement)
+
+    sa_event.listen(ctx.engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        resp = organiser.get(f"/events/{event_id}/claims")
+        assert resp.status_code == 200
+        assert len(resp.json()["claims"]) >= 10
+    finally:
+        sa_event.remove(ctx.engine, "before_cursor_execute", before_cursor_execute)
+
+    photo_queries = [
+        q
+        for q in captured_queries
+        if ("from photos" in q.lower() or "join photos" in q.lower()) and "select" in q.lower()
+    ]
+    assert len(photo_queries) == 1, (
+        f"Expected 1 photo query, got {len(photo_queries)}: {photo_queries}"
+    )
