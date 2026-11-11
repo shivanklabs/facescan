@@ -2,6 +2,7 @@
 and Gmail SMTP email adapter.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -170,3 +171,44 @@ def test_check_required_env_vars_preflight() -> None:
     assert "BAZ" in msg
     assert "FOO" not in msg
     assert "supersecret" not in msg  # Never prints values!
+
+
+def test_spa_serve_path_traversal_prevention(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Purpose: verify serve_spa prevents path traversal in public mode
+    and never serves files outside dist.
+    Inputs: tmp_path, monkeypatch. Outputs: None. Side effects: creates temporary files.
+    """
+    secret_file = tmp_path / ".env"
+    secret_file.write_text("FACESCAN_DB_PASSWORD=secret_password_123\n", encoding="utf-8")
+
+    fake_dist = tmp_path / "frontend" / "dist"
+    fake_dist.mkdir(parents=True)
+    index_file = fake_dist / "index.html"
+    index_file.write_text("<html>SPA Index</html>", encoding="utf-8")
+    asset_file = fake_dist / "app.js"
+    asset_file.write_text("console.log('facescan');", encoding="utf-8")
+
+    monkeypatch.setattr("app.main._get_dist_dir", lambda: fake_dist)
+
+    settings = Settings(env="public")
+    app = create_app(settings)
+    client = TestClient(app)
+
+    # 1. Normal asset inside dist is served
+    resp = client.get("/app.js")
+    assert resp.status_code == 200
+    assert "console.log('facescan');" in resp.text
+
+    # 2. Path traversal attempts must never return .env content; they fall through to index.html
+    traversal_paths = [
+        "/..%2f..%2f.env",
+        "/../../.env",
+        "/%2e%2e/%2e%2e/.env",
+    ]
+    for path in traversal_paths:
+        res = client.get(path)
+        assert "secret_password_123" not in res.text
+        assert "<html>SPA Index</html>" in res.text

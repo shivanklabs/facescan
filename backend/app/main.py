@@ -1,5 +1,6 @@
 """FastAPI app factory for the FaceScan API process."""
 
+import urllib.parse
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -28,6 +29,19 @@ class HealthResponse(BaseModel):
 
     status: str
     version: str
+
+
+def _get_dist_dir() -> Path:
+    """
+    Purpose: resolve the frontend dist directory path.
+    Inputs: None.
+    Outputs: Path to dist folder candidate.
+    Side Effects: checks filesystem existence.
+    """
+    dist_dir = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if not dist_dir.exists():
+        dist_dir = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    return dist_dir
 
 
 def create_app(settings: Settings | None = None, ctx: AppContext | None = None) -> FastAPI:
@@ -112,9 +126,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         app.include_router(router, prefix="/api")
 
     # In public or production mode (when frontend/dist is built), serve frontend SPA
-    dist_dir = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-    if not dist_dir.exists():
-        dist_dir = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    dist_dir = _get_dist_dir()
     if is_prod and dist_dir.exists() and (dist_dir / "index.html").exists():
         assets_dir = dist_dir / "assets"
         if assets_dir.exists():
@@ -136,9 +148,17 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
                     status_code=404,
                     media_type="application/json",
                 )
-            candidate = dist_dir / full_path
-            if full_path and candidate.is_file():
+            dist_resolved = dist_dir.resolve()
+            try:
+                candidate = (dist_resolved / urllib.parse.unquote(full_path)).resolve()
+            except (ValueError, OSError):
+                candidate = None
+            if (
+                candidate is not None
+                and candidate.is_relative_to(dist_resolved)
+                and candidate.is_file()
+            ):
                 return FileResponse(str(candidate))
-            return FileResponse(str(dist_dir / "index.html"))
+            return FileResponse(str(dist_resolved / "index.html"))
 
     return app
