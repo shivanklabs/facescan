@@ -34,7 +34,7 @@ This checklist guides organisers, photographers, and administrators through prep
 
 ## 4. Guest Experience & Core Verification
 - [ ] **Invite & Scan**: Guest scans the QR code or opens the invite link (`/e/:eventId?k=...`).
-- [ ] **Anonymous Guest Sign-in**: Guest authenticates anonymously (magic link / anonymous session without providing email or identity to other guests).
+- [ ] **Email Magic-Link Sign-in**: Guest signs in with their email address via magic link (Gmail SMTP adapter for production/testing, console adapter in local dev).
 - [ ] **Notice & Agreement**: Guest reviews the privacy notice and grants consent.
 - [ ] **Face Search / Liveness**: Guest submits 3–5 selfie frames with live motion:
   - Real face passes and initiates matching.

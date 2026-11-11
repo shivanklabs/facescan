@@ -42,3 +42,8 @@ Build a fully working product first; new security and legal hardening comes late
 - Do not remove or weaken anything that already exists (row-level security, encryption, liveness, signed URLs, release rules, tests).
 - Do not add new security or legal features in this milestone. If one seems needed, list it in the final report instead of building it.
 - Everything else in Parts 1 to 4 stays as written.
+
+---
+
+## Correction (11 Nov 2026)
+Correction: cancel the legal update and the "no email" rule; keep the Gmail magic-link login as built. Skip rate caps review and alerts; build the admin health page without alerts. Everything else continues as planned.
