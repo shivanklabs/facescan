@@ -41,6 +41,41 @@ def delete_event_model(session: Session, event_id: UUID) -> None:
     session.execute(delete(SceneSearchCandidate).where(SceneSearchCandidate.event_id == event_id))
 
 
+def delete_clusters_and_calibration(session: Session, event_id: UUID) -> None:
+    """
+    Purpose: remove an event's clusters and calibration before rebuilding the event model,
+    leaving Face and SceneEmbedding rows intact.
+    Inputs: session, event_id.
+    Outputs: None.
+    Side effects: deletes Cluster and EventCalibration rows.
+    """
+    session.execute(delete(Cluster).where(Cluster.event_id == event_id))
+    session.execute(delete(EventCalibration).where(EventCalibration.event_id == event_id))
+
+
+def load_engine_versions(session: Session, event_id: UUID, data_key: bytes) -> dict[str, str]:
+    """
+    Purpose: load and decrypt the engine versions stored in EventCalibration.
+    Inputs: session, event_id, data_key.
+    Outputs: dict of engine name -> version string (empty dict if not calibrated yet).
+    Side effects: none.
+    """
+    row_cal = session.scalars(
+        select(EventCalibration).where(EventCalibration.event_id == event_id)
+    ).first()
+    if row_cal is None:
+        return {}
+    payload = json.loads(
+        open_sealed(
+            data_key,
+            row_cal.payload_encrypted,
+            aad(event_id, "event_calibrations", row_cal.id),
+        )
+    )
+    versions: dict[str, str] = payload.get("engine_versions", {})
+    return versions
+
+
 def save_scene_embedding(
     session: Session,
     event_id: UUID,

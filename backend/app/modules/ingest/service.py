@@ -335,7 +335,8 @@ def approve_collection(
                 photo.bucket, photo.object_key, photo.status = photos_bucket, key, "approved"
             collection.status = "approved"
             collection.approved_at = datetime.now(UTC)
-            event.status = "indexing"
+            if event.status != "searchable":
+                event.status = "indexing"
             ctx.queue.enqueue(session, event_id, INDEX_EVENT_JOB, {"reason": "collection_approved"})
             record(
                 session,
