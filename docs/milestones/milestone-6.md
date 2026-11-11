@@ -32,3 +32,13 @@ Rules for the whole milestone:
 12. Alerts: hourly thresholds per event from config for searches, claims, new guest accounts, failed staff sign-ins, downloads, "Not me" reports and job failures, shown on the admin page (no email). Alerts never contain photos, face data or IP addresses.
 13. Admin health page: admins are the staff emails in FACESCAN_AUTH_ADMIN_EMAILS. Per event: photos by state, indexing progress, job failures, pending claims, "Not me" count, recent alerts; plus free disk space and the time of the last backup. Counts only: no photos or faces.
 14. Update the test-day checklist for everything new, run the full test suite, and give me the final report: what was built per item with commits, the CI result, anything skipped and why, and the small decisions you made.
+
+---
+
+## Amendment to Milestone 6
+Build a fully working product first; new security and legal hardening comes later.
+- Skip item 11 (rate caps review) and item 12 (alerts) for now. Keep the limits that already exist.
+- Item 13 (admin health page): build it without the alerts section.
+- Do not remove or weaken anything that already exists (row-level security, encryption, liveness, signed URLs, release rules, tests).
+- Do not add new security or legal features in this milestone. If one seems needed, list it in the final report instead of building it.
+- Everything else in Parts 1 to 4 stays as written.
