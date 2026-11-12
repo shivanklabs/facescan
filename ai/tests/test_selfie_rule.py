@@ -3,10 +3,10 @@ local fixture photo (crops made in memory) and skip without it."""
 
 import numpy as np
 import pytest
-from facescan_ai.image_io import read_image
-from facescan_ai.matching.quality_gate import QualityGateConfig
-from facescan_ai.model_registry import ModelRegistry
-from facescan_ai.pipeline import FacePipeline, SelfieFaceCountError, require_single_face
+from facescan_ai.face_matching.quality_gate import QualityGateConfig
+from facescan_ai.face_pipeline import FacePipeline, SelfieFaceCountError, require_single_face
+from facescan_ai.image_loading import read_image
+from facescan_ai.model_loader import ModelRegistry
 from facescan_ai.types import BBox, Face
 
 

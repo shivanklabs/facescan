@@ -56,7 +56,7 @@ def test_search_keeps_selfie_frames_in_memory_only(
     for var in ("TMP", "TEMP", "TMPDIR"):
         monkeypatch.setenv(var, str(temp))
     monkeypatch.setattr(tempfile, "tempdir", str(temp))
-    roots = [tmp_path, REPO / "var", REPO / "backend", REPO / "ai" / "benchmark"]
+    roots = [tmp_path, REPO / "var", REPO / "backend", REPO / "ai" / "accuracy_test"]
     before = snapshot(roots)
     writes: list[str] = []
     real_open: Callable[..., object] = builtins.open

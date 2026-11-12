@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from facescan_ai.detection.geometry import (
+from facescan_ai.face_detection.geometry import (
     Tile,
     iou_matrix,
     nms,

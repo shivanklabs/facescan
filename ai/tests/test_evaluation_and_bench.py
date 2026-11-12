@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from bench_dataset import Labels, load_labels, save_labels
-from facescan_ai.evaluation import (
+from facescan_ai.accuracy_maths import (
     QUALITY_BUCKETS,
     SIZE_BUCKETS,
     Counts,
@@ -17,14 +17,14 @@ from facescan_ai.evaluation import (
     false_release_upper_bound,
     releases_needed,
 )
-from facescan_ai.event_builder import EventBuildConfig, build_event
-from facescan_ai.index_store import (
+from facescan_ai.encrypted_face_index import (
     IndexDecryptionError,
     decrypt_index,
     encrypt_index,
     serialise,
 )
-from facescan_ai.matching.matcher import MatchConfig
+from facescan_ai.event_builder import EventBuildConfig, build_event
+from facescan_ai.face_matching.matcher import MatchConfig
 from facescan_ai.types import BBox
 from run_benchmark import evaluate, report_json, report_markdown, write_reports
 from synthetic import make_synthetic_event
@@ -92,7 +92,7 @@ def test_index_v2_round_trip_keeps_clusters_and_calibration(built_event) -> None
 
 
 def test_index_v1_is_refused_with_a_hint(built_event) -> None:
-    from facescan_ai import index_store
+    from facescan_ai import encrypted_face_index as index_store
 
     payload = json.loads(serialise(built_event.index))
     payload["format"] = 1

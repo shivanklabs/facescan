@@ -5,8 +5,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from facescan_ai.image_io import ImageDecodeError, decode_image, list_images
-from facescan_ai.model_registry import (
+from facescan_ai.image_loading import ImageDecodeError, decode_image, list_images
+from facescan_ai.model_loader import (
     ModelChecksumError,
     ModelFileMissingError,
     ModelRegistry,

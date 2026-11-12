@@ -9,7 +9,7 @@ import json
 from uuid import UUID
 
 import numpy as np
-from facescan_ai.index_store import decode_vector, encode_vector
+from facescan_ai.encrypted_face_index import decode_vector, encode_vector
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 

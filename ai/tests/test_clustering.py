@@ -2,15 +2,15 @@
 
 import numpy as np
 import pytest
-from facescan_ai.clustering.constraints import (
+from facescan_ai.people_grouping.group_faces import ClusterConfig, cluster_event
+from facescan_ai.people_grouping.not_me_rules import (
     AttachConfig,
     apply_must_link,
     attach_weak_faces,
     has_conflict,
     split_cannot_link,
 )
-from facescan_ai.clustering.hdbscan_clusterer import ClusterConfig, cluster_event
-from facescan_ai.clustering.prototypes import build_prototype
+from facescan_ai.people_grouping.person_average import build_prototype
 
 DIM = 64
 

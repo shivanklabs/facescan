@@ -23,9 +23,9 @@ import cv2
 import numpy as np
 import pytest
 from facescan_ai import cli
-from facescan_ai.image_io import read_image
-from facescan_ai.model_registry import ModelRegistry
-from facescan_ai.pipeline import FacePipeline
+from facescan_ai.face_pipeline import FacePipeline
+from facescan_ai.image_loading import read_image
+from facescan_ai.model_loader import ModelRegistry
 from typer.testing import CliRunner
 
 REPO = Path(__file__).resolve().parents[2]
@@ -144,11 +144,11 @@ def test_match_path_in_memory_writes_nothing(
     """Same guarantees as above, for the library calls behind `match`, using a single-face
     frame cropped from the fixture photo in memory (works while the fixture selfie shows
     several faces)."""
+    from facescan_ai.encrypted_face_index import load_index, load_key, save_index, work_dir
     from facescan_ai.event_builder import EventBuildConfig, build_event
-    from facescan_ai.index_store import load_index, load_key, save_index, work_dir
-    from facescan_ai.matching.matcher import MatchConfig, match_event
-    from facescan_ai.matching.quality_gate import QualityGateConfig
-    from facescan_ai.pipeline import SelfieFaceCountError
+    from facescan_ai.face_matching.matcher import MatchConfig, match_event
+    from facescan_ai.face_matching.quality_gate import QualityGateConfig
+    from facescan_ai.face_pipeline import SelfieFaceCountError
 
     pipeline = FacePipeline(model_registry)
     photo = read_image(local_faces.selfie)
@@ -195,7 +195,7 @@ def test_match_path_in_memory_writes_nothing(
 
 def runner_index(pipeline: FacePipeline, photo: np.ndarray):
     """Build an in-memory event index from one photo (helper for the test above)."""
-    from facescan_ai.index_store import EventIndex, IndexedFace
+    from facescan_ai.encrypted_face_index import EventIndex, IndexedFace
 
     index = EventIndex(event="secmem", engine_versions=pipeline.engine_versions, photos=["p.jpg"])
     for a in pipeline.analyse(photo):

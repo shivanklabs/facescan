@@ -13,21 +13,21 @@ from uuid import UUID
 
 import cv2
 import numpy as np
-from facescan_ai.clustering.hdbscan_clusterer import EventCluster
-from facescan_ai.config import DetectorConfig
-from facescan_ai.detection.yunet import YuNetDetector
-from facescan_ai.embedding.base import cosine_similarity
+from facescan_ai.encrypted_face_index import EventIndex, IndexedFace
 from facescan_ai.event_builder import EventBuildConfig, build_event
-from facescan_ai.image_io import ImageDecodeError, decode_image
-from facescan_ai.index_store import EventIndex, IndexedFace
-from facescan_ai.matching.bands import Band
-from facescan_ai.matching.calibration import DEFAULT_THRESHOLDS, EngineCalibration
-from facescan_ai.matching.matcher import MatchConfig, match_event
-from facescan_ai.matching.quality_gate import QualityGateConfig
-from facescan_ai.model_registry import ModelRegistry
-from facescan_ai.pipeline import FacePipeline, SelfieFaceCountError
+from facescan_ai.face_detection.yunet import YuNetDetector
+from facescan_ai.face_fingerprint.base import cosine_similarity
+from facescan_ai.face_matching.calibration import DEFAULT_THRESHOLDS, EngineCalibration
+from facescan_ai.face_matching.confidence_levels import Band
+from facescan_ai.face_matching.matcher import MatchConfig, match_event
+from facescan_ai.face_matching.quality_gate import QualityGateConfig
+from facescan_ai.face_pipeline import FacePipeline, SelfieFaceCountError
+from facescan_ai.image_loading import ImageDecodeError, decode_image
+from facescan_ai.model_loader import ModelRegistry
+from facescan_ai.people_grouping.group_faces import EventCluster
 from facescan_ai.privacy.face_blur import create_blurred_preview
-from facescan_ai.scene import Siglip2SceneEmbedder
+from facescan_ai.scene_search import Siglip2SceneEmbedder
+from facescan_ai.settings import DetectorConfig
 from facescan_ai.types import BBox
 from PIL import Image, ImageOps, UnidentifiedImageError
 

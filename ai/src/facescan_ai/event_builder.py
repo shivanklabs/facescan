@@ -5,11 +5,11 @@ from dataclasses import dataclass, field, replace
 
 import numpy as np
 
-from facescan_ai.clustering.hdbscan_clusterer import ClusterConfig, cluster_event
-from facescan_ai.index_store import EventIndex
-from facescan_ai.matching.calibration import CalibrationConfig, calibrate
-from facescan_ai.matching.matcher import PRIMARY_ENGINE, SECOND_ENGINE
-from facescan_ai.matching.quality_gate import QualityGateConfig, is_weak
+from facescan_ai.encrypted_face_index import EventIndex
+from facescan_ai.face_matching.calibration import CalibrationConfig, calibrate
+from facescan_ai.face_matching.matcher import PRIMARY_ENGINE, SECOND_ENGINE
+from facescan_ai.face_matching.quality_gate import QualityGateConfig, is_weak
+from facescan_ai.people_grouping.group_faces import ClusterConfig, cluster_event
 
 
 @dataclass(frozen=True, slots=True)

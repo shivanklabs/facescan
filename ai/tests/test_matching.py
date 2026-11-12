@@ -2,10 +2,8 @@
 
 import numpy as np
 import pytest
-from facescan_ai.clustering.hdbscan_clusterer import EventCluster
-from facescan_ai.index_store import EventIndex, IndexedFace
-from facescan_ai.matching.bands import Band, Thresholds, cluster_band, face_band
-from facescan_ai.matching.calibration import (
+from facescan_ai.encrypted_face_index import EventIndex, IndexedFace
+from facescan_ai.face_matching.calibration import (
     DEFAULT_THRESHOLDS,
     CalibrationConfig,
     EngineCalibration,
@@ -13,9 +11,11 @@ from facescan_ai.matching.calibration import (
     calibrate_engine,
     same_photo_pairs,
 )
-from facescan_ai.matching.margin import margin_check
-from facescan_ai.matching.matcher import MatchConfig, match_event
-from facescan_ai.matching.quality_gate import QualityGateConfig, is_weak
+from facescan_ai.face_matching.confidence_levels import Band, Thresholds, cluster_band, face_band
+from facescan_ai.face_matching.matcher import MatchConfig, match_event
+from facescan_ai.face_matching.quality_gate import QualityGateConfig, is_weak
+from facescan_ai.face_matching.winner_margin import margin_check
+from facescan_ai.people_grouping.group_faces import EventCluster
 from facescan_ai.types import BBox
 
 T = Thresholds(

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from facescan_ai.model_registry import ModelRegistry, ModelRegistryError
+from facescan_ai.model_loader import ModelRegistry, ModelRegistryError
 
 LOCAL_FIXTURES = Path(__file__).parent / "fixtures" / "local"
 MANIFEST = LOCAL_FIXTURES / "manifest.json"
@@ -65,8 +65,8 @@ def model_registry() -> ModelRegistry:
 @pytest.fixture(scope="session")
 def single_face_selfie(local_faces: LocalFaces, model_registry: ModelRegistry) -> LocalFaces:
     """Purpose: the local photos, but skip when the fixture selfie breaks the one-face rule."""
-    from facescan_ai.image_io import read_image
-    from facescan_ai.pipeline import FacePipeline
+    from facescan_ai.face_pipeline import FacePipeline
+    from facescan_ai.image_loading import read_image
 
     count = len(FacePipeline(model_registry).detector.detect(read_image(local_faces.selfie)))
     if count != 1:

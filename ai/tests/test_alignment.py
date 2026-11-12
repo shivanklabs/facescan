@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 import pytest
-from facescan_ai.alignment.align_5point import (
+from facescan_ai.face_alignment.align_face import (
     ALIGNED_SIZE,
     ARCFACE_TEMPLATE,
     align_face,

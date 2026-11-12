@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 import pytest
-from facescan_ai.detection.yunet import STRIDES, decode_yunet
+from facescan_ai.face_detection.yunet import STRIDES, decode_yunet
 
 SIZE = 640
 

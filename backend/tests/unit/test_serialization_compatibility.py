@@ -14,8 +14,8 @@ from app.db.event_isolation import event_transaction
 from app.features.photo_processing import repository
 from app.features.photo_processing.repository import _pack, unpack_vectors
 from app.interfaces.face_analyzer import Vector
-from facescan_ai.index_store import decode_vector, encode_vector
-from facescan_ai.matching.calibration import EngineCalibration
+from facescan_ai.encrypted_face_index import decode_vector, encode_vector
+from facescan_ai.face_matching.calibration import EngineCalibration
 from fastapi.testclient import TestClient
 
 

@@ -3,11 +3,11 @@
 import cv2
 import numpy as np
 import pytest
-from facescan_ai.liveness.silent_face import (
+from facescan_ai.live_face_check.silent_face import (
     SilentFaceDetector,
     _crop_scaled_patch,
 )
-from facescan_ai.model_registry import ModelRegistry
+from facescan_ai.model_loader import ModelRegistry
 from facescan_ai.types import BBox, Face
 
 

@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
 import pytest
-from facescan_ai.alignment.align_5point import ARCFACE_TEMPLATE
+from facescan_ai.face_alignment.align_face import ARCFACE_TEMPLATE
+from facescan_ai.face_quality.basic_quality import BasicFaceQuality, pose_components
 from facescan_ai.privacy.face_blur import blur_faces
-from facescan_ai.quality.basic_quality import BasicFaceQuality, pose_components
 from facescan_ai.types import BBox, Face
 
 

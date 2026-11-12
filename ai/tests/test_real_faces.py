@@ -7,9 +7,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 from facescan_ai.cli import app
-from facescan_ai.image_io import read_image
-from facescan_ai.model_registry import ModelRegistry
-from facescan_ai.pipeline import FacePipeline
+from facescan_ai.face_pipeline import FacePipeline
+from facescan_ai.image_loading import read_image
+from facescan_ai.model_loader import ModelRegistry
 from facescan_ai.privacy.face_blur import blur_faces
 from typer.testing import CliRunner
 

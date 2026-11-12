@@ -1,6 +1,10 @@
 import numpy as np
 import pytest
-from facescan_ai.embedding.base import cosine_similarity, cosine_similarity_matrix, l2_normalise
+from facescan_ai.face_fingerprint.base import (
+    cosine_similarity,
+    cosine_similarity_matrix,
+    l2_normalise,
+)
 
 
 def v(*values: float) -> np.ndarray:

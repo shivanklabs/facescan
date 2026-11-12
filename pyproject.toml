@@ -37,7 +37,7 @@ dev = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-extend-exclude = ["frontend", "ai/benchmark/datasets"]
+extend-exclude = ["frontend", "ai/accuracy_test/datasets"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "N", "SIM", "ANN"]
@@ -51,5 +51,5 @@ ignore = ["S101"]  # assert is fine in tests
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = ["backend", "ai/src", "ai/typings", "ai/benchmark"]
+mypy_path = ["backend", "ai/src", "ai/typings", "ai/accuracy_test"]
 explicit_package_bases = true

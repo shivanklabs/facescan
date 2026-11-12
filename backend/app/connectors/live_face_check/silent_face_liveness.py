@@ -7,11 +7,11 @@ All image processing and model inference happens strictly in memory.
 
 import threading
 
-from facescan_ai.config import DetectorConfig
-from facescan_ai.detection.yunet import YuNetDetector
-from facescan_ai.image_io import ImageDecodeError, decode_image
-from facescan_ai.liveness.silent_face import SilentFaceConfig, SilentFaceDetector
-from facescan_ai.model_registry import ModelRegistry
+from facescan_ai.face_detection.yunet import YuNetDetector
+from facescan_ai.image_loading import ImageDecodeError, decode_image
+from facescan_ai.live_face_check.silent_face import SilentFaceConfig, SilentFaceDetector
+from facescan_ai.model_loader import ModelRegistry
+from facescan_ai.settings import DetectorConfig
 from facescan_ai.types import Face, ImageBGR
 
 from app.interfaces.capabilities import Capabilities

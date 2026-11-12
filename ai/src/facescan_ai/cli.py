@@ -20,10 +20,7 @@ import cv2
 import numpy as np
 import typer
 
-from facescan_ai.config import DetectorConfig
-from facescan_ai.event_builder import EventBuildConfig, build_event
-from facescan_ai.image_io import ImageDecodeError, list_images, read_image
-from facescan_ai.index_store import (
+from facescan_ai.encrypted_face_index import (
     EventIndex,
     IndexedFace,
     IndexStoreError,
@@ -35,19 +32,22 @@ from facescan_ai.index_store import (
     validate_event_name,
     work_dir,
 )
-from facescan_ai.matching.matcher import MatchConfig, match_event
-from facescan_ai.matching.quality_gate import QualityGateConfig
-from facescan_ai.model_registry import ModelRegistry, ModelRegistryError
-from facescan_ai.pipeline import (
+from facescan_ai.event_builder import EventBuildConfig, build_event
+from facescan_ai.face_matching.matcher import MatchConfig, match_event
+from facescan_ai.face_matching.quality_gate import QualityGateConfig
+from facescan_ai.face_pipeline import (
     PRIMARY_ENGINE,
     SECOND_ENGINE,
     FacePipeline,
     SelfieFaceCountError,
     SelfieQuery,
 )
+from facescan_ai.image_loading import ImageDecodeError, list_images, read_image
+from facescan_ai.model_loader import ModelRegistry, ModelRegistryError
 from facescan_ai.privacy.face_blur import blur_faces
+from facescan_ai.settings import DetectorConfig
 
-BENCHMARK_DIR = Path(__file__).resolve().parents[2] / "benchmark"
+BENCHMARK_DIR = Path(__file__).resolve().parents[2] / "accuracy_test"
 
 app = typer.Typer(
     add_completion=False,
@@ -128,7 +128,7 @@ def _selfie_query(pipeline: FacePipeline, selfie: Path) -> SelfieQuery:
 
 
 def _use_benchmark_modules() -> None:
-    """Purpose: make ai/benchmark importable (labeler, runner). Side effects: edits sys.path."""
+    """Purpose: make ai/accuracy_test importable (labeler, runner). Side effects: edits sys.path."""
     if str(BENCHMARK_DIR) not in sys.path:
         sys.path.insert(0, str(BENCHMARK_DIR))
 
@@ -157,7 +157,7 @@ def index(
     Purpose: build (or rebuild) one event's matchable index.
     Inputs: photo folder, event name, detector and quality-gate settings.
     Outputs: summary on stdout (faces, clusters, calibration, time per photo).
-    Side effects: reads photos and models; writes ai/benchmark/work/<event>.fsidx.
+    Side effects: reads photos and models; writes ai/accuracy_test/work/<event>.fsidx.
     """
     event = _event(event)
     try:
@@ -286,7 +286,7 @@ def match(
 
 @app.command()
 def label(
-    event: Annotated[str, typer.Argument(help="Benchmark event in ai/benchmark/datasets/")],
+    event: Annotated[str, typer.Argument(help="Benchmark event in ai/accuracy_test/datasets/")],
     port: Annotated[int, typer.Option("--port", min=1024, max=65535)] = 8765,
 ) -> None:
     """
@@ -298,7 +298,7 @@ def label(
     event = _event(event)
     _use_benchmark_modules()
     from bench_dataset import LabelsError, dataset_paths, load_labels
-    from labeler.app import LabelerState, create_app, serve
+    from photo_labeler.app import LabelerState, create_app, serve
 
     paths = dataset_paths(event)
     if not paths.photos.is_dir():
@@ -320,7 +320,7 @@ def label(
 
 @app.command()
 def bench(
-    event: Annotated[str, typer.Argument(help="Benchmark event in ai/benchmark/datasets/")],
+    event: Annotated[str, typer.Argument(help="Benchmark event in ai/accuracy_test/datasets/")],
     synthetic: Annotated[
         bool, typer.Option("--synthetic", help="Use generated vectors instead of a dataset.")
     ] = False,
@@ -333,7 +333,8 @@ def bench(
     Run the benchmark: match every person's selfie and score releases against labels.json.
 
     Purpose: precision, recall, false releases and the 95% upper bound, overall and per person.
-    Side effects: writes reports to ai/benchmark/reports/ and per-photo debug to the work folder.
+    Side effects: writes reports to ai/accuracy_test/reports/ and per-photo debug to the
+        work folder.
     """
     event = _event(event)
     _use_benchmark_modules()

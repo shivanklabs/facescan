@@ -21,7 +21,7 @@ from bench_dataset import Labels, dataset_paths, load_labels
 from facescan_ai.cli import app as cli_app
 from facescan_ai.event_builder import EventBuildConfig, build_event
 from fastapi.testclient import TestClient
-from labeler.app import HOST, LabelerState, create_app, server_config
+from photo_labeler.app import HOST, LabelerState, create_app, server_config
 from synthetic import make_synthetic_event
 
 

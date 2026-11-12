@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from facescan_ai.index_store import (
+from facescan_ai.encrypted_face_index import (
     MAGIC,
     EventIndex,
     IndexDecryptionError,
