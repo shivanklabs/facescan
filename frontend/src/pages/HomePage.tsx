@@ -2,9 +2,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { SignInForm } from '@/features/auth/SignInForm';
-import { useMe } from '@/features/auth/useMe';
-import { api } from '@/lib/apiClient';
+import { MagicLinkForm } from '@/features/auth/MagicLinkForm';
+import { useCurrentUser } from '@/features/auth/useCurrentUser';
+import { api } from '@/lib/serverApi';
 
 interface EventSummary {
   event_id: string;
@@ -16,7 +16,7 @@ interface EventSummary {
 export default function HomePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { me, loading, reload } = useMe();
+  const { me, loading, reload } = useCurrentUser();
   const [events, setEvents] = useState<EventSummary[]>([]);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function HomePage() {
       <h1>{t('app.name')}</h1>
       <p>{t('app.tagline')}</p>
       {!me ? (
-        <SignInForm
+        <MagicLinkForm
           next="/"
           onSignedIn={(next) => {
             reload();

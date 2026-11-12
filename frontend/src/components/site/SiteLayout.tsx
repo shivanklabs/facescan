@@ -1,19 +1,19 @@
-// StudioLayout: the shell of the simple site (milestone 7): brand, account actions, page.
+// SiteLayout: the frame of the new guest website (milestone 7) for every page: brand, account actions, page.
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMe } from '@/features/auth/useMe';
+import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { forgetGoogleSelection } from '@/features/auth/googleSignIn';
-import { api } from '@/lib/apiClient';
-import '@/styles/studio.css';
+import { api } from '@/lib/serverApi';
+import '@/styles/site.css';
 
 /**
  * Purpose: page frame with the FaceScan brand and, when signed in, links and sign-out.
  * Inputs: none (reads the session). Outputs: layout element. Side effects: sign-out request.
  */
-export function StudioLayout() {
+export function SiteLayout() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { me } = useMe();
+  const { me } = useCurrentUser();
 
   async function signOut() {
     try {

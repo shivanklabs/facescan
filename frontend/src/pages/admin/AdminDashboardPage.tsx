@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PasskeyGate } from '@/features/auth/PasskeyGate';
-import { api, ApiError } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/serverApi';
 
 interface EventHealthSummary {
   event_id: string;

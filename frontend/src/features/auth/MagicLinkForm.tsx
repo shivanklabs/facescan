@@ -1,7 +1,7 @@
-// SignInForm: email magic link, or a passkey. `next` is where the link returns the user.
+// MagicLinkForm: email magic link, or a passkey. `next` is where the link returns the user.
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api } from '@/lib/apiClient';
+import { api } from '@/lib/serverApi';
 import { signInWithPasskey } from '@/lib/passkeys';
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
   onSignedIn: (next: string) => void;
 }
 
-export function SignInForm({ next, onSignedIn }: Props) {
+export function MagicLinkForm({ next, onSignedIn }: Props) {
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);

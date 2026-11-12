@@ -226,8 +226,8 @@ def _fake_dist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _frontend_paths() -> list[str]:
-    """Purpose: every route path in frontend/src/url/router.tsx, with sample ids filled in."""
-    source = (Path(__file__).resolve().parents[3] / "frontend/src/url/router.tsx").read_text(
+    """Purpose: every route path in frontend/src/url/routes.tsx, with sample ids filled in."""
+    source = (Path(__file__).resolve().parents[3] / "frontend/src/url/routes.tsx").read_text(
         encoding="utf-8"
     )
     paths = ["/"]

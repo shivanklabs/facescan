@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useGuestStatus } from '@/features/consent/useGuestStatus';
-import { api } from '@/lib/apiClient';
+import { useConsentStatus } from '@/features/consent/useConsentStatus';
+import { api } from '@/lib/serverApi';
 
 interface Notice {
   version: string;
@@ -16,7 +16,7 @@ export default function ConsentPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { eventId = '' } = useParams();
-  const { status, error } = useGuestStatus(eventId);
+  const { status, error } = useConsentStatus(eventId);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [message, setMessage] = useState('');

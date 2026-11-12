@@ -1,17 +1,17 @@
-// ScanPage (milestone 7): one live scan (look straight, blink) searched in every event.
+// FaceScanPage (milestone 7): one live scan (look straight, blink) searched in every event.
 // Frames are captured into memory and sent once; nothing is saved in the browser.
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMe } from '@/features/auth/useMe';
-import { api, ApiError } from '@/lib/apiClient';
+import { useCurrentUser } from '@/features/auth/useCurrentUser';
+import { api, ApiError } from '@/lib/serverApi';
 import {
   captureBlinkScan,
   captureFrames as captureTimedFrames,
   framesBody,
   FRAMES_CONTENT_TYPE,
   ScanStep,
-} from '@/lib/frames';
+} from '@/lib/cameraFrames';
 import type { LiveStep } from '@/lib/liveBlink';
 
 /**
@@ -78,10 +78,10 @@ function messageFor(t: (key: string) => string, error: unknown): string {
  * Inputs: none. Outputs: page element.
  * Side effects: camera access while open (stopped on leave); one search request.
  */
-export default function ScanPage() {
+export default function FaceScanPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { me, loading } = useMe();
+  const { me, loading } = useCurrentUser();
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [phase, setPhase] = useState<Phase>('intro');

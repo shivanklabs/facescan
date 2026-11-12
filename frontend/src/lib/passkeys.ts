@@ -6,7 +6,7 @@ import {
   type PublicKeyCredentialCreationOptionsJSON,
   type PublicKeyCredentialRequestOptionsJSON,
 } from '@simplewebauthn/browser';
-import { api } from './apiClient';
+import { api } from './serverApi';
 
 export async function registerPasskey(): Promise<void> {
   const optionsJSON = await api<PublicKeyCredentialCreationOptionsJSON>(

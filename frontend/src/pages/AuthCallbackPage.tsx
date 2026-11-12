@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { api } from '@/lib/apiClient';
+import { api } from '@/lib/serverApi';
 
 export default function AuthCallbackPage() {
   const { t } = useTranslation();

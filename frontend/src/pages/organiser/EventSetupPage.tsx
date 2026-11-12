@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { QRCodeCanvas } from 'qrcode.react';
 import { PasskeyGate } from '@/features/auth/PasskeyGate';
-import { api } from '@/lib/apiClient';
+import { api } from '@/lib/serverApi';
 
 interface EventSummary {
   event_id: string;

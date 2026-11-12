@@ -4,9 +4,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useGuestStatus } from '@/features/consent/useGuestStatus';
-import { api, ApiError } from '@/lib/apiClient';
-import { captureGuidedFrames, framesBody, FRAMES_CONTENT_TYPE, ScanStep } from '@/lib/frames';
+import { useConsentStatus } from '@/features/consent/useConsentStatus';
+import { api, ApiError } from '@/lib/serverApi';
+import { captureGuidedFrames, framesBody, FRAMES_CONTENT_TYPE, ScanStep } from '@/lib/cameraFrames';
 
 type Phase = 'idle' | 'ready' | 'capturing' | 'searching';
 
@@ -14,7 +14,7 @@ export default function SelfieCapturePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { eventId = '' } = useParams();
-  const { status } = useGuestStatus(eventId);
+  const { status } = useConsentStatus(eventId);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');

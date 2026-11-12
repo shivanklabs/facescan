@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { FRONT_ONLY_STEPS, framesBody, FRAMES_CONTENT_TYPE, GUIDED_STEPS } from '@/lib/frames';
+import {
+  FRONT_ONLY_STEPS,
+  framesBody,
+  FRAMES_CONTENT_TYPE,
+  GUIDED_STEPS,
+} from '@/lib/cameraFrames';
 
 describe('framesBody', () => {
   it('prefixes every frame with its 4-byte big-endian length', async () => {

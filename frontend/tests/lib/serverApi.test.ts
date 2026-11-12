@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { API_BASE, apiUrl } from '@/lib/apiClient';
+import { API_BASE, apiUrl } from '@/lib/serverApi';
 
 /**
- * Purpose: verify apiClient uses relative same-origin URLs in public/production mode
+ * Purpose: verify serverApi uses relative same-origin URLs in public/production mode
  * so phones on tunnel URLs never attempt to call localhost.
  * Inputs: none.
  * Outputs: none.
  * Side effects: none.
  */
-describe('apiClient URL resolution', () => {
+describe('serverApi URL resolution', () => {
   it('uses relative /api base path and never points to localhost', () => {
     expect(API_BASE).toMatch(/^\/api\b/);
     expect(API_BASE).not.toContain('localhost');

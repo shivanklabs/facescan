@@ -3,16 +3,16 @@
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { registerPasskey, signInWithPasskey } from '@/lib/passkeys';
-import { SignInForm } from './SignInForm';
-import { useMe } from './useMe';
+import { MagicLinkForm } from './MagicLinkForm';
+import { useCurrentUser } from './useCurrentUser';
 
 export function PasskeyGate({ next, children }: { next: string; children: ReactNode }) {
   const { t } = useTranslation();
-  const { me, loading, reload } = useMe();
+  const { me, loading, reload } = useCurrentUser();
   const [error, setError] = useState('');
 
   if (loading) return <p>{t('common.loading')}</p>;
-  if (!me) return <SignInForm next={next} onSignedIn={() => reload()} />;
+  if (!me) return <MagicLinkForm next={next} onSignedIn={() => reload()} />;
   if (me.auth_method === 'passkey') return <>{children}</>;
 
   async function run(action: () => Promise<unknown>) {

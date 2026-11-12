@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMe } from '@/features/auth/useMe';
-import { api, apiUrl } from '@/lib/apiClient';
+import { useCurrentUser } from '@/features/auth/useCurrentUser';
+import { api, apiUrl } from '@/lib/serverApi';
 
 interface Photo {
   photo_id: string;
@@ -49,7 +49,7 @@ export default function MyPhotosPage() {
   const { t } = useTranslation();
   const location = useLocation();
   const scanState = location.state as { scanned?: boolean } | null;
-  const { me, loading: meLoading } = useMe();
+  const { me, loading: meLoading } = useCurrentUser();
   const [events, setEvents] = useState<EventPhotos[] | null>(null);
   const [error, setError] = useState('');
   const [viewing, setViewing] = useState<Viewing | null>(null);

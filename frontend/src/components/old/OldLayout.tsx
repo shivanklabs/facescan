@@ -1,9 +1,9 @@
-// AppLayout: header with home and privacy links, a language toggle (English/Hindi) and sign-out.
+// OldLayout: header with home and privacy links, a language toggle (English/Hindi) and sign-out.
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { api } from '@/lib/apiClient';
+import { api } from '@/lib/serverApi';
 
-export function AppLayout() {
+export function OldLayout() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
 

@@ -1,6 +1,6 @@
-// useGuestStatus: the guest's state in an event (age, consent, search availability).
+// useConsentStatus: the guest's state in an event (age, consent, search availability).
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '@/lib/apiClient';
+import { api } from '@/lib/serverApi';
 
 export interface GuestStatus {
   roles: string[];
@@ -13,7 +13,7 @@ export interface GuestStatus {
   event_searchable: boolean;
 }
 
-export function useGuestStatus(eventId: string) {
+export function useConsentStatus(eventId: string) {
   const [status, setStatus] = useState<GuestStatus | null>(null);
   const [error, setError] = useState(false);
   const [version, setVersion] = useState(0);

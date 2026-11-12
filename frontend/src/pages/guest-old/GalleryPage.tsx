@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PasskeyOffer } from '@/features/auth/PasskeyOffer';
-import { api, apiUrl } from '@/lib/apiClient';
+import { api, apiUrl } from '@/lib/serverApi';
 
 interface GalleryPhoto {
   photo_id: string;

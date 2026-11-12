@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { registerPasskey } from '@/lib/passkeys';
-import { useMe } from './useMe';
+import { useCurrentUser } from './useCurrentUser';
 
 /**
  * Purpose: Prompt guests to register a passkey on their phone after their scan.
@@ -14,7 +14,7 @@ import { useMe } from './useMe';
  */
 export function PasskeyOffer() {
   const { t } = useTranslation();
-  const { me, reload } = useMe();
+  const { me, reload } = useCurrentUser();
   const [state, setState] = useState<'idle' | 'done'>('idle');
 
   if (!browserSupportsWebAuthn() || !me || me.has_passkey) return null;

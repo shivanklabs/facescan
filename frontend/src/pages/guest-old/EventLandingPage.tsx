@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMe } from '@/features/auth/useMe';
-import type { GuestStatus } from '@/features/consent/useGuestStatus';
-import { api } from '@/lib/apiClient';
+import { useCurrentUser } from '@/features/auth/useCurrentUser';
+import type { GuestStatus } from '@/features/consent/useConsentStatus';
+import { api } from '@/lib/serverApi';
 
 /**
  * Purpose: Landing page for guest invite links without email requirement.
@@ -19,7 +19,7 @@ export default function EventLandingPage() {
   const { eventId = '' } = useParams();
   const [params] = useSearchParams();
   const key = params.get('k') ?? '';
-  const { me, loading, reload } = useMe();
+  const { me, loading, reload } = useCurrentUser();
   const [eventName, setEventName] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
 

@@ -1,7 +1,7 @@
 // Google sign-in (milestone 7): loads Google Identity Services from Google's own script URL
 // (no npm package), renders the official button and hands the ID token to the backend, which
 // verifies it. The token is never stored in the browser.
-import { api } from '@/lib/apiClient';
+import { api } from '@/lib/serverApi';
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 const LOAD_TIMEOUT_MS = 15_000;

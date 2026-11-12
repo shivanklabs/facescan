@@ -1,11 +1,11 @@
-// StudioPage (milestone 7): the owner's one admin page. Create an event, drop photos, watch
+// OwnerUploadPage (milestone 7): the owner's one admin page. Create an event, drop photos, watch
 // them become searchable. Uploads go in small batches into one collection, which is then
 // approved so the worker indexes it (no separate approval step for the owner).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMe } from '@/features/auth/useMe';
-import { api, ApiError } from '@/lib/apiClient';
+import { useCurrentUser } from '@/features/auth/useCurrentUser';
+import { api, ApiError } from '@/lib/serverApi';
 
 interface EventItem {
   event_id: string;
@@ -37,9 +37,9 @@ const POLL_MS = 4000;
  * Inputs: none. Outputs: page element.
  * Side effects: creates events, uploads photos, approves collections, polls status.
  */
-export default function StudioPage() {
+export default function OwnerUploadPage() {
   const { t } = useTranslation();
-  const { me, loading } = useMe();
+  const { me, loading } = useCurrentUser();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [name, setName] = useState('');

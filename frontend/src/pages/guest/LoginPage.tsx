@@ -1,9 +1,9 @@
-// WelcomePage (milestone 7): the front door. Signed-out visitors see the hero and the Google
+// LoginPage (milestone 7): the front door. Signed-out visitors see the hero and the Google
 // button; signed-in people go straight to their photos.
 import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useMe } from '@/features/auth/useMe';
+import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { devSignIn, renderGoogleButton, signInConfig } from '@/features/auth/googleSignIn';
 
 /**
@@ -11,9 +11,9 @@ import { devSignIn, renderGoogleButton, signInConfig } from '@/features/auth/goo
  * Inputs: none. Outputs: page element.
  * Side effects: loads Google's script and renders its button; redirects when signed in.
  */
-export default function WelcomePage() {
+export default function LoginPage() {
   const { t } = useTranslation();
-  const { me, loading } = useMe();
+  const { me, loading } = useCurrentUser();
   const slot = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);

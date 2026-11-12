@@ -2,12 +2,12 @@
 // Simple site (milestone 7): / (Google sign-in) -> /scan -> /photos; /studio for the owner.
 // Older pages stay reachable on their own paths (not linked from the simple site).
 import { createBrowserRouter } from 'react-router-dom';
-import { AppLayout } from '@/components/ui/AppLayout';
-import { StudioLayout } from '@/components/simple/StudioLayout';
-import WelcomePage from '@/pages/guest/WelcomePage';
-import ScanPage from '@/pages/guest/ScanPage';
+import { OldLayout } from '@/components/old/OldLayout';
+import { SiteLayout } from '@/components/site/SiteLayout';
+import LoginPage from '@/pages/guest/LoginPage';
+import FaceScanPage from '@/pages/guest/FaceScanPage';
 import MyPhotosPage from '@/pages/guest/MyPhotosPage';
-import StudioPage from '@/pages/guest/StudioPage';
+import OwnerUploadPage from '@/pages/guest/OwnerUploadPage';
 import HomePage from '@/pages/HomePage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import EventLandingPage from '@/pages/guest-old/EventLandingPage';
@@ -30,17 +30,17 @@ function NotFoundPage() {
 export const routes = [
   {
     path: '/',
-    element: <StudioLayout />,
+    element: <SiteLayout />,
     children: [
-      { index: true, element: <WelcomePage /> },
-      { path: 'scan', element: <ScanPage /> },
+      { index: true, element: <LoginPage /> },
+      { path: 'scan', element: <FaceScanPage /> },
       { path: 'photos', element: <MyPhotosPage /> },
-      { path: 'studio', element: <StudioPage /> },
+      { path: 'studio', element: <OwnerUploadPage /> },
     ],
   },
   {
     path: '/',
-    element: <AppLayout />,
+    element: <OldLayout />,
     children: [
       { path: 'staff', element: <HomePage /> },
       { path: 'auth/callback', element: <AuthCallbackPage /> },
