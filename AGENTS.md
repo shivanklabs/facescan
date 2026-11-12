@@ -111,7 +111,7 @@ backend/     FastAPI modular monolith; two processes: api (app.main) and worker 
                         gallery, scene_search, consent, events, activity_log, admin
   app/background_jobs/  job type -> handler registry
 ai/          facescan_ai: pure Python face library (no web, no database)
-database/    alembic migrations, RLS policy templates, setup/ (dev role + database), seeds, schema.md
+database/    alembic migrations, RLS policy templates, setup/ (dev role + database), schema.md
 docs/        architecture + ADRs, security, legal, product, runbooks
 scripts/     tasks.py (`uv run tasks`), check_licences.py
 var/         local runtime data, git-ignored (storage/<bucket>/<event_id>/)
