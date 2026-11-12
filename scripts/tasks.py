@@ -1066,6 +1066,39 @@ def task_backup(_args: argparse.Namespace) -> None:
     print("=" * 70 + "\n")
 
 
+def task_staff_key(args: argparse.Namespace) -> None:
+    """
+    Purpose: create a one-time staff key at the terminal (first admin, or an organiser). The
+        key is printed once and never stored; only its hash goes into the database.
+    Inputs: args.role ('admin' or 'organiser').
+    Side effects: runs the backend with .env; inserts one staff_keys row.
+    """
+    if not ENV_FILE.exists():
+        raise TaskError(".env is missing. Run: uv run tasks setup")
+    code = (
+        "from app.features.login.service import issue_staff_key_from_terminal as issue; "
+        f"print(issue({args.role!r}))"
+    )
+    result = subprocess.run(  # noqa: S603  (role is one of two argparse choices)
+        [sys.executable, "-c", code],
+        cwd=BACKEND,
+        env=child_env(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise TaskError("could not create the key (is PostgreSQL running and migrated?)")
+    key = result.stdout.strip().splitlines()[-1]
+    print()
+    print(f"Staff key ({args.role}) - shown only now, valid 7 days, works once:")
+    print()
+    print(f"    {key}")
+    print()
+    print("Open the site, choose Staff sign-in, paste the key, then add a passkey.")
+    print()
+
+
 TASKS: dict[str, tuple[Callable[[argparse.Namespace], None], str]] = {
     "setup": (task_setup, "first-time setup: .env, npm ci, pre-commit, var/storage"),
     "db-init": (task_db_init, "create the facescan role and database (asks for the PG password)"),
@@ -1080,6 +1113,7 @@ TASKS: dict[str, tuple[Callable[[argparse.Namespace], None], str]] = {
         task_public,
         "phone test mode: production frontend build, Cloudflare tunnel, api, worker",
     ),
+    "staff-key": (task_staff_key, "create a one-time staff key (--role admin|organiser)"),
     "backup": (
         task_backup,
         "backup database (pg_dump -Fc) and photo storage to FACESCAN_BACKUP_DIR with verification",
@@ -1096,7 +1130,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="task", required=True, metavar="<task>")
     for name, (_, help_text) in TASKS.items():
         task_parser = sub.add_parser(name, help=help_text)
-        if name == "lint":
+        if name == "staff-key":
+            task_parser.add_argument("--role", choices=("admin", "organiser"), default="admin")
+        elif name == "lint":
             task_parser.add_argument("--only", choices=("python", "frontend"), default=None)
         elif name == "test":
             task_parser.add_argument(

@@ -26,21 +26,25 @@
     "titleAccent": "in one scan.",
     "lead": "Sign in, look at your camera and blink. FaceScan finds the photos you are in from every event and shows them in your own private gallery.",
     "fine": "Your selfie is checked live and never stored. Only you can see the photos that match you.",
-    "step1": "Sign in with Google",
+    "step1": "Start with your fingerprint (passkey)",
     "step2": "Scan your face",
     "step3": "View and download",
     "caption1": "the sangeet",
     "caption2": "first dance",
     "caption3": "you, found",
     "chip": "128 photos matched",
-    "signInFailed": "Google sign-in did not work. Please try again.",
-    "googleUnavailable": "Google sign-in could not load. Check your connection and refresh.",
-    "notConfigured": "Google sign-in is not set up yet (FACESCAN_GOOGLE_CLIENT_ID is empty).",
     "devTitle": "Developer sign-in (local only)",
     "devEmail": "Email address",
     "devButton": "Sign in",
     "devHint": "Works only on this computer in development mode. Use a different email to act as a different guest.",
-    "devFailed": "Dev sign-in failed. Check the email address."
+    "devFailed": "Dev sign-in failed. Check the email address.",
+    "start": "Start with a passkey",
+    "comeBack": "I've been here before",
+    "passkeyHint": "A passkey is your phone's fingerprint or face unlock. No email, no password; nothing about you is stored.",
+    "passkeyFailed": "The passkey did not work. Please try again.",
+    "noPasskeyHere": "This app's built-in browser cannot use passkeys. Open this page in Chrome or Safari.",
+    "openInBrowser": "Open in browser",
+    "copyLink": "Copy link"
   },
   "scan": {
     "eyebrow": "Face scan",
@@ -214,7 +218,7 @@
     "settings": "Settings",
     "status": "Upload status",
     "claims": "Claims",
-    "needStrongSignIn": "This needs a Google or passkey sign-in as an organiser of this event."
+    "needStrongSignIn": "This needs a passkey sign-in as an organiser of this event."
   },
   "settings": {
     "eyebrow": "Event settings",
@@ -290,7 +294,7 @@
     "eyebrow": "Platform",
     "title": "Health",
     "intro": "Counts only: no photos, faces or personal data are shown here. Refreshes every 30 seconds.",
-    "notAllowed": "Only platform admins signed in with Google or a passkey can see this page.",
+    "notAllowed": "Only platform admins signed in with a passkey can see this page.",
     "diskFree": "free · {{used}}% of {{total}} used",
     "never": "Never",
     "backupOk": "last backup",
@@ -304,10 +308,32 @@
   "staff": {
     "title": "Staff sign-in",
     "open": "Staff sign-in (organisers, photographers)",
-    "passkeyNeeded": "You signed in with an email link. For staff work (events, uploads, claims) add a passkey on this device, or use the one you have."
+    "passkeyNeeded": "You signed in with a staff key. Add a passkey on this device now; from then on you sign in with it, and staff work (events, uploads, claims) needs it.",
+    "key": "Staff key",
+    "keyHint": "Staff key, e.g. FS-…",
+    "useKey": "Sign in",
+    "keyFormat": "That does not look like a staff key (it starts with FS-).",
+    "keyInvalid": "This key does not work: it may be used already, turned off or expired."
   },
   "notFound": {
     "title": "Page not found",
     "text": "This address does not exist. Use the menu to go on."
+  },
+  "staffKeys": {
+    "title": "Staff keys",
+    "intro": "Create a one-time key and send it to the person (WhatsApp is fine). They paste it in Staff sign-in, then add a passkey. Keys work once and expire in 7 days. No email is needed.",
+    "create": "Create key",
+    "createFor": "Create {{role}} key",
+    "createFailed": "Could not create the key. Sign in with your passkey and try again.",
+    "shownOnce": "Copy this key now: it is shown only once.",
+    "used": "used",
+    "revoked": "turned off",
+    "expired": "expired",
+    "waiting": "not used yet",
+    "role": {
+      "admin": "admin",
+      "organiser": "owner",
+      "photographer": "photographer"
+    }
   }
 }

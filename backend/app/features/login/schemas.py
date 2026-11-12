@@ -1,5 +1,7 @@
 """API models for sign-in and account (no email addresses in responses)."""
 
+from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -80,3 +82,42 @@ class SignedOutResponse(BaseModel):
     """Sessions ended."""
 
     sessions_ended: int
+
+
+class StaffKeyRedeem(BaseModel):
+    """Body: a staff key to use once."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    key: str = Field(min_length=20, max_length=100, pattern=r"^FS-[A-Za-z0-9_-]+$")
+
+
+class StaffKeyCreate(BaseModel):
+    """Body: create a staff key (photographer keys belong to one event)."""
+
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["admin", "organiser", "photographer"]
+    event_id: UUID | None = None
+
+
+class StaffKeyItem(BaseModel):
+    """A staff key as listed to its creator (never the key itself)."""
+
+    key_id: UUID
+    role: str
+    event_id: UUID | None
+    created_at: datetime
+    expires_at: datetime
+    used: bool
+    revoked: bool
+
+
+class StaffKeyCreated(StaffKeyItem):
+    """A new staff key: the key is shown this once."""
+
+    key: str
+
+
+class StaffKeyList(BaseModel):
+    """The staff keys the caller created."""
+
+    keys: list[StaffKeyItem]

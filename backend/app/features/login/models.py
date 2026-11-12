@@ -1,4 +1,5 @@
-"""Tables: users, passkeys, sessions, magic_links, auth_challenges (global, not event-scoped).
+"""Tables: users, passkeys, sessions, magic_links, auth_challenges, staff_keys (global, not
+event-scoped).
 
 These tables hold only hashes and encrypted values: email addresses are stored as an HMAC
 (lookup) and AES-GCM ciphertext; session and magic-link tokens only as SHA-256 hashes.
@@ -15,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     LargeBinary,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -33,6 +35,9 @@ class User(Base):
     email_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     is_minor: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     age_answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Staff rights from a redeemed staff key (no email allowlist needed).
+    can_create_events: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = created_at()
 
 
@@ -96,7 +101,11 @@ class AuthChallenge(Base):
     """A WebAuthn challenge (registration or authentication), single use, short-lived."""
 
     __tablename__ = "auth_challenges"
-    __table_args__ = (CheckConstraint("purpose IN ('register', 'authenticate')", name="purpose"),)
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('register', 'authenticate', 'guest_register')", name="purpose"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     challenge: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True)
@@ -107,3 +116,39 @@ class AuthChallenge(Base):
     created_at: Mapped[datetime] = created_at()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # guest_register only: the id the new guest account gets once its passkey is verified.
+    pending_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class StaffKey(Base):
+    """
+    A one-time key FaceScan generates for staff (no email). Only its SHA-256 is stored; the key
+    is shown once. Redeeming it gives the signed-in account the role (photographer: of one
+    event). Single use, expires, can be revoked.
+    """
+
+    __tablename__ = "staff_keys"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'organiser', 'photographer')", name="role"),
+        CheckConstraint(
+            "(role = 'photographer') = (event_id IS NOT NULL)", name="photographer_event"
+        ),
+        UniqueConstraint("key_hash"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    key_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE")
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    used_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

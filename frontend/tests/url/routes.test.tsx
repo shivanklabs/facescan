@@ -31,12 +31,21 @@ afterEach(() => {
 });
 
 describe('router', () => {
-  it('renders the simple welcome page when signed out', async () => {
+  it('offers passkey sign-up and sign-in when the browser supports passkeys', async () => {
+    vi.stubGlobal('PublicKeyCredential', function PublicKeyCredential() {});
     renderAt('/');
     expect(
       await screen.findByRole('heading', { name: 'Every photo of you, in one scan.', level: 1 }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Sign in with Google')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start with a passkey' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "I've been here before" })).toBeInTheDocument();
+    expect(screen.queryByText(/Google/)).toBeNull();
+  });
+
+  it('asks in-app browsers without passkeys to open the page in a real browser', async () => {
+    renderAt('/');
+    expect(await screen.findByRole('link', { name: 'Open in browser' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start with a passkey' })).toBeNull();
   });
 
   it('sends signed-out visitors from the scan and photos pages to the welcome page', async () => {
@@ -290,6 +299,7 @@ describe('owner pages', () => {
         '/invites': { invites: [] },
         '/sections': { sections: [] },
         '/cameras': { cameras: [] },
+        '/staff-keys': { keys: [] },
       },
     );
     renderAt('/studio/events/ev1/settings');
@@ -298,11 +308,14 @@ describe('owner pages', () => {
       'Invite link and QR code',
       'Parts of the event',
       'Search window',
-      'Team',
+      'Staff keys',
       'Camera clocks',
     ]) {
       expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
     }
+    // Photographers are added with a one-time key, never by email.
+    expect(screen.queryByRole('textbox', { name: 'Email' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Create photographer key' })).toBeInTheDocument();
   });
 
   it('lists failed photos with a retry button on the upload status page', async () => {

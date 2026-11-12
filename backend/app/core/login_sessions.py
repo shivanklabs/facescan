@@ -82,12 +82,13 @@ def open_email(keys: KeyManager, sealed: bytes) -> str:
     return open_sealed(keys.derive_key("email-encrypt"), sealed, _EMAIL_AAD).decode("utf-8")
 
 
-def create_anonymous_user(session: Session, keys: KeyManager) -> User:
+def create_anonymous_user(session: Session, keys: KeyManager, user_id: UUID | None = None) -> User:
     """
     Purpose: Create an anonymous guest account with a random UUID and synthetic address.
     Inputs:
         session: active SQLAlchemy database session
         keys: KeyManager for HMAC and encryption
+        user_id: the id to use (the one a passkey was just created for), else a new one
     Outputs:
         User: the newly created user record
     Side Effects:
@@ -102,6 +103,8 @@ def create_anonymous_user(session: Session, keys: KeyManager) -> User:
         is_minor=False,
         age_answered_at=datetime.now(UTC),
     )
+    if user_id is not None:
+        user.id = user_id
     session.add(user)
     session.flush()
     return user
@@ -132,7 +135,12 @@ def find_or_create_user(session: Session, keys: KeyManager, address: str) -> Use
 
 
 def organiser_allowed(settings: Settings, keys: KeyManager, user: User) -> bool:
-    """Purpose: True if the user's email is on FACESCAN_AUTH_ORGANISER_EMAILS."""
+    """
+    Purpose: True if the user may create events: set by a redeemed staff key, or (older
+        setups) the email is on FACESCAN_AUTH_ORGANISER_EMAILS.
+    """
+    if user.can_create_events:
+        return True
     allowed = {
         email_hash(keys, normalise_email(a))
         for a in settings.auth_organiser_emails.split(",")
@@ -143,11 +151,14 @@ def organiser_allowed(settings: Settings, keys: KeyManager, user: User) -> bool:
 
 def admin_allowed(settings: Settings, keys: KeyManager, user: User) -> bool:
     """
-    Purpose: True if the user's email is on FACESCAN_AUTH_ADMIN_EMAILS.
+    Purpose: True if the user is a platform admin: set by a redeemed staff key, or (older
+        setups) the email is on FACESCAN_AUTH_ADMIN_EMAILS.
     Inputs: settings, keys, user.
     Outputs: bool.
     Side effects: none.
     """
+    if user.is_admin:
+        return True
     allowed = {
         email_hash(keys, normalise_email(a))
         for a in settings.auth_admin_emails.split(",")

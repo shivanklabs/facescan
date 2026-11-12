@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { StaffKeysCard } from '@/features/auth/StaffKeyForm';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { api, ApiError } from '@/lib/serverApi';
 
@@ -129,6 +130,7 @@ export default function AdminHealthPage() {
           </div>
         </div>
       )}
+      {health && <StaffKeysCard roles={['organiser', 'admin']} />}
       {health?.events.length === 0 && <p className="st-note">{t('health.noEvents')}</p>}
       {health && health.events.length > 0 && (
         <div className="st-events">

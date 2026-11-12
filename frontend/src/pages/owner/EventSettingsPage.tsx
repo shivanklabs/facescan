@@ -1,10 +1,11 @@
 // EventSettingsPage: one owner page for an event's settings: invite links with a printable QR,
-// sections, the search window, the team (photographers, co-organisers) and camera clocks.
+// sections, the search window, photographer keys (no emails) and camera clocks.
 // Every action is checked again by the server (organiser of this event, strong sign-in).
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { QRCodeCanvas } from 'qrcode.react';
+import { StaffKeysCard } from '@/features/auth/StaffKeyForm';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { api, ApiError } from '@/lib/serverApi';
 
@@ -340,64 +341,6 @@ function SearchWindowCard({ event, onSaved }: { event: EventInfo; onSaved: () =>
 }
 
 /**
- * Purpose: add a photographer or co-organiser by email.
- * Inputs: event id. Outputs: card element. Side effects: one POST per member.
- */
-function TeamCard({ eventId }: { eventId: string }) {
-  const { t } = useTranslation();
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'photographer' | 'organiser'>('photographer');
-  const [message, setMessage] = useState('');
-
-  async function add(e: FormEvent) {
-    e.preventDefault();
-    setMessage('');
-    try {
-      await api(`/events/${eventId}/members`, { json: { email: email.trim(), role } });
-      setEmail('');
-      setMessage(t('settings.memberAdded'));
-    } catch (error) {
-      setMessage(ownerError(t, error));
-    }
-  }
-
-  return (
-    <div className="st-card st-claim">
-      <h2>{t('settings.teamTitle')}</h2>
-      <p className="st-lead-small">{t('settings.teamText')}</p>
-      <form className="st-form-row" onSubmit={(e) => void add(e)}>
-        <label className="st-field st-field-grow">
-          <span>{t('settings.email')}</span>
-          <input
-            className="st-input"
-            type="email"
-            required
-            maxLength={254}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <label className="st-field">
-          <span>{t('settings.role')}</span>
-          <select
-            className="st-input"
-            value={role}
-            onChange={(e) => setRole(e.target.value === 'organiser' ? 'organiser' : 'photographer')}
-          >
-            <option value="photographer">{t('settings.rolePhotographer')}</option>
-            <option value="organiser">{t('settings.roleOrganiser')}</option>
-          </select>
-        </label>
-        <button type="submit" className="st-btn st-btn-primary">
-          {t('settings.addMember')}
-        </button>
-      </form>
-      {message && <p className="st-note">{message}</p>}
-    </div>
-  );
-}
-
-/**
  * Purpose: camera clocks: shift a camera's photo times so all cameras line up (sections and
  *   time filters depend on it). Inputs: event id. Outputs: card element.
  * Side effects: GET cameras; POST offset (re-times that camera's photos).
@@ -530,7 +473,7 @@ export default function EventSettingsPage() {
             event={event}
             onSaved={load}
           />
-          <TeamCard eventId={eventId} />
+          <StaffKeysCard roles={['photographer']} eventId={eventId} />
           <CamerasCard eventId={eventId} />
         </>
       )}

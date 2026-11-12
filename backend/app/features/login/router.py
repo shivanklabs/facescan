@@ -4,13 +4,14 @@ import base64
 import binascii
 import json
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 
 from app.core.login_sessions import CurrentUser, clear_session_cookie, set_session_cookie
 from app.core.rate_limit import RateLimiter
-from app.core.request_checks import Ctx, User, optional_user
+from app.core.request_checks import Ctx, PasskeyUser, User, optional_user
 from app.features.login import service
 from app.features.login.schemas import (
     AgeAnswer,
@@ -23,6 +24,11 @@ from app.features.login.schemas import (
     PasskeyCredential,
     SignedOutResponse,
     SignInResponse,
+    StaffKeyCreate,
+    StaffKeyCreated,
+    StaffKeyItem,
+    StaffKeyList,
+    StaffKeyRedeem,
 )
 
 router = APIRouter(prefix="/auth", tags=["sign-in"])
@@ -158,6 +164,73 @@ def passkey_login(body: PasskeyCredential, ctx: Ctx, user: MaybeUser) -> JSONRes
     except service.SignInError as exc:
         raise HTTPException(status_code=400, detail="passkey_sign_in_failed") from exc
     return _signed_in(ctx, result)
+
+
+@router.post("/guest/passkey/options", dependencies=[Depends(sign_in_limiter)])
+def guest_passkey_options(ctx: Ctx) -> Response:
+    """Purpose: WebAuthn creation options for a new guest (passkey-only sign-up, no email)."""
+    return Response(service.guest_registration_options(ctx), media_type="application/json")
+
+
+@router.post("/guest/passkey/verify", dependencies=[Depends(sign_in_limiter)])
+def guest_passkey_sign_up(body: PasskeyCredential, ctx: Ctx, user: MaybeUser) -> JSONResponse:
+    """Purpose: verify the new guest's passkey, create the account and a passkey session."""
+    try:
+        result = service.sign_up_guest_with_passkey(
+            ctx, body.credential, _challenge_of(body.credential), user.session_id if user else None
+        )
+    except service.SignInError as exc:
+        raise HTTPException(status_code=400, detail="passkey_not_registered") from exc
+    return _signed_in(ctx, result)
+
+
+@router.post("/staff-key", dependencies=[Depends(sign_in_limiter)])
+def use_staff_key(body: StaffKeyRedeem, ctx: Ctx, user: MaybeUser) -> JSONResponse:
+    """
+    Purpose: use a one-time staff key. Signed in: the role is added to this account.
+        Signed out: a new account (no email) with a session; add a passkey next.
+    Outputs: SignInResponse (cookie set only for a new session).
+    """
+    try:
+        result = service.redeem_staff_key(ctx, body.key, user)
+    except service.SignInError as exc:
+        raise HTTPException(status_code=400, detail="staff_key_invalid") from exc
+    if result is None:
+        return JSONResponse(SignInResponse(next="/studio", has_passkey=False).model_dump())
+    return _signed_in(ctx, result)
+
+
+def _key_item(view: service.StaffKeyView) -> StaffKeyItem:
+    """Purpose: service view -> API model."""
+    return StaffKeyItem(
+        key_id=view.key_id,
+        role=view.role,
+        event_id=view.event_id,
+        created_at=view.created_at,
+        expires_at=view.expires_at,
+        used=view.used,
+        revoked=view.revoked,
+    )
+
+
+@router.post("/staff-keys", status_code=201, response_model=StaffKeyCreated)
+def create_staff_key(body: StaffKeyCreate, user: PasskeyUser, ctx: Ctx) -> StaffKeyCreated:
+    """Purpose: create a one-time staff key (admins: admin/organiser; organisers: photographer)."""
+    key, view = service.create_staff_key(ctx, user, body.role, body.event_id)
+    return StaffKeyCreated(key=key, **_key_item(view).model_dump())
+
+
+@router.get("/staff-keys", response_model=StaffKeyList)
+def list_staff_keys(user: PasskeyUser, ctx: Ctx) -> StaffKeyList:
+    """Purpose: the staff keys the caller created (never the keys themselves)."""
+    return StaffKeyList(keys=[_key_item(v) for v in service.list_staff_keys(ctx, user)])
+
+
+@router.post("/staff-keys/{key_id}/revoke", status_code=204)
+def revoke_staff_key(key_id: UUID, user: PasskeyUser, ctx: Ctx) -> Response:
+    """Purpose: turn off an unused staff key the caller created."""
+    service.revoke_staff_key(ctx, user, key_id)
+    return Response(status_code=204)
 
 
 @router.get("/me", response_model=MeResponse)

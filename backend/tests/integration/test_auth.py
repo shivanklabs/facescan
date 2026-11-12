@@ -6,8 +6,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from app.core.login_sessions import SESSION_COOKIE
 from app.core.services_setup import AppContext
-from app.features.login.models import AuthSession, MagicLink
-from sqlalchemy import select, update
+from app.features.login import service as login_service
+from app.features.login.models import AuthSession, MagicLink, StaffKey, User
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select, update
 from tests.helpers import (
     ORGANISER_EMAIL,
     MemoryEmailSender,
@@ -219,3 +221,121 @@ def test_only_allow_listed_organisers_create_events(ctx: AppContext) -> None:
     someone = staff_client(ctx, "not-an-organiser@example.test")
     assert someone.post("/events", json={"name": "Mine", "country": "IN"}).status_code == 403
     assert someone.get("/auth/me").json()["can_create_events"] is False
+
+
+# ---------------------------------------------------------------- passkey-only guests
+
+
+def _user_count(ctx: AppContext) -> int:
+    with ctx.sessions() as session:
+        return int(session.scalar(select(func.count()).select_from(User)) or 0)
+
+
+def test_guest_signs_up_and_comes_back_with_only_a_passkey(ctx: AppContext) -> None:
+    """Purpose: no email, no Google: a passkey alone creates the account and signs back in."""
+    client = new_client(ctx)
+    options = client.post("/auth/guest/passkey/options").json()
+    authenticator = SoftAuthenticator()
+    response = client.post(
+        "/auth/guest/passkey/verify", json={"credential": authenticator.create(options)}
+    )
+    assert response.status_code == 200, response.text
+    me = client.get("/auth/me").json()
+    assert me["auth_method"] == "passkey"
+    assert me["can_create_events"] is False and me["is_staff"] is False
+
+    other_device = new_client(ctx)
+    passkey_sign_in(other_device, authenticator)
+    assert other_device.get("/auth/me").json()["user_id"] == me["user_id"]
+
+
+def test_failed_guest_passkey_creates_no_account(ctx: AppContext) -> None:
+    """Purpose: an account exists only after its passkey verifies (wrong origin here)."""
+    before = _user_count(ctx)
+    client = new_client(ctx)
+    options = client.post("/auth/guest/passkey/options").json()
+    bad = SoftAuthenticator().create(options, origin="https://evil.example")
+    response = client.post("/auth/guest/passkey/verify", json={"credential": bad})
+    assert response.status_code == 400
+    assert _user_count(ctx) == before
+    assert client.get("/auth/me").status_code == 401
+
+
+# ---------------------------------------------------------------- staff keys (no email)
+
+
+def _redeem(client: TestClient, key: str) -> None:
+    response = client.post("/auth/staff-key", json={"key": key})
+    assert response.status_code == 200, response.text
+
+
+def test_terminal_key_makes_the_first_admin_once(ctx: AppContext) -> None:
+    """Purpose: the bootstrap key works once, gives admin rights, and staff pages need a passkey."""
+    key, _ = login_service.create_staff_key(ctx, None, "admin", None)
+    admin = new_client(ctx)
+    _redeem(admin, key)
+    me = admin.get("/auth/me").json()
+    assert me["is_admin"] is True and me["can_create_events"] is True
+    assert admin.get("/admin/health").status_code == 403  # email-link strength: passkey first
+    register_passkey(admin)
+    assert admin.get("/admin/health").status_code == 200
+
+    again = new_client(ctx)
+    assert again.post("/auth/staff-key", json={"key": key}).status_code == 400
+
+
+def test_admin_owner_photographer_keys_end_to_end(ctx: AppContext) -> None:
+    """Purpose: admin -> organiser key -> organiser's event -> photographer key for that event."""
+    admin = new_client(ctx)
+    _redeem(admin, login_service.create_staff_key(ctx, None, "admin", None)[0])
+    register_passkey(admin)
+
+    created = admin.post("/auth/staff-keys", json={"role": "organiser"})
+    assert created.status_code == 201, created.text
+    organiser = new_client(ctx)
+    _redeem(organiser, created.json()["key"])
+    register_passkey(organiser)
+    event = organiser.post("/events", json={"name": "Key Wedding", "country": "IN"})
+    assert event.status_code == 201, event.text
+    event_id = event.json()["event_id"]
+
+    photo_key = organiser.post(
+        "/auth/staff-keys", json={"role": "photographer", "event_id": event_id}
+    )
+    assert photo_key.status_code == 201, photo_key.text
+    photographer = new_client(ctx)
+    _redeem(photographer, photo_key.json()["key"])
+    me = photographer.get("/auth/me").json()
+    assert me["is_staff"] is True and me["can_create_events"] is False
+    roles = {e["event_id"]: e["roles"] for e in photographer.get("/events").json()["events"]}
+    assert roles[event_id] == ["photographer"]
+
+    # The key list never shows a key or its hash.
+    listed = organiser.get("/auth/staff-keys").json()["keys"]
+    assert listed[0]["used"] is True and "key" not in listed[0]
+
+
+def test_staff_keys_refuse_wrong_creators_revoked_and_expired(ctx: AppContext) -> None:
+    """Purpose: guests cannot mint organiser keys; revoked and expired keys do not work."""
+    guest = new_client(ctx)
+    options = guest.post("/auth/guest/passkey/options").json()
+    guest.post(
+        "/auth/guest/passkey/verify", json={"credential": SoftAuthenticator().create(options)}
+    )
+    assert guest.post("/auth/staff-keys", json={"role": "organiser"}).status_code == 403
+
+    admin = new_client(ctx)
+    _redeem(admin, login_service.create_staff_key(ctx, None, "admin", None)[0])
+    register_passkey(admin)
+    made = admin.post("/auth/staff-keys", json={"role": "organiser"}).json()
+    assert admin.post(f"/auth/staff-keys/{made['key_id']}/revoke").status_code == 204
+    assert new_client(ctx).post("/auth/staff-key", json={"key": made["key"]}).status_code == 400
+
+    old_key, view = login_service.create_staff_key(ctx, None, "organiser", None)
+    with ctx.sessions() as session, session.begin():
+        session.execute(
+            update(StaffKey)
+            .where(StaffKey.id == view.key_id)
+            .values(expires_at=datetime.now(UTC) - timedelta(minutes=1))
+        )
+    assert new_client(ctx).post("/auth/staff-key", json={"key": old_key}).status_code == 400

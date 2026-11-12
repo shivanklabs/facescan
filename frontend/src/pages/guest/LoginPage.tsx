@@ -1,11 +1,18 @@
-// LoginPage (milestone 7): the front door. Signed-out visitors see the hero and the Google
-// button; signed-in people go straight to their photos.
-import { useEffect, useRef, useState } from 'react';
+// LoginPage: the front door. Guests start or come back with a passkey only (fingerprint or
+// face unlock; no email, no password); staff sign in with a key FaceScan gave them.
+// Signed-in people go straight to their photos (or the invite link they came from).
+import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
-import { devSignIn, renderGoogleButton, signInConfig } from '@/features/auth/googleSignIn';
-import { MagicLinkForm } from '@/features/auth/MagicLinkForm';
+import { devSignIn, signInConfig } from '@/features/auth/googleSignIn';
+import { StaffKeyForm } from '@/features/auth/StaffKeyForm';
+import {
+  openInBrowserUrl,
+  passkeysSupported,
+  signInWithPasskey,
+  signUpWithPasskey,
+} from '@/lib/passkeys';
 
 // Only an event invite link (from a QR code) may be a return address after sign-in; anything
 // else falls back to My photos, so a crafted link cannot send people to another site.
@@ -20,63 +27,60 @@ export function afterSignInPath(next: string | null): string {
 }
 
 /**
- * Purpose: landing page with Google sign-in.
+ * Purpose: landing page with passkey sign-up / sign-in for guests and a staff key form.
  * Inputs: optional ?next= (an invite link to return to). Outputs: page element.
- * Side effects: loads Google's script and renders its button; redirects when signed in.
+ * Side effects: WebAuthn ceremonies; session cookie; redirects when signed in.
  */
 export default function LoginPage() {
   const { t } = useTranslation();
   const { me, loading } = useCurrentUser();
   const [params] = useSearchParams();
   const destination = afterSignInPath(params.get('next'));
-  const slot = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
-  const [configured, setConfigured] = useState(true);
-  const [attempt, setAttempt] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [devLogin, setDevLogin] = useState(false);
   const [devEmail, setDevEmail] = useState('');
   const [devBusy, setDevBusy] = useState(false);
-  // Staff (organisers, photographers, admins) can also sign in with an email link or passkey.
+  // Staff (organisers, photographers, admins) sign in with a key FaceScan gave them.
   const [staffOpen, setStaffOpen] = useState(false);
+  const supported = passkeysSupported();
 
   useEffect(() => {
-    if (loading || me || !slot.current) return;
-    const target = slot.current;
+    if (loading || me) return;
     let active = true;
-    setError('');
     signInConfig()
       .then((config) => {
-        if (!active) return;
-        setDevLogin(config.dev_login);
-        if (!config.client_id) {
-          setConfigured(false);
-          return;
-        }
-        return renderGoogleButton(
-          target,
-          config.client_id,
-          // Full load so the header picks up the new session.
-          () => window.location.assign(destination),
-          (reason) => {
-            if (active) setError(reason === 'google_cancelled' ? '' : t('welcome.signInFailed'));
-          },
-        );
+        if (active) setDevLogin(config.dev_login);
       })
-      .catch(() => {
-        if (active) setError(t('welcome.googleUnavailable'));
-      });
+      .catch(() => undefined); // only decides whether the dev sign-in box is shown
     return () => {
       active = false;
     };
-  }, [loading, me, t, attempt, destination]);
+  }, [loading, me]);
 
   if (!loading && me) return <Navigate to={destination} replace />;
 
   /**
-   * Purpose: dev-only sign-in with an email (stand-in for Google in local development).
+   * Purpose: dev-only sign-in with an email (local testing without a passkey device).
    * Inputs: none (reads the form state). Outputs: none.
    * Side effects: starts a session, then reloads into the gallery.
    */
+  /**
+   * Purpose: run a passkey ceremony (new guest or returning person), then load the next page.
+   * Inputs: the ceremony. Outputs: none. Side effects: session cookie; full page load.
+   */
+  async function withPasskey(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError('');
+    try {
+      await action();
+      window.location.assign(destination); // full load so the header sees the new session
+    } catch {
+      setError(t('welcome.passkeyFailed'));
+      setBusy(false);
+    }
+  }
+
   async function submitDevLogin() {
     if (!devEmail.trim()) return;
     setDevBusy(true);
@@ -99,8 +103,41 @@ export default function LoginPage() {
         </h1>
         <p className="st-lead">{t('welcome.lead')}</p>
         <div className="st-signin">
-          <div ref={slot} className="st-google-slot" aria-live="polite" />
-          {!configured && !devLogin && <p className="st-alert">{t('welcome.notConfigured')}</p>}
+          {supported ? (
+            <div className="st-form-row">
+              <button
+                type="button"
+                className="st-btn st-btn-primary"
+                disabled={busy}
+                onClick={() => void withPasskey(signUpWithPasskey)}
+              >
+                {t('welcome.start')}
+              </button>
+              <button
+                type="button"
+                className="st-btn st-btn-ghost"
+                disabled={busy}
+                onClick={() => void withPasskey(signInWithPasskey)}
+              >
+                {t('welcome.comeBack')}
+              </button>
+            </div>
+          ) : (
+            <div className="st-card st-claim">
+              <p className="st-alert">{t('welcome.noPasskeyHere')}</p>
+              <a className="st-btn st-btn-primary" href={openInBrowserUrl(window.location.href)}>
+                {t('welcome.openInBrowser')}
+              </a>
+              <button
+                type="button"
+                className="st-btn st-btn-ghost st-btn-small"
+                onClick={() => void navigator.clipboard?.writeText(window.location.href)}
+              >
+                {t('welcome.copyLink')}
+              </button>
+            </div>
+          )}
+          <p className="st-fine">{t('welcome.passkeyHint')}</p>
           {devLogin && (
             <form
               className="st-card st-stack-gap"
@@ -135,22 +172,13 @@ export default function LoginPage() {
             </form>
           )}
           {error && (
-            <>
-              <p className="st-alert" role="alert">
-                {error}
-              </p>
-              <button
-                type="button"
-                className="st-btn st-btn-ghost st-btn-small"
-                onClick={() => setAttempt((n) => n + 1)}
-              >
-                {t('photos.retry')}
-              </button>
-            </>
+            <p className="st-alert" role="alert">
+              {error}
+            </p>
           )}
           <p className="st-fine">{t('welcome.fine')}</p>
           {staffOpen ? (
-            <MagicLinkForm next="/studio" onSignedIn={() => window.location.assign('/studio')} />
+            <StaffKeyForm onSignedIn={(next) => window.location.assign(next)} />
           ) : (
             <button
               type="button"

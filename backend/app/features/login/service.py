@@ -8,9 +8,11 @@
 - Every sign-in creates a new session (rotation) and revokes the one it replaces.
 """
 
+import hashlib
 import hmac
 import re
 import secrets
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -36,6 +38,7 @@ from app.core.login_sessions import (
     EMAIL_RE,
     CurrentUser,
     admin_allowed,
+    create_anonymous_user,
     create_session,
     email_hash,
     find_or_create_user,
@@ -47,11 +50,17 @@ from app.core.login_sessions import (
     revoke_sessions,
     seal_email,
 )
+from app.core.request_checks import require_role
 from app.core.services_setup import AppContext
-from app.db.event_isolation import ADMIN_SCOPE, scoped_transaction, user_transaction
+from app.db.event_isolation import (
+    ADMIN_SCOPE,
+    event_transaction,
+    scoped_transaction,
+    user_transaction,
+)
 from app.features.activity_log.service import record
 from app.features.events.models import EventMember
-from app.features.login.models import AuthChallenge, MagicLink, Passkey, User
+from app.features.login.models import AuthChallenge, MagicLink, Passkey, StaffKey, User
 from app.interfaces.identity_provider import IdTokenRejectedError
 
 CHALLENGE_MINUTES = 5
@@ -444,6 +453,279 @@ def sign_in_with_passkey(
         user_id = passkey.user_id
     audit_global(ctx, f"user:{user_id}", "auth.signed_in", {"method": "passkey"})
     return SignInResult(token, user_id, "/", True)
+
+
+# ---------------------------------------------------------------- guests: passkey only
+
+
+def guest_registration_options(ctx: AppContext) -> str:
+    """
+    Purpose: WebAuthn creation options for a new guest (no email, no account yet). The
+        account id is chosen now but the account is created only when the passkey verifies.
+    Inputs: ctx. Outputs: options JSON.
+    Side effects: stores one single-use challenge with the pending account id.
+    """
+    pending = uuid.uuid4()
+    challenge = secrets.token_bytes(32)
+    options = generate_registration_options(
+        rp_id=ctx.settings.auth_rp_id,
+        rp_name=ctx.settings.auth_rp_name,
+        user_id=pending.bytes,
+        user_name=f"guest-{str(pending)[:8]}",  # no personal data
+        challenge=challenge,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
+        ),
+    )
+    with ctx.sessions() as session, session.begin():
+        session.add(
+            AuthChallenge(
+                challenge=challenge,
+                purpose="guest_register",
+                user_id=None,
+                pending_user_id=pending,
+                expires_at=datetime.now(UTC) + timedelta(minutes=CHALLENGE_MINUTES),
+            )
+        )
+    return options_to_json(options)
+
+
+def sign_up_guest_with_passkey(
+    ctx: AppContext,
+    credential: dict[str, object],
+    challenge: bytes,
+    current_session: UUID | None,
+) -> SignInResult:
+    """
+    Purpose: verify a new guest's passkey, then create the account (anonymous: no email) and a
+        passkey session. Nothing is created if the passkey does not verify.
+    Inputs: ctx, the WebAuthn credential, its challenge, the session it replaces.
+    Outputs: SignInResult. Raises SignInError.
+    Side effects: uses the challenge once; inserts user, passkey, session; audit row.
+    """
+    now = datetime.now(UTC)
+    with ctx.sessions() as session, session.begin():
+        pending = session.execute(
+            update(AuthChallenge)
+            .where(
+                AuthChallenge.challenge == challenge,
+                AuthChallenge.purpose == "guest_register",
+                AuthChallenge.used_at.is_(None),
+                AuthChallenge.expires_at > now,
+            )
+            .values(used_at=now)
+            .returning(AuthChallenge.pending_user_id)
+        ).scalar()
+    if pending is None:
+        raise SignInError("sign-up expired; try again")
+    try:
+        verified = verify_registration_response(
+            credential=credential,
+            expected_challenge=challenge,
+            expected_rp_id=ctx.settings.auth_rp_id,
+            expected_origin=ctx.settings.auth_rp_origin,
+            require_user_verification=True,
+        )
+    except InvalidRegistrationResponse as exc:
+        raise SignInError("passkey could not be verified") from exc
+    with ctx.sessions() as session, session.begin():
+        user = create_anonymous_user(session, ctx.keys, pending)
+        session.add(
+            Passkey(
+                user_id=user.id,
+                credential_id=verified.credential_id,
+                public_key=verified.credential_public_key,
+                sign_count=verified.sign_count,
+            )
+        )
+        token = create_session(
+            session, ctx.settings, user.id, "passkey", None, replaces=current_session
+        )
+        user_id = user.id
+    audit_global(ctx, f"user:{user_id}", "auth.signed_up", {"method": "passkey"})
+    return SignInResult(token, user_id, "/", True)
+
+
+# ---------------------------------------------------------------- staff keys (no email)
+
+STAFF_KEY_DAYS = 7
+STAFF_KEY_PREFIX = "FS-"
+STAFF_ROLES_BY_ADMIN = ("admin", "organiser")
+
+
+@dataclass(frozen=True, slots=True)
+class StaffKeyView:
+    """A staff key as listed to its creator (never the key or its hash)."""
+
+    key_id: UUID
+    role: str
+    event_id: UUID | None
+    created_at: datetime
+    expires_at: datetime
+    used: bool
+    revoked: bool
+
+
+def _hash_staff_key(key: str) -> bytes:
+    """Purpose: SHA-256 of a staff key (only the hash is stored). Outputs: 32 bytes."""
+    return hashlib.sha256(key.strip().encode("utf-8")).digest()
+
+
+def _key_view(row: StaffKey) -> StaffKeyView:
+    """Purpose: ORM row -> view."""
+    return StaffKeyView(
+        row.id,
+        row.role,
+        row.event_id,
+        row.created_at,
+        row.expires_at,
+        row.used_at is not None,
+        row.revoked_at is not None,
+    )
+
+
+def create_staff_key(
+    ctx: AppContext, creator: CurrentUser | None, role: str, event_id: UUID | None
+) -> tuple[str, StaffKeyView]:
+    """
+    Purpose: generate a one-time staff key. Admins may create admin and organiser keys;
+        organisers of an event may create photographer keys for that event; creator None is
+        the server owner at the terminal (bootstrap).
+    Inputs: ctx, the creator (None = terminal), role, event_id (photographer keys only).
+    Outputs: (the key, shown once; its view). Raises ForbiddenError / UnprocessableError.
+    Side effects: inserts a staff_keys row (hash only); audit row.
+    """
+    if role not in ("admin", "organiser", "photographer"):
+        raise UnprocessableError("unknown role")
+    if (role == "photographer") != (event_id is not None):
+        raise UnprocessableError("photographer keys need an event; other roles must not have one")
+    if creator is not None:
+        if role in STAFF_ROLES_BY_ADMIN:
+            with ctx.sessions() as session:
+                row = session.get(User, creator.user_id)
+                if row is None or not admin_allowed(ctx.settings, ctx.keys, row):
+                    raise ForbiddenError("only platform admins can create this key")
+        else:
+            assert event_id is not None
+            with event_transaction(ctx.sessions, event_id) as session:
+                require_role(session, event_id, creator.user_id, ("organiser",))
+    key = STAFF_KEY_PREFIX + secrets.token_urlsafe(24)
+    with ctx.sessions() as session, session.begin():
+        staff_key = StaffKey(
+            key_hash=_hash_staff_key(key),
+            role=role,
+            event_id=event_id,
+            created_by=creator.user_id if creator else None,
+            expires_at=datetime.now(UTC) + timedelta(days=STAFF_KEY_DAYS),
+        )
+        session.add(staff_key)
+        session.flush()
+        view = _key_view(staff_key)
+    actor = creator.actor if creator else "system:terminal"
+    audit_global(ctx, actor, "auth.staff_key_created", {"role": role})
+    return key, view
+
+
+def list_staff_keys(ctx: AppContext, creator: CurrentUser) -> list[StaffKeyView]:
+    """Purpose: the staff keys this person created, newest first (no keys or hashes)."""
+    with ctx.sessions() as session:
+        rows = session.scalars(
+            select(StaffKey)
+            .where(StaffKey.created_by == creator.user_id)
+            .order_by(StaffKey.created_at.desc())
+            .limit(100)
+        ).all()
+        return [_key_view(r) for r in rows]
+
+
+def revoke_staff_key(ctx: AppContext, creator: CurrentUser, key_id: UUID) -> None:
+    """
+    Purpose: turn off an unused key the person created. Raises UnprocessableError if it is
+        not theirs or already used. Side effects: sets revoked_at; audit row.
+    """
+    with ctx.sessions() as session, session.begin():
+        row = session.get(StaffKey, key_id)
+        if row is None or row.created_by != creator.user_id or row.used_at is not None:
+            raise UnprocessableError("key not found or already used")
+        if row.revoked_at is None:
+            row.revoked_at = datetime.now(UTC)
+    audit_global(ctx, creator.actor, "auth.staff_key_revoked")
+
+
+def redeem_staff_key(ctx: AppContext, key: str, current: CurrentUser | None) -> SignInResult | None:
+    """
+    Purpose: use a staff key once. A signed-in person gets the role on their own account;
+        otherwise a new account (no email) is created with a short email-link-strength
+        session, and the site then asks them to add a passkey.
+    Inputs: ctx, the key, the current user (or None).
+    Outputs: SignInResult when a new account/session was made, else None.
+    Raises SignInError for an unknown, used, revoked or expired key (one message).
+    Side effects: marks the key used; sets user flags or adds an event membership; may insert
+        user + session; audit row.
+    """
+    now = datetime.now(UTC)
+    with ctx.sessions() as session, session.begin():
+        row = session.scalars(
+            select(StaffKey)
+            .where(
+                StaffKey.key_hash == _hash_staff_key(key),
+                StaffKey.used_at.is_(None),
+                StaffKey.revoked_at.is_(None),
+                StaffKey.expires_at > now,
+            )
+            .with_for_update()
+        ).first()
+        if row is None:
+            raise SignInError("staff key not valid")
+        result: SignInResult | None = None
+        if current is None:
+            user = create_anonymous_user(session, ctx.keys)
+            token = create_session(session, ctx.settings, user.id, "magic_link", None)
+            result = SignInResult(token, user.id, "/studio", False)
+            user_id = user.id
+        else:
+            user_id = current.user_id
+            account = session.get(User, user_id)
+            if account is None:
+                raise SignInError("staff key not valid")
+            user = account
+        if row.role == "admin":
+            user.is_admin = True
+            user.can_create_events = True
+        elif row.role == "organiser":
+            user.can_create_events = True
+        row.used_at = now
+        row.used_by = user_id
+        role, event_id = row.role, row.event_id
+    if role == "photographer" and event_id is not None:
+        with event_transaction(ctx.sessions, event_id) as session:
+            exists = session.scalar(
+                select(EventMember.event_id).where(
+                    EventMember.event_id == event_id,
+                    EventMember.user_id == user_id,
+                    EventMember.role == "photographer",
+                )
+            )
+            if exists is None:
+                session.add(EventMember(event_id=event_id, user_id=user_id, role="photographer"))
+            record(session, event_id=event_id, actor=f"user:{user_id}", action="staff.joined")
+    audit_global(ctx, f"user:{user_id}", "auth.staff_key_used", {"role": role})
+    return result
+
+
+def issue_staff_key_from_terminal(role: str) -> str:
+    """
+    Purpose: bootstrap: the server owner creates the first admin (or organiser) key at the
+        terminal (uv run tasks staff-key). Inputs: role. Outputs: the key (printed once).
+    Side effects: builds an app context from settings; inserts one staff key.
+    """
+    from app.core.services_setup import build_context  # local: terminal use only
+    from app.core.settings import get_settings
+
+    ctx = build_context(get_settings())
+    key, _ = create_staff_key(ctx, None, role, None)
+    return key
 
 
 # ---------------------------------------------------------------- account
