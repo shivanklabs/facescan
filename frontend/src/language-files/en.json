@@ -277,7 +277,8 @@
     "scan": "Scan",
     "privacy": "Privacy",
     "studio": "Studio",
-    "admin": "Health"
+    "admin": "Health",
+    "find": "Find more"
   },
   "privacyPage": {
     "eyebrow": "Your privacy",
@@ -292,5 +293,32 @@
     "doneOff": "Turned off. This event's photos are hidden and new scans will skip it.",
     "doneOn": "Turned back on. Your photos from this event are visible again.",
     "everywhereText": "Lost a phone or used a shared computer? Sign out everywhere at once."
+  },
+  "findMore": {
+    "eyebrow": "Photo not found?",
+    "title": "Find more of your photos",
+    "intro": "Some photos miss your face (from the side, far away, in a crowd). Describe the moment, tap your face in the blurred previews, and confirm with a quick live scan.",
+    "noEvents": "Do a face scan first so we know which events you were at.",
+    "scanFirst": "Scan now",
+    "event": "Event",
+    "section": "Part of the event",
+    "anySection": "Any part",
+    "query": "What was happening?",
+    "queryHint": "e.g. dancing on stage, cutting the cake",
+    "search": "Search",
+    "searching": "Searching…",
+    "nothing": "No photos matched that description. Try other words.",
+    "tapYourFace": "Faces are blurred for everyone's privacy. Tap the box over your face.",
+    "thisIsMe": "This is me (face {{n}})",
+    "confirmTitle": "Confirm it is you",
+    "confirmText": "A quick live scan checks that this face is yours. Nothing is stored.",
+    "openCamera": "Open camera",
+    "lookHere": "Look here",
+    "confirm": "Scan and claim",
+    "blinkNow": "Blink once…",
+    "released": "It matched. The photo is now in your photos.",
+    "openPhotos": "Open My photos",
+    "queued": "We could not confirm it automatically, so the organiser will check your request.",
+    "claimFailed": "The claim could not be sent. Please try again."
   }
 }

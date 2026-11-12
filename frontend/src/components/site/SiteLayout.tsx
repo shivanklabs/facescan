@@ -22,6 +22,7 @@ function SiteMenu({ me }: { me: Me }) {
   const { t } = useTranslation();
   const items: MenuItem[] = [
     { to: '/photos', label: t('menu.photos') },
+    { to: '/find', label: t('menu.find') },
     { to: '/scan', label: t('menu.scan') },
     { to: '/privacy', label: t('menu.privacy') },
   ];

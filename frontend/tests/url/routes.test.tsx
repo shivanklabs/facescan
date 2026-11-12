@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Providers } from '@/url/providers';
@@ -174,5 +174,53 @@ describe('privacy page', () => {
     expect(rows[1]).toHaveTextContent('Event B');
     expect(rows[1]).toHaveTextContent('Off');
     expect(rows[1]).toHaveTextContent('Turn back on');
+  });
+});
+
+describe('find more photos page', () => {
+  it('searches an event and puts a tappable box on each face of the preview', async () => {
+    signedInAs(
+      { can_create_events: false, is_admin: false },
+      {
+        '/me/consents': {
+          consents: [
+            {
+              event_id: 'ev1',
+              event_name: 'Wedding',
+              purpose: 'face_search',
+              granted_at: '2026-11-12T10:00:00Z',
+              withdrawn_at: null,
+            },
+          ],
+        },
+        '/sections': { sections: [] },
+        '/scene-search': {
+          query_rewritten: false,
+          candidates: [
+            {
+              photo_id: 'p1',
+              preview_url: '/events/ev1/scene-search/photos/p1/preview?expires=1&signature=x',
+              faces: [{ face_id: 'f1', bbox: [100, 50, 200, 100] }],
+              photo_width: 1000,
+              photo_height: 500,
+            },
+          ],
+        },
+      },
+    );
+    renderAt('/find');
+    expect(await screen.findByRole('option', { name: 'Wedding' })).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/dancing on stage/), {
+      target: { value: 'cake cutting' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    const face = await screen.findByRole('button', { name: 'This is me (face 1)' });
+    expect(face.style.left).toBe('10%');
+    expect(face.style.top).toBe('10%');
+    expect(face.style.width).toBe('20%');
+    expect(face.style.height).toBe('20%');
+    fireEvent.click(face);
+    expect(face).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Open camera' })).toBeInTheDocument();
   });
 });

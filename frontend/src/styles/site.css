@@ -988,6 +988,97 @@ body:has(.studio) {
   color: var(--fs-ok);
 }
 
+.st-page-wide {
+  max-width: none;
+}
+
+.st-search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.st-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--fs-muted);
+  min-width: 180px;
+}
+
+.st-field-grow {
+  flex: 1;
+  min-width: 220px;
+}
+
+.studio select.st-input {
+  appearance: auto;
+}
+
+.st-candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.st-candidate {
+  position: relative;
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--fs-line);
+  background: var(--fs-surface);
+}
+
+.st-candidate img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Tappable box over each (blurred) face; the guest picks their own. */
+.st-face-box {
+  position: absolute;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  box-shadow: 0 0 0 9999px transparent;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.st-face-box:hover,
+.st-face-box:focus-visible {
+  border-color: var(--fs-accent);
+  outline: none;
+}
+
+.st-face-box.is-picked {
+  border-color: var(--fs-accent);
+  background: rgba(242, 163, 58, 0.25);
+}
+
+.st-claim {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.st-claim h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.st-claim-camera {
+  width: min(100%, 420px);
+  height: auto;
+  aspect-ratio: 3 / 4;
+}
+
 /* ---------------------------------------------------------------- studio (admin) */
 
 .st-admin {

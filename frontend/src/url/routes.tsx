@@ -16,6 +16,7 @@ import SelfieCapturePage from '@/pages/guest-old/SelfieCapturePage';
 import GalleryPage from '@/pages/guest-old/GalleryPage';
 import ClaimPhotoPage from '@/pages/guest-old/ClaimPhotoPage';
 import PrivacyPage from '@/pages/guest/PrivacyPage';
+import FindMorePhotosPage from '@/pages/guest/FindMorePhotosPage';
 import UploadPage from '@/pages/photographer/UploadPage';
 import ProcessingStatusPage from '@/pages/photographer/ProcessingStatusPage';
 import EventSetupPage from '@/pages/organiser/EventSetupPage';
@@ -37,6 +38,7 @@ export const routes = [
       { path: 'photos', element: <MyPhotosPage /> },
       { path: 'studio', element: <OwnerUploadPage /> },
       { path: 'privacy', element: <PrivacyPage /> },
+      { path: 'find', element: <FindMorePhotosPage /> },
     ],
   },
   {

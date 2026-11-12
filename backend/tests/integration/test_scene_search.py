@@ -110,6 +110,10 @@ def test_candidate_preview_signature_and_history_check(
     assert search_resp.status_code == 200
     candidate = search_resp.json()["candidates"][0]
     preview_url = candidate["preview_url"]
+    # The original size comes with the candidate so face boxes can be placed on the preview.
+    assert candidate["photo_width"] > 0 and candidate["photo_height"] > 0
+    x, y, w, h = candidate["faces"][0]["bbox"]
+    assert 0 <= x < candidate["photo_width"] and 0 <= y < candidate["photo_height"]
 
     # 1. Valid preview URL succeeds
     resp = guest.get(preview_url)

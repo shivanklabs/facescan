@@ -33,6 +33,10 @@ class SceneCandidateItem(BaseModel):
     photo_id: UUID
     preview_url: str
     faces: list[CandidateFace]
+    # Size of the original photo: face boxes are in its pixels, so the page can place them on
+    # the smaller blurred preview.
+    photo_width: int
+    photo_height: int
 
 
 class SceneSearchResponse(BaseModel):

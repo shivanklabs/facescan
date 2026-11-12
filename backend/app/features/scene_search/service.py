@@ -270,16 +270,28 @@ def _rank_and_save_candidates(
                 )
             )
 
+        # One query for the original sizes of all candidate photos (face boxes are in pixels).
+        sizes = {
+            row.id: (row.width, row.height)
+            for row in session.execute(
+                select(Photo.id, Photo.width, Photo.height).where(
+                    Photo.event_id == event_id, Photo.id.in_(filtered_candidates)
+                )
+            )
+        }
         items: list[SceneCandidateItem] = []
         for pid in filtered_candidates:
-            if not faces_by_photo[pid]:
+            if not faces_by_photo[pid] or pid not in sizes:
                 continue
             preview_url = sign_preview_url(ctx.settings, event_id, pid)
+            width, height = sizes[pid]
             items.append(
                 SceneCandidateItem(
                     photo_id=pid,
                     preview_url=preview_url,
                     faces=faces_by_photo[pid],
+                    photo_width=width,
+                    photo_height=height,
                 )
             )
 
