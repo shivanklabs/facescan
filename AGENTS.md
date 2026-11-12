@@ -39,7 +39,9 @@ photos from an event. Proprietary code. First market: India (DPDP Act 2023).
 ## Security invariants (future code must never break these)
 1. Every query touching photos, faces, clusters, matches or claims is scoped to one `event_id`,
    and Postgres row-level security is on.
-2. No search across events, ever.
+2. A guest's own face search may cover all searchable events (milestone 7, owner decision
+   12 Nov 2026), but each event is still searched separately, in its own transaction, with its
+   own key and row-level security. Never one combined index across events.
 3. Selfies and liveness frames are processed in memory only; never written to disk, storage or logs.
 4. Face embeddings are stored only encrypted with the event's key and are never returned by any API.
 5. Only guests can trigger a face search, and only for their own face. Organisers, photographers
@@ -52,7 +54,8 @@ photos from an event. Proprietary code. First market: India (DPDP Act 2023).
    scrape faces from the internet.
 10. No paid service calls; every external dependency goes through `backend/app/ports`.
 
-The face is a search query, never a password. Login is passkeys (WebAuthn) + email magic link.
+The face is a search query, never a password. Login is Google sign-in (milestone 7); passkeys
+(WebAuthn) + email magic link stay in the code.
 
 ## Working rules
 - **Ask before every technology, tool, library or service choice.** Give 2-3 options with a
@@ -67,8 +70,9 @@ The face is a search query, never a password. Login is passkeys (WebAuthn) + ema
 - Validate every request payload with Pydantic schemas; never return stack traces.
 - Strict typing: no `Any`, no `# type: ignore`, no `@ts-ignore`.
 - The Phase 3 AI agent (`ai/agent/`) may only call public API tools, never face search or vectors.
-- Sign-in: email magic links + passkeys; server-side sessions in PostgreSQL (HttpOnly, Secure,
-  SameSite=Strict cookies). Organisers and photographers need a passkey session. Event roles
+- Sign-in: Google sign-in (ID token verified on the server), plus email magic links + passkeys;
+  server-side sessions in PostgreSQL (HttpOnly, Secure, SameSite=Strict cookies). Organisers and
+  photographers need a passkey or Google session. Event roles
   come from event_members and are checked on every request. Guest face search runs only in
   dev until a liveness adapter exists.
 
