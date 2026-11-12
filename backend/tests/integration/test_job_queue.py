@@ -48,7 +48,7 @@ def test_two_workers_never_take_the_same_job(ctx: AppContext) -> None:
 
 def test_retry_with_backoff_then_failed(ctx: AppContext) -> None:
     drain(ctx)
-    from app.adapters.queue.postgres_job_queue import PostgresJobQueue
+    from app.connectors.queue.postgres_job_queue import PostgresJobQueue
 
     old_base = ctx.queue._retry_base if isinstance(ctx.queue, PostgresJobQueue) else 0.01
     if isinstance(ctx.queue, PostgresJobQueue):
@@ -98,7 +98,7 @@ def test_complete_and_stale_lock_recovery(ctx: AppContext) -> None:
 
 def test_payloads_may_hold_only_ids(ctx: AppContext) -> None:
     import pytest
-    from app.adapters.queue.postgres_job_queue import InvalidJobPayloadError, validate_payload
+    from app.connectors.queue.postgres_job_queue import InvalidJobPayloadError, validate_payload
 
     good = {"photo_id": str(uuid.uuid4()), "reason": "collection_approved", "n": 3, "force": True}
     assert validate_payload(good) == good
@@ -119,7 +119,7 @@ def test_payloads_may_hold_only_ids(ctx: AppContext) -> None:
 
 def test_every_stored_job_payload_holds_only_ids(ctx: AppContext) -> None:
     """Scans the jobs table after the other tests in this module ran."""
-    from app.adapters.queue.postgres_job_queue import validate_payload
+    from app.connectors.queue.postgres_job_queue import validate_payload
 
     with scoped_transaction(ctx.sessions, DISPATCH_SCOPE) as s:
         payloads = [row[0] for row in s.execute(text("SELECT payload FROM jobs"))]

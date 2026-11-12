@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from app.core.auth import SESSION_COOKIE
 from app.core.context import AppContext
-from app.modules.identity.models import AuthSession, MagicLink
+from app.features.login.models import AuthSession, MagicLink
 from sqlalchemy import select, update
 from tests.helpers import (
     ORGANISER_EMAIL,
@@ -63,7 +63,7 @@ def test_staff_magic_link_terminal_output(
     Outputs: None.
     Side effects: captures stdout output from ConsoleEmailSender.
     """
-    from app.adapters.email.console_email import ConsoleEmailSender
+    from app.connectors.email.console_email import ConsoleEmailSender
     from tests.helpers import ORGANISER_EMAIL
 
     console_sender = ConsoleEmailSender()

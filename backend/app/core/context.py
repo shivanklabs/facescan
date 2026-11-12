@@ -9,19 +9,19 @@ from dataclasses import dataclass
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.adapters.keys.env_master_key import EnvMasterKeyManager, parse_master_key
-from app.adapters.queue.postgres_job_queue import PostgresJobQueue
-from app.adapters.storage.local_filesystem_download import build_local_storage
+from app.connectors.keys.env_master_key import EnvMasterKeyManager, parse_master_key
+from app.connectors.queue.postgres_job_queue import PostgresJobQueue
+from app.connectors.storage.local_filesystem_download import build_local_storage
 from app.core.config import Settings
 from app.db.session import make_engine, make_session_factory
-from app.ports.email_sender import EmailSender
-from app.ports.face_analyzer import FaceAnalyzer
-from app.ports.identity_provider import IdentityProvider
-from app.ports.job_queue import JobQueue
-from app.ports.key_manager import KeyManager
-from app.ports.liveness import Liveness
-from app.ports.object_storage import ObjectStorage
-from app.ports.query_rewriter import QueryRewriter
+from app.interfaces.email_sender import EmailSender
+from app.interfaces.face_analyzer import FaceAnalyzer
+from app.interfaces.identity_provider import IdentityProvider
+from app.interfaces.job_queue import JobQueue
+from app.interfaces.key_manager import KeyManager
+from app.interfaces.liveness import Liveness
+from app.interfaces.object_storage import ObjectStorage
+from app.interfaces.query_rewriter import QueryRewriter
 
 
 class ContextConfigError(RuntimeError):
@@ -70,7 +70,7 @@ def build_context(
         raise ContextConfigError("FACESCAN_STORAGE_SIGNING_KEY is not set")
     if email is None:
         if settings.email_adapter == "smtp_gmail":
-            from app.adapters.email.smtp_gmail_email import SmtpGmailEmailSender
+            from app.connectors.email.smtp_gmail_email import SmtpGmailEmailSender
 
             email = SmtpGmailEmailSender(settings)
         elif settings.email_adapter == "console":
@@ -79,7 +79,7 @@ def build_context(
                     "the console email adapter only runs in dev and public mode; "
                     "configure an email service"
                 )
-            from app.adapters.email.console_email import ConsoleEmailSender
+            from app.connectors.email.console_email import ConsoleEmailSender
 
             email = ConsoleEmailSender()
         else:
@@ -94,15 +94,15 @@ def build_context(
     engine = make_engine(settings, search_path=search_path)
     sessions = make_session_factory(engine)
     if analyzer is None:
-        from app.adapters.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
+        from app.connectors.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
 
         analyzer = FacescanAiFaceAnalyzer()
     if liveness is None and settings.liveness_adapter == "silent_face":
-        from app.adapters.liveness.silent_face_liveness import SilentFaceLiveness
+        from app.connectors.liveness.silent_face_liveness import SilentFaceLiveness
 
         liveness = SilentFaceLiveness()
     if rewriter is None:
-        from app.adapters.query_rewriter.gemini_query_rewriter import GeminiQueryRewriter
+        from app.connectors.query_rewriter.gemini_query_rewriter import GeminiQueryRewriter
 
         rewriter = GeminiQueryRewriter(
             api_key=settings.gemini_api_key,
@@ -110,7 +110,7 @@ def build_context(
             timeout_seconds=settings.gemini_timeout_seconds,
         )
     if identity is None:
-        from app.adapters.identity.google_identity_provider import GoogleIdentityProvider
+        from app.connectors.identity.google_identity_provider import GoogleIdentityProvider
 
         identity = GoogleIdentityProvider(
             settings.google_client_id, timeout_seconds=settings.google_timeout_seconds

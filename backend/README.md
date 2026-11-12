@@ -4,7 +4,7 @@ FastAPI modular monolith. One codebase, two processes:
 - `worker`: `python -m app.worker` (claims jobs from the Postgres `jobs` table with
   `SELECT ... FOR UPDATE SKIP LOCKED`; retries with backoff; failed after the last attempt)
 
-Must not: call paid services, import vendor SDKs outside `app/adapters/`, store selfies, log
+Must not: call paid services, import vendor SDKs outside `app/connectors/`, store selfies, log
 biometrics or personal data. See security invariants in `/CLAUDE.md`.
 
 ## Database

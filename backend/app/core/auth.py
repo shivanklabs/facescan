@@ -21,8 +21,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.crypto import DecryptionError, open_sealed, seal
-from app.modules.identity.models import AuthSession, User
-from app.ports.key_manager import KeyManager
+from app.features.login.models import AuthSession, User
+from app.interfaces.key_manager import KeyManager
 
 SESSION_COOKIE = "fs_session"
 TOKEN_BYTES = 32

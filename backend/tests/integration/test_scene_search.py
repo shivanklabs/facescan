@@ -9,17 +9,17 @@ from uuid import UUID
 import pytest
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
-from app.modules.consent.models import Consent
-from app.modules.events.models import EventMember
-from app.modules.gallery.models import Claim
-from app.modules.ingest.models import Photo
-from app.modules.matching.models import Match
-from app.modules.scene_search.models import (
+from app.features.consent.models import Consent
+from app.features.events.models import EventMember
+from app.features.face_matching.models import Match
+from app.features.gallery.models import Claim
+from app.features.photo_processing.models import Face
+from app.features.photo_upload.models import Photo
+from app.features.scene_search.models import (
     SceneSearchAttempt,
     SceneSearchCandidate,
 )
-from app.modules.scene_search.service import cleanup_expired_attempts
-from app.modules.vision_pipeline.models import Face
+from app.features.scene_search.service import cleanup_expired_attempts
 from fastapi.testclient import TestClient
 from sqlalchemy import event as sa_event
 from sqlalchemy import func, select, update
@@ -216,7 +216,7 @@ def test_under_18_blocked_from_scene_search(
     """
     from app.core import policy as policy_module
     from app.core.policy import CountryPolicy
-    from app.modules.scene_search import service as scene_service
+    from app.features.scene_search import service as scene_service
 
     monkeypatch.setattr(
         policy_module,
@@ -373,7 +373,7 @@ def test_organiser_claim_queue_and_approve_flow(organiser: TestClient, ctx: AppC
         assert match_row.source == "claim"
         assert match_row.score_band == "release"
 
-        from app.modules.audit.models import AuditLog
+        from app.features.activity_log.models import AuditLog
 
         audit_row = s.scalar(
             select(AuditLog).where(
@@ -448,7 +448,7 @@ def test_organiser_claim_queue_reject_flow(organiser: TestClient, ctx: AppContex
     assert any(r["claim_id"] == claim_id for r in rejections)
 
     with event_transaction(ctx.sessions, UUID(event_id)) as s:
-        from app.modules.audit.models import AuditLog
+        from app.features.activity_log.models import AuditLog
 
         audit_row = s.scalar(
             select(AuditLog).where(
@@ -469,7 +469,7 @@ def test_submit_claim_liveness_failure_creates_no_match_or_claim(
     Outputs: None.
     Side effects: tests HTTP endpoint and database records.
     """
-    from app.ports.liveness import LivenessVerdict
+    from app.interfaces.liveness import LivenessVerdict
 
     class FakeLivenessFailing:
         def verify_liveness(
@@ -579,7 +579,7 @@ def test_submit_claim_selfie_no_face_gives_422_not_500(
     Outputs: None.
     Side effects: tests HTTP endpoints.
     """
-    from app.ports.face_analyzer import SelfieRejectedError
+    from app.interfaces.face_analyzer import SelfieRejectedError
 
     event_id, invite_url, photos = searchable_event(ctx, organiser, [make_png(1, 1)])
     guest = guest_client(ctx, "claim_noface@example.test", event_id, invite_url)

@@ -52,7 +52,7 @@ photos from an event. Proprietary code. First market: India (DPDP Act 2023).
 8. Precision over recall: a photo is released only when the configured release rules pass.
 9. Only models listed in THIRD_PARTY_LICENSES.md; never InsightFace `buffalo_*` packs; never
    scrape faces from the internet.
-10. No paid service calls; every external dependency goes through `backend/app/ports`.
+10. No paid service calls; every external dependency goes through `backend/app/interfaces`.
 
 The face is a search query, never a password. Login is Google sign-in (milestone 7); passkeys
 (WebAuthn) + email magic link stay in the code.
@@ -103,12 +103,13 @@ Never commit `.env` or the PostgreSQL superuser password.
 settings/    services.yaml (port -> adapter per default/region/plan), country-rules/<country>.yaml, consent/
 frontend/    React + TS + Vite PWA (url/, pages/, features/, components/site/, components/old/, lib/, language-files/)
 backend/     FastAPI modular monolith; two processes: api (app.main) and worker (app.worker)
-  app/core/      config, logging (redaction), security, errors, rate limiting
-  app/db/        session, declarative base, event scope (RLS)
-  app/ports/     one Protocol per external dependency
-  app/adapters/  free implementations of the ports + registry.py
-  app/modules/   identity, events, ingest, vision_pipeline, matching, gallery, consent, audit, admin
-  app/jobs/      job type -> handler registry
+  app/core/             config, logging (redaction), security, errors, rate limiting
+  app/db/               session, declarative base, event scope (RLS)
+  app/interfaces/       one Protocol per external dependency (a "port")
+  app/connectors/       free implementations of the interfaces (adapters) + registry.py
+  app/features/         login, all_events_search, face_matching, photo_upload, photo_processing,
+                        gallery, scene_search, consent, events, activity_log, admin
+  app/background_jobs/  job type -> handler registry
 ai/          facescan_ai: pure Python face library (no web, no database)
 database/    alembic migrations, RLS policy templates, setup/ (dev role + database), seeds, schema.md
 docs/        architecture + ADRs, security, legal, product, runbooks
@@ -119,7 +120,7 @@ var/         local runtime data, git-ignored (storage/<bucket>/<event_id>/)
 ## Naming rules
 - Folders are lowercase. Python packages and modules use snake_case; multi-word non-Python
   folders use kebab-case.
-- Name by responsibility, not technology: `ports/face_embedder.py`, not `ports/onnx.py`.
+- Name by responsibility, not technology: `interfaces/face_embedder.py`, not `interfaces/onnx.py`.
   Adapters are named `<vendor>_<port>.py` (`local_filesystem_storage.py`, `env_master_key.py`).
 - Backend module files have fixed roles: `router.py` (HTTP), `service.py` (business logic),
   `schemas.py` (API models), `models.py` (DB tables), `repository.py` (queries).

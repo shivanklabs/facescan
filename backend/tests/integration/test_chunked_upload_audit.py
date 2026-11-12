@@ -9,7 +9,7 @@ from uuid import UUID
 from app.core.context import AppContext
 from app.core.errors import UnprocessableError
 from app.db.event_scope import event_transaction
-from app.modules.ingest.models import UploadSession
+from app.features.photo_upload.models import UploadSession
 from fastapi.testclient import TestClient
 from tests.conftest import make_png
 from tests.helpers import searchable_event
@@ -132,7 +132,7 @@ def test_chunked_upload_complete_leaves_in_progress_and_chunks_if_ingest_fails(
     assert chunk_dir.exists()
 
     with patch(
-        "app.modules.ingest.service.upload_photos",
+        "app.features.photo_upload.service.upload_photos",
         side_effect=UnprocessableError("simulated upload failure"),
     ):
         complete_res = organiser.post(f"/events/{event_id}/uploads/{upload_id}/complete")

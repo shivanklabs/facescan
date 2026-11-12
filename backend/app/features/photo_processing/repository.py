@@ -1,0 +1,293 @@
+"""Encrypted storage of an event's faces, clusters (prototypes and membership) and calibration.
+
+Vectors are packed as little-endian float32 + base64 inside JSON, then sealed with the event
+data key; the associated data names the event, the table and the row (app/core/crypto.py).
+Run every function inside the event's own transaction (RLS).
+"""
+
+import json
+from uuid import UUID
+
+import numpy as np
+from facescan_ai.index_store import decode_vector, encode_vector
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from app.core.crypto import MAGIC, NONCE_BYTES, aad, open_sealed, seal
+from app.features.photo_processing.models import Cluster, EventCalibration, Face
+from app.features.scene_search.models import SceneEmbedding, SceneSearchCandidate
+from app.interfaces.face_analyzer import AnalysedFace, BuiltCluster, BuiltEvent, StoredFace, Vector
+
+CalibrationDict = dict[str, dict[str, float | int | bool | None]]
+
+
+def _pack(vectors: dict[str, Vector]) -> dict[str, str]:
+    """Purpose: vectors -> base64 float32 text."""
+    return {k: encode_vector(v) for k, v in vectors.items()}
+
+
+def unpack_vectors(packed: dict[str, str]) -> dict[str, Vector]:
+    """
+    Purpose: inverse of _pack; public so claims can decode one stored face.
+    Inputs: name -> base64 float32 text.
+    Outputs: name -> vector.
+    Side effects: none.
+    """
+    return {k: decode_vector(v) for k, v in packed.items()}
+
+
+def delete_event_model(session: Session, event_id: UUID) -> None:
+    """Purpose: remove an event's faces, clusters, calibration and scene embeddings
+    before re-indexing."""
+    session.execute(delete(Face).where(Face.event_id == event_id))
+    session.execute(delete(Cluster).where(Cluster.event_id == event_id))
+    session.execute(delete(EventCalibration).where(EventCalibration.event_id == event_id))
+    session.execute(delete(SceneEmbedding).where(SceneEmbedding.event_id == event_id))
+    session.execute(delete(SceneSearchCandidate).where(SceneSearchCandidate.event_id == event_id))
+
+
+def delete_clusters_and_calibration(session: Session, event_id: UUID) -> None:
+    """
+    Purpose: remove an event's clusters and calibration before rebuilding the event model,
+    leaving Face and SceneEmbedding rows intact.
+    Inputs: session, event_id.
+    Outputs: None.
+    Side effects: deletes Cluster and EventCalibration rows.
+    """
+    session.execute(delete(Cluster).where(Cluster.event_id == event_id))
+    session.execute(delete(EventCalibration).where(EventCalibration.event_id == event_id))
+
+
+def load_engine_versions(session: Session, event_id: UUID, data_key: bytes) -> dict[str, str]:
+    """
+    Purpose: load and decrypt the engine versions stored in EventCalibration.
+    Inputs: session, event_id, data_key.
+    Outputs: dict of engine name -> version string (empty dict if not calibrated yet).
+    Side effects: none.
+    """
+    row_cal = session.scalars(
+        select(EventCalibration).where(EventCalibration.event_id == event_id)
+    ).first()
+    if row_cal is None:
+        return {}
+    payload = json.loads(
+        open_sealed(
+            data_key,
+            row_cal.payload_encrypted,
+            aad(event_id, "event_calibrations", row_cal.id),
+        )
+    )
+    versions: dict[str, str] = payload.get("engine_versions", {})
+    return versions
+
+
+def save_scene_embedding(
+    session: Session,
+    event_id: UUID,
+    photo_id: UUID,
+    vector: Vector,
+    data_key: bytes,
+    engine_version: str = "siglip2_base_patch16_224",
+) -> None:
+    """
+    Purpose: encrypt and store a photo's 768-dim SigLIP 2 scene embedding.
+    Inputs: db session, event_id, photo_id, float32 vector, event data key, engine_version.
+    Outputs: none. Side effects: inserts or updates scene_embeddings row.
+    """
+    plaintext = vector.astype(np.float32).tobytes()
+    associated = aad(event_id, "scene_embeddings", photo_id)
+    sealed = seal(data_key, plaintext, associated)
+    nonce = sealed[len(MAGIC) : len(MAGIC) + NONCE_BYTES]
+    ciphertext = sealed[len(MAGIC) + NONCE_BYTES :]
+    session.merge(
+        SceneEmbedding(
+            photo_id=photo_id,
+            event_id=event_id,
+            ciphertext=ciphertext,
+            nonce=nonce,
+            engine_version=engine_version,
+        )
+    )
+
+
+def load_scene_embeddings(session: Session, event_id: UUID, data_key: bytes) -> dict[UUID, Vector]:
+    """
+    Purpose: load and decrypt every scene embedding for the event into memory.
+    Inputs: db session, event_id, event data key.
+    Outputs: photo_id -> 768-dim FloatArray embedding.
+    Side effects: none.
+    """
+    embeddings: dict[UUID, Vector] = {}
+    rows = session.execute(
+        select(SceneEmbedding.photo_id, SceneEmbedding.ciphertext, SceneEmbedding.nonce).where(
+            SceneEmbedding.event_id == event_id
+        )
+    ).all()
+    for photo_id, ciphertext, nonce in rows:
+        sealed = MAGIC + bytes(nonce) + bytes(ciphertext)
+        associated = aad(event_id, "scene_embeddings", photo_id)
+        plaintext = open_sealed(data_key, sealed, associated)
+        embeddings[photo_id] = np.frombuffer(plaintext, dtype=np.float32)
+    return embeddings
+
+
+def add_faces(
+    session: Session,
+    event_id: UUID,
+    photo_id: UUID,
+    faces: list[AnalysedFace],
+    data_key: bytes,
+    key_version: int,
+) -> None:
+    """Purpose: insert a photo's faces with embeddings and landmarks encrypted."""
+    for analysed in faces:
+        face = Face(
+            event_id=event_id,
+            photo_id=photo_id,
+            bbox_x=analysed.bbox[0],
+            bbox_y=analysed.bbox[1],
+            bbox_w=analysed.bbox[2],
+            bbox_h=analysed.bbox[3],
+            detector_score=analysed.detector_score,
+            quality=analysed.quality,
+            embedding_encrypted=b"",
+            key_version=key_version,
+        )
+        session.add(face)
+        session.flush()
+        payload = {
+            "embeddings": _pack(analysed.embeddings),
+            "landmarks": [list(p) for p in analysed.landmarks],
+        }
+        face.embedding_encrypted = seal(
+            data_key, json.dumps(payload).encode("utf-8"), aad(event_id, "faces", face.id)
+        )
+
+
+def load_faces(session: Session, event_id: UUID, data_key: bytes) -> list[StoredFace]:
+    """Purpose: decrypt every face of the event. Raises DecryptionError on a wrong key."""
+    faces = []
+    for face in session.scalars(
+        select(Face).where(Face.event_id == event_id).order_by(Face.created_at, Face.id)
+    ):
+        payload = json.loads(
+            open_sealed(data_key, face.embedding_encrypted, aad(event_id, "faces", face.id))
+        )
+        faces.append(
+            StoredFace(
+                face_id=face.id,
+                photo_id=face.photo_id,
+                bbox=(face.bbox_x, face.bbox_y, face.bbox_w, face.bbox_h),
+                quality=face.quality,
+                detector_score=face.detector_score,
+                weak=face.weak,
+                embeddings=unpack_vectors(payload["embeddings"]),
+            )
+        )
+    return faces
+
+
+def save_event_model(
+    session: Session,
+    event_id: UUID,
+    built: BuiltEvent,
+    engine_versions: dict[str, str],
+    data_key: bytes,
+    key_version: int,
+) -> None:
+    """Purpose: store weak flags, clusters (prototypes and membership encrypted together) and
+    encrypted calibration."""
+    faces = {f.id: f for f in session.scalars(select(Face).where(Face.event_id == event_id))}
+    for face_id, weak in built.weak.items():
+        faces[face_id].weak = weak
+    for number, cluster in enumerate(built.clusters):
+        row = Cluster(
+            event_id=event_id,
+            cluster_no=number,
+            size=len(cluster.members) + len(cluster.attached_weak),
+            payload_encrypted=b"",
+            key_version=key_version,
+        )
+        session.add(row)
+        session.flush()
+        payload = {
+            "prototypes": _pack(cluster.prototypes),
+            "members": [str(f) for f in cluster.members],
+            "attached_weak": [str(f) for f in cluster.attached_weak],
+        }
+        row.payload_encrypted = seal(
+            data_key, json.dumps(payload).encode("utf-8"), aad(event_id, "clusters", row.id)
+        )
+    calibration = EventCalibration(
+        event_id=event_id, payload_encrypted=b"", key_version=key_version
+    )
+    session.add(calibration)
+    session.flush()
+    calibration.payload_encrypted = seal(
+        data_key,
+        json.dumps({"calibration": built.calibration, "engine_versions": engine_versions}).encode(),
+        aad(event_id, "event_calibrations", calibration.id),
+    )
+
+
+def load_event_model(
+    session: Session, event_id: UUID, data_key: bytes
+) -> tuple[list[StoredFace], list[BuiltCluster], CalibrationDict, dict[str, str]]:
+    """
+    Purpose: decrypt the event's faces, clusters and calibration for matching.
+    Outputs: (faces, clusters, calibration, engine versions). Raises DecryptionError.
+    """
+    faces = load_faces(session, event_id, data_key)
+    clusters = []
+    for row in session.scalars(
+        select(Cluster).where(Cluster.event_id == event_id).order_by(Cluster.cluster_no)
+    ):
+        payload = json.loads(
+            open_sealed(data_key, row.payload_encrypted, aad(event_id, "clusters", row.id))
+        )
+        clusters.append(
+            BuiltCluster(
+                members=[UUID(f) for f in payload["members"]],
+                attached_weak=[UUID(f) for f in payload["attached_weak"]],
+                prototypes=unpack_vectors(payload["prototypes"]),
+            )
+        )
+    calibration: CalibrationDict = {}
+    versions: dict[str, str] = {}
+    row_cal = session.scalars(
+        select(EventCalibration).where(EventCalibration.event_id == event_id)
+    ).first()
+    if row_cal is not None:
+        payload = json.loads(
+            open_sealed(
+                data_key,
+                row_cal.payload_encrypted,
+                aad(event_id, "event_calibrations", row_cal.id),
+            )
+        )
+        calibration = payload["calibration"]
+        versions = payload["engine_versions"]
+    return faces, clusters, calibration, versions
+
+
+def load_event_calibration(session: Session, event_id: UUID, data_key: bytes) -> CalibrationDict:
+    """
+    Purpose: load and decrypt only the calibration for an event (used for 1:1 claims).
+    Inputs: session (Session), event_id (UUID), data_key (bytes).
+    Outputs: CalibrationDict.
+    Side effects: queries database and decrypts payload; raises DecryptionError on bad key.
+    """
+    row_cal = session.scalars(
+        select(EventCalibration).where(EventCalibration.event_id == event_id)
+    ).first()
+    if row_cal is None:
+        return {}
+    payload = json.loads(
+        open_sealed(
+            data_key,
+            row_cal.payload_encrypted,
+            aad(event_id, "event_calibrations", row_cal.id),
+        )
+    )
+    cal: CalibrationDict = payload["calibration"]
+    return cal

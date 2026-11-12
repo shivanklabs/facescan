@@ -1,0 +1,524 @@
+"""FaceAnalyzer adapter backed by the facescan_ai library (ONNX Runtime, CPU).
+
+Models are loaded lazily on first use (SHA-256 verified by facescan_ai's model registry), so
+the API starts fast and only the worker and the match endpoint pay the load cost.
+Images are decoded in memory; nothing here writes files.
+"""
+
+import io
+import logging
+import threading
+import warnings
+from uuid import UUID
+
+import cv2
+import numpy as np
+from facescan_ai.clustering.hdbscan_clusterer import EventCluster
+from facescan_ai.config import DetectorConfig
+from facescan_ai.detection.yunet import YuNetDetector
+from facescan_ai.embedding.base import cosine_similarity
+from facescan_ai.event_builder import EventBuildConfig, build_event
+from facescan_ai.image_io import ImageDecodeError, decode_image
+from facescan_ai.index_store import EventIndex, IndexedFace
+from facescan_ai.matching.bands import Band
+from facescan_ai.matching.calibration import DEFAULT_THRESHOLDS, EngineCalibration
+from facescan_ai.matching.matcher import MatchConfig, match_event
+from facescan_ai.matching.quality_gate import QualityGateConfig
+from facescan_ai.model_registry import ModelRegistry
+from facescan_ai.pipeline import FacePipeline, SelfieFaceCountError
+from facescan_ai.privacy.face_blur import create_blurred_preview
+from facescan_ai.scene import Siglip2SceneEmbedder
+from facescan_ai.types import BBox
+from PIL import Image, ImageOps, UnidentifiedImageError
+
+from app.interfaces.capabilities import Capabilities
+from app.interfaces.face_analyzer import (
+    AnalysedFace,
+    BuiltCluster,
+    BuiltEvent,
+    FramesMatch,
+    ImageInfo,
+    ImageRejectedError,
+    SelfieQuery,
+    SelfieRejectedError,
+    StoredFace,
+)
+
+logger = logging.getLogger("facescan.vision.download")
+
+PRIMARY = "auraface"
+_SIGNATURES: tuple[tuple[str, bytes, int], ...] = (
+    ("image/jpeg", b"\xff\xd8\xff", 0),
+    ("image/png", b"\x89PNG\r\n\x1a\n", 0),
+    ("image/webp", b"WEBP", 8),
+)
+_PIL_FORMATS = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}
+_NO_LANDMARKS = ((0.0, 0.0),) * 5
+
+
+def sniff_content_type(data: bytes) -> str | None:
+    """Purpose: image type from magic bytes (never from the client's header)."""
+    for content_type, magic, offset in _SIGNATURES:
+        if data[offset : offset + len(magic)] == magic and (
+            content_type != "image/webp" or data[:4] == b"RIFF"
+        ):
+            return content_type
+    return None
+
+
+def _calibration_to_dict(cal: EngineCalibration) -> dict[str, float | int | bool | None]:
+    """Purpose: plain dict for encrypted storage."""
+    return cal.to_dict()
+
+
+def _calibration_from_dict(
+    engine: str, raw: dict[str, float | int | bool | None]
+) -> EngineCalibration:
+    """Purpose: inverse of _calibration_to_dict."""
+    return EngineCalibration.from_dict(engine, raw)
+
+
+def strip_sensitive_exif_lossless(data: bytes) -> bytes:
+    """
+    Purpose: losslessly remove GPS tags, serial numbers, and MakerNote from JPEG bytes
+        without re-encoding pixel data or changing image dimensions.
+    Inputs: data (bytes) raw image file content.
+    Outputs: bytes (cleaned JPEG bytes, or original bytes if not JPEG or on failure).
+    Side effects: logs a warning count on failure without PII or stack trace.
+    """
+    if len(data) < 4 or data[:2] != b"\xff\xd8":
+        logger.warning("lossless EXIF stripping skipped: not a JPEG image")
+        return data
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            if img.format != "JPEG":
+                logger.warning("lossless EXIF stripping skipped: format is not JPEG")
+                return data
+            exif = img.getexif()
+            if not exif:
+                return data
+
+            # Tags to remove:
+            # 34853: GPSInfo
+            # 37500: MakerNote
+            # 42033: BodySerialNumber
+            # 42037: LensSerialNumber
+            # 50735: CameraSerialNumber
+            # 50741: MakerNoteSafety
+            sensitive_tags = {34853, 37500, 42033, 42037, 50735, 50741}
+            for tag in list(exif.keys()):
+                if tag in sensitive_tags:
+                    del exif[tag]
+
+            if 0x8769 in exif:
+                exif_ifd = exif.get_ifd(0x8769)
+                for tag in list(exif_ifd.keys()):
+                    if tag in sensitive_tags:
+                        del exif_ifd[tag]
+
+            if 0x8825 in exif:
+                exif.get_ifd(0x8825).clear()
+                del exif[0x8825]
+
+            new_exif_bytes = exif.tobytes()
+
+        app1_payload = b"Exif\x00\x00" + new_exif_bytes
+        new_app1 = b"\xff\xe1" + (len(app1_payload) + 2).to_bytes(2, "big") + app1_payload
+
+        out = [b"\xff\xd8", new_app1]
+        i = 2
+        found_sos = False
+        while i < len(data) - 1:
+            if data[i] != 0xFF:
+                break
+            while i < len(data) - 1 and data[i + 1] == 0xFF:
+                i += 1
+            if i >= len(data) - 1:
+                break
+            marker = data[i + 1]
+            if marker in (0xD8, 0xD9):
+                i += 2
+                continue
+            if marker == 0xDA:  # Start of Scan (entropy-coded MCUs follow)
+                out.append(data[i:])
+                found_sos = True
+                break
+            length = int.from_bytes(data[i + 2 : i + 4], "big")
+            seg = data[i : i + 2 + length]
+            if marker == 0xE1 and len(seg) >= 10 and seg[4:10] == b"Exif\x00\x00":
+                pass
+            else:
+                out.append(seg)
+            i += 2 + length
+
+        if not found_sos:
+            logger.warning("lossless EXIF stripping failed: SOS marker not found")
+            return data
+        return b"".join(out)
+    except Exception:
+        logger.warning("lossless EXIF stripping failed: unexpected error processing metadata")
+        return data
+
+
+class FacescanAiFaceAnalyzer:
+    """FaceAnalyzer on facescan_ai (YuNet, AuraFace, SFace, HDBSCAN)."""
+
+    def __init__(self, registry: ModelRegistry | None = None) -> None:
+        """Purpose: remember where models come from; nothing is loaded yet."""
+        self._registry = registry
+        self._pipeline: FacePipeline | None = None
+        self._scene_embedder: Siglip2SceneEmbedder | None = None
+        self._blur_detector: YuNetDetector | None = None
+        self._lock = threading.Lock()
+        self._gate = QualityGateConfig()
+
+    @property
+    def capabilities(self) -> Capabilities:
+        """Static description: free, runs on this host."""
+        return Capabilities(adapter_name="facescan_ai")
+
+    def _get_pipeline(self) -> FacePipeline:
+        """Purpose: load verified models once (thread-safe)."""
+        with self._lock:
+            if self._pipeline is None:
+                self._pipeline = FacePipeline(self._registry or ModelRegistry())
+            return self._pipeline
+
+    def _get_scene_embedder(self) -> Siglip2SceneEmbedder:
+        """Purpose: load SigLIP 2 scene embedder once (thread-safe)."""
+        with self._lock:
+            if self._scene_embedder is None:
+                self._scene_embedder = Siglip2SceneEmbedder(self._registry or ModelRegistry())
+            return self._scene_embedder
+
+    def _get_blur_detector(self) -> YuNetDetector:
+        """Purpose: load YuNet detector with 0.35 threshold for candidate previews."""
+        with self._lock:
+            if self._blur_detector is None:
+                reg = self._registry or ModelRegistry()
+                spec, session = reg.create_session("yunet", threads=0)
+                cfg = DetectorConfig(score_threshold=0.35)
+                self._blur_detector = YuNetDetector(session, spec.version, cfg)
+            return self._blur_detector
+
+    @property
+    def engine_versions(self) -> dict[str, str]:
+        """Engine -> model version (loads the models if needed)."""
+        return dict(self._get_pipeline().engine_versions)
+
+    def inspect_image(self, data: bytes, max_pixels: int) -> ImageInfo:
+        """
+        Purpose: allow only real JPEG/PNG/WebP images within the pixel limit.
+        Checks: magic bytes, the decoder agrees on the type, pixel count from the header,
+        and oriented dimensions via EXIF transpose. Raises ImageRejectedError.
+        Inputs: raw image bytes, maximum allowed pixels.
+        Outputs: ImageInfo (content_type, width, height).
+        Side effects: none (in memory only).
+        """
+        content_type = sniff_content_type(data)
+        if content_type is None:
+            raise ImageRejectedError("not a JPEG, PNG or WebP image")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(io.BytesIO(data)) as img:
+                    if img.format != _PIL_FORMATS[content_type]:
+                        raise ImageRejectedError("image content does not match its type")
+                    if img.width * img.height > max_pixels:
+                        raise ImageRejectedError("image has too many pixels")
+                    oriented = ImageOps.exif_transpose(img)
+                    width, height = oriented.size
+        except ImageRejectedError:
+            raise
+        except (
+            UnidentifiedImageError,
+            OSError,
+            ValueError,
+            Image.DecompressionBombWarning,
+            Image.DecompressionBombError,
+        ) as exc:
+            raise ImageRejectedError("image cannot be read") from exc
+        return ImageInfo(content_type=content_type, width=int(width), height=int(height))
+
+    def analyse_photo(self, data: bytes) -> list[AnalysedFace]:
+        """Purpose: every face of a photo with quality and embeddings (in memory)."""
+        image = decode_image(data)
+        faces = []
+        for analysed in self._get_pipeline().analyse(image):
+            b = analysed.face.bbox
+            faces.append(
+                AnalysedFace(
+                    bbox=(b.x, b.y, b.width, b.height),
+                    landmarks=analysed.face.landmarks,
+                    detector_score=round(analysed.face.score, 4),
+                    quality=analysed.quality.value,
+                    embeddings={k: e.vector for k, e in analysed.embeddings.items()},
+                )
+            )
+        return faces
+
+    def web_copy(self, data: bytes, max_side: int) -> bytes:
+        """Purpose: upright JPEG within max_side pixels; OpenCV writes no EXIF or metadata."""
+        image = decode_image(data)
+        scale = min(1.0, max_side / max(image.shape[:2]))
+        if scale < 1.0:
+            size = (round(image.shape[1] * scale), round(image.shape[0] * scale))
+            image = np.asarray(cv2.resize(image, size, interpolation=cv2.INTER_AREA), np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not ok:
+            raise ImageRejectedError("could not encode web copy")
+        return bytes(encoded.tobytes())
+
+    def full_copy(self, data: bytes) -> bytes:
+        """
+        Purpose: serve full-resolution photo for download without resizing or recompressing;
+            losslessly strips GPS, serial numbers, and MakerNote from EXIF.
+        Inputs: data (bytes) stored original photo bytes.
+        Outputs: bytes (losslessly stripped download copy).
+        Side effects: logs warning on stripping failure.
+        """
+        return strip_sensitive_exif_lossless(data)
+
+    def selfie_query(self, data: bytes) -> SelfieQuery:
+        """Purpose: one-face selfie embeddings in memory. Raises SelfieRejectedError."""
+        try:
+            image = decode_image(data)
+        except ImageDecodeError as exc:
+            raise ImageRejectedError("selfie cannot be decoded") from exc
+        try:
+            query = self._get_pipeline().analyse_selfie_frames([image], self._gate)
+        except SelfieFaceCountError as exc:
+            raise SelfieRejectedError(exc.count) from exc
+        return SelfieQuery(vectors=dict(query.vectors), strong=query.strong)
+
+    @staticmethod
+    def _index(faces: list[StoredFace], versions: dict[str, str]) -> EventIndex:
+        """Purpose: facescan_ai EventIndex view of the stored faces (rows keep their order)."""
+        return EventIndex(
+            event="db-event",
+            engine_versions=versions,
+            photos=sorted({str(f.photo_id) for f in faces}),
+            faces=[
+                IndexedFace(
+                    photo_id=str(f.photo_id),
+                    bbox=BBox(*f.bbox),
+                    landmarks=_NO_LANDMARKS,
+                    detector_score=f.detector_score,
+                    quality=f.quality,
+                    embeddings=f.embeddings,
+                    weak=f.weak,
+                )
+                for f in faces
+            ],
+        )
+
+    def build_event(self, faces: list[StoredFace]) -> BuiltEvent:
+        """Purpose: quality gate, calibration and clustering (facescan_ai defaults)."""
+        index = self._index(faces, {})
+        summary = build_event(index, EventBuildConfig(gate=self._gate))
+        ids = [f.face_id for f in faces]
+        return BuiltEvent(
+            weak={ids[i]: f.weak for i, f in enumerate(index.faces)},
+            clusters=[
+                BuiltCluster(
+                    members=[ids[i] for i in c.members],
+                    attached_weak=[ids[i] for i in c.attached_weak],
+                    prototypes=dict(c.prototypes),
+                )
+                for c in index.clusters
+            ],
+            calibration={k: _calibration_to_dict(v) for k, v in index.calibration.items()},
+            summary={
+                "faces": summary.faces,
+                "weak_faces": summary.weak_faces,
+                "clusters": summary.clusters,
+            },
+        )
+
+    def _event_index(
+        self,
+        faces: list[StoredFace],
+        clusters: list[BuiltCluster],
+        calibration: dict[str, dict[str, float | int | bool | None]],
+    ) -> EventIndex:
+        """Purpose: facescan_ai EventIndex with clusters and calibration from storage."""
+        index = self._index(faces, {})
+        row_of = {f.face_id: i for i, f in enumerate(faces)}
+        index.clusters = [
+            EventCluster(
+                cluster_id=k,
+                members=[row_of[m] for m in c.members if m in row_of],
+                attached_weak=[row_of[m] for m in c.attached_weak if m in row_of],
+                prototypes=c.prototypes,
+            )
+            for k, c in enumerate(clusters)
+            if PRIMARY in c.prototypes
+        ]
+        index.calibration = {k: _calibration_from_dict(k, v) for k, v in calibration.items()}
+        return index
+
+    def match_frames(
+        self,
+        faces: list[StoredFace],
+        clusters: list[BuiltCluster],
+        calibration: dict[str, dict[str, float | int | bool | None]],
+        frames: list[SelfieQuery],
+        front_only: bool = False,
+        threshold_offset: float = 0.0,
+    ) -> FramesMatch:
+        """
+        Purpose: match multi-frame selfie. In guided scan, front and side frames are matched
+            separately; a photo is released only when frames agree on the same cluster and
+            front-frame verdict releases. Side frames can find side-angle photos in the cluster.
+            In front-only fallback, stricter calibrated release rules and margin are enforced.
+        Inputs: stored faces, clusters, calibration, frames, front_only flag, threshold_offset.
+        Outputs: FramesMatch. Side effects: none.
+        """
+        if not frames:
+            raise ValueError("at least one frame is required")
+        index = self._event_index(faces, clusters, calibration)
+
+        if front_only:
+            config = MatchConfig(min_margin=0.12, threshold_offset=threshold_offset)
+            winners = {match_event(index, f.vectors, f.strong, config).cluster_id for f in frames}
+            agree = len(winners) == 1 and None not in winners
+            if not agree:
+                return FramesMatch(release=[], some_photos_missing=True, frames_agree=False)
+            combined = {}
+            for engine in frames[0].vectors:
+                mean = np.mean([f.vectors[engine] for f in frames], axis=0)
+                norm = max(float(np.linalg.norm(mean)), 1e-12)
+                combined[engine] = (mean / norm).astype(np.float32)
+            result = match_event(index, combined, all(f.strong for f in frames), config)
+            return FramesMatch(
+                release=[UUID(p) for p in result.release_photos],
+                some_photos_missing=bool(result.borderline_photos),
+                frames_agree=True,
+            )
+
+        config = MatchConfig(min_margin=0.08, threshold_offset=0.0)
+        front_frames = frames[:2] if len(frames) >= 2 else frames
+        side_frames = frames[2:] if len(frames) > 2 else []
+
+        front_combined = {}
+        for engine in frames[0].vectors:
+            mean = np.mean([f.vectors[engine] for f in front_frames], axis=0)
+            norm = max(float(np.linalg.norm(mean)), 1e-12)
+            front_combined[engine] = (mean / norm).astype(np.float32)
+        front_result = match_event(
+            index, front_combined, all(f.strong for f in front_frames), config
+        )
+        front_cluster = front_result.cluster_id
+
+        if front_cluster is None:
+            return FramesMatch(release=[], some_photos_missing=False, frames_agree=False)
+
+        if not front_result.release_photos:
+            is_bord = front_result.cluster_band is Band.BORDERLINE or bool(
+                front_result.borderline_photos
+            )
+            return FramesMatch(release=[], some_photos_missing=is_bord, frames_agree=False)
+
+        released_photos = set(front_result.release_photos)
+        has_borderline = bool(front_result.borderline_photos)
+
+        for side_f in side_frames:
+            side_res = match_event(index, side_f.vectors, side_f.strong, config)
+            if side_res.cluster_id != front_cluster or side_res.cluster_band is Band.NONE:
+                return FramesMatch(release=[], some_photos_missing=True, frames_agree=False)
+            for photo_id in side_res.release_photos:
+                released_photos.add(photo_id)
+            if side_res.borderline_photos:
+                has_borderline = True
+
+        return FramesMatch(
+            release=[UUID(p) for p in released_photos],
+            some_photos_missing=has_borderline,
+            frames_agree=True,
+        )
+
+    def embed_scene(self, data: bytes) -> np.ndarray:
+        """Purpose: compute 768-dim SigLIP 2 scene embedding for photo. In memory only."""
+        image = decode_image(data)
+        return self._get_scene_embedder().embed_image(image)
+
+    def embed_scene_query(self, text: str) -> np.ndarray:
+        """Purpose: compute 768-dim SigLIP 2 scene embedding for search query text."""
+        return self._get_scene_embedder().embed_text(text)
+
+    def blurred_preview(self, data: bytes, max_side: int = 480, jpeg_quality: int = 85) -> bytes:
+        """
+        Purpose: low-resolution scene search candidate preview with every face blurred on server.
+        Uses YuNet with 0.35 threshold and tiling, enlarges boxes by 25%, and heavily blurs.
+        """
+        image = decode_image(data)
+        detector = self._get_blur_detector()
+        return create_blurred_preview(
+            image,
+            detector,
+            max_side=max_side,
+            jpeg_quality=jpeg_quality,
+            margin=0.25,
+        )
+
+    def match_face_1to1(
+        self,
+        candidate_embeddings: dict[str, np.ndarray],
+        calibration: dict[str, dict[str, float | int | bool | None]],
+        selfie_queries: list[SelfieQuery],
+        front_only: bool = False,
+        threshold_offset: float = 0.0,
+    ) -> bool:
+        """
+        Purpose: 1:1 check comparing fresh selfie against a candidate face applying all release
+            rules: quality gate (selfie_strong), calibrated release threshold on AuraFace, and
+            SFace second opinion.
+        Inputs: candidate face embeddings, calibration, selfie queries, front_only flag,
+            threshold_offset.
+        Outputs: bool (True = release, False = failed check).
+        Side effects: none.
+        """
+        if not selfie_queries:
+            return False
+
+        # Must have both primary and second engine embeddings for candidate face
+        cand_primary = candidate_embeddings.get("auraface")
+        cand_second = candidate_embeddings.get("sface")
+        if cand_primary is None or cand_second is None:
+            return False
+
+        # Extract calibrated release thresholds
+        def get_threshold(engine: str) -> float:
+            cal = calibration.get(engine)
+            if (
+                cal is not None
+                and "release_threshold" in cal
+                and isinstance(cal["release_threshold"], (int, float))
+            ):
+                return float(cal["release_threshold"]) + threshold_offset
+            return DEFAULT_THRESHOLDS[engine].release + threshold_offset
+
+        primary_thresh = get_threshold("auraface")
+        second_thresh = get_threshold("sface")
+
+        # In guided scan: test front queries (first 2 frames)
+        # In front-only fallback: all frames are front frames with stricter offset
+        eval_queries = (
+            selfie_queries[:2] if (not front_only and len(selfie_queries) >= 2) else selfie_queries
+        )
+
+        for q in eval_queries:
+            if not q.strong:
+                return False
+            q_primary = q.vectors.get("auraface")
+            q_second = q.vectors.get("sface")
+            if q_primary is None or q_second is None:
+                return False
+
+            score_primary = cosine_similarity(q_primary, cand_primary)
+            score_second = cosine_similarity(q_second, cand_second)
+
+            if score_primary < primary_thresh or score_second < second_thresh:
+                return False
+
+        return True

@@ -4,7 +4,7 @@ Starlette keeps each file part in memory up to 1 MB and then rolls it over to a 
 file in the system temp folder. For event photos we keep that behaviour but put the spool
 files under FACESCAN_UPLOAD_SPOOL_DIR (default var/tmp/uploads, git-ignored); they are
 deleted when the form is closed at the end of the request. Selfies never use multipart: they
-are read as a raw body into memory (app/modules/matching/router.py).
+are read as a raw body into memory (app/features/face_matching/router.py).
 """
 
 import logging

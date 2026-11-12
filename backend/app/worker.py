@@ -15,12 +15,12 @@ import threading
 import time
 from types import FrameType
 
+from app.background_jobs.handlers import ON_FINAL_FAILURE, dispatch
 from app.core.config import Settings, get_settings
 from app.core.context import AppContext, ContextConfigError, build_context
 from app.core.logging import configure_logging
-from app.jobs.handlers import ON_FINAL_FAILURE, dispatch
-from app.modules.scene_search.service import cleanup_expired_attempts
-from app.ports.capabilities import Capabilities
+from app.features.scene_search.service import cleanup_expired_attempts
+from app.interfaces.capabilities import Capabilities
 
 logger = logging.getLogger("facescan.worker")
 

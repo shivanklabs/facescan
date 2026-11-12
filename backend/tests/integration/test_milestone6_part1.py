@@ -9,10 +9,10 @@ from uuid import UUID
 
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
-from app.modules.audit.models import AuditLog
-from app.modules.ingest.models import Photo
-from app.modules.ingest.service import compute_phash, phash_distance
-from app.modules.matching.models import CannotLink, Match
+from app.features.activity_log.models import AuditLog
+from app.features.face_matching.models import CannotLink, Match
+from app.features.photo_upload.models import Photo
+from app.features.photo_upload.service import compute_phash, phash_distance
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
@@ -145,7 +145,7 @@ def test_borderline_result_never_releases_photos(
     Purpose: verify that a borderline scan result returns borderline=True,
         releases 0 photos, and never creates released Match rows.
     """
-    from app.ports.face_analyzer import FramesMatch
+    from app.interfaces.face_analyzer import FramesMatch
 
     event_id, invite_url, _ = searchable_event(ctx, organiser, PERSON_1 + PERSON_2)
     guest = guest_client(ctx, "guest_bord@example.test", event_id, invite_url)

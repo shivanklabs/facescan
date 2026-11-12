@@ -1,7 +1,7 @@
 """In-process rate limiting for sign-in, upload, invite and search endpoints (per client
 address, sliding window). Counters live on the app instance (app.state), so each app starts
 fresh. Guest face searches are additionally limited per user and per event in PostgreSQL
-(app/modules/matching/service.py), which holds across processes.
+(app/features/face_matching/service.py), which holds across processes.
 """
 
 import threading

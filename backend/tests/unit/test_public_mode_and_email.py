@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from app.adapters.email.smtp_gmail_email import SmtpGmailEmailSender
+from app.connectors.email.smtp_gmail_email import SmtpGmailEmailSender
 from app.core.config import Settings
 from app.core.rate_limit import extract_client_ip
 from app.main import create_app

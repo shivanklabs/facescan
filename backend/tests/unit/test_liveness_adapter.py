@@ -3,9 +3,9 @@
 from uuid import uuid4
 
 import numpy as np
-from app.adapters.liveness.silent_face_liveness import SilentFaceLiveness
-from app.adapters.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
-from app.ports.face_analyzer import BuiltCluster, SelfieQuery, StoredFace
+from app.connectors.liveness.silent_face_liveness import SilentFaceLiveness
+from app.connectors.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
+from app.interfaces.face_analyzer import BuiltCluster, SelfieQuery, StoredFace
 
 
 def test_silent_face_liveness_capabilities() -> None:

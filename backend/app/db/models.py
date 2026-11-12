@@ -1,10 +1,10 @@
 """Imports every ORM model so Base.metadata is complete (Alembic and tests use this)."""
 
+from app.background_jobs.models import Job
 from app.db.base import Base
-from app.jobs.models import Job
-from app.modules.audit.models import AuditLog
-from app.modules.consent.models import Consent
-from app.modules.events.models import (
+from app.features.activity_log.models import AuditLog
+from app.features.consent.models import Consent
+from app.features.events.models import (
     CameraOffset,
     Collection,
     Event,
@@ -13,17 +13,17 @@ from app.modules.events.models import (
     EventMember,
     EventSection,
 )
-from app.modules.gallery.models import Claim
-from app.modules.identity.models import AuthChallenge, AuthSession, MagicLink, Passkey, User
-from app.modules.ingest.models import Photo, UploadSession
-from app.modules.matching.models import CannotLink, Match, SearchAttempt, UserTemplate
-from app.modules.scene_search.models import (
+from app.features.face_matching.models import CannotLink, Match, SearchAttempt, UserTemplate
+from app.features.gallery.models import Claim
+from app.features.login.models import AuthChallenge, AuthSession, MagicLink, Passkey, User
+from app.features.photo_processing.models import Cluster, EventCalibration, Face
+from app.features.photo_upload.models import Photo, UploadSession
+from app.features.scene_search.models import (
     ClaimAttempt,
     SceneEmbedding,
     SceneSearchAttempt,
     SceneSearchCandidate,
 )
-from app.modules.vision_pipeline.models import Cluster, EventCalibration, Face
 
 EVENT_SCOPED_TABLES = (
     "events",

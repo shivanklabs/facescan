@@ -11,7 +11,7 @@ from starlette.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 
 from app import __version__
-from app.adapters.storage.local_filesystem_download import (
+from app.connectors.storage.local_filesystem_download import (
     build_local_storage,
     create_download_router,
 )
@@ -102,18 +102,18 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         for mount in api_mounts:
             app.include_router(download_router, prefix=mount)
 
-    from app.modules.admin.router import router as admin_router
-    from app.modules.consent.router import router as consent_router
-    from app.modules.discover.router import router as discover_router
-    from app.modules.events.router import router as events_router
-    from app.modules.gallery.router import router as gallery_router
-    from app.modules.identity.router import router as identity_router
-    from app.modules.ingest.router import router as ingest_router
-    from app.modules.matching.router import router as matching_router
-    from app.modules.scene_search.router import (
+    from app.features.admin.router import router as admin_router
+    from app.features.all_events_search.router import router as discover_router
+    from app.features.consent.router import router as consent_router
+    from app.features.events.router import router as events_router
+    from app.features.face_matching.router import router as matching_router
+    from app.features.gallery.router import router as gallery_router
+    from app.features.login.router import router as identity_router
+    from app.features.photo_upload.router import router as ingest_router
+    from app.features.scene_search.router import (
         claims_router,
     )
-    from app.modules.scene_search.router import (
+    from app.features.scene_search.router import (
         router as scene_search_router,
     )
 

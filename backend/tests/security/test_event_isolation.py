@@ -142,7 +142,7 @@ def test_rls_cannot_be_switched_off(ctx: AppContext) -> None:
 
 
 def test_audit_log_is_append_only(ctx: AppContext) -> None:
-    from app.modules.audit.service import record
+    from app.features.activity_log.service import record
 
     a, _ = two_events_with_data(ctx)
     with event_transaction(ctx.sessions, a) as s:

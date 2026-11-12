@@ -5,13 +5,13 @@ import secrets
 import uuid
 
 import pytest
-from app.adapters.keys.env_master_key import EnvMasterKeyManager, parse_master_key
+from app.connectors.keys.env_master_key import EnvMasterKeyManager, parse_master_key
 from app.core.context import AppContext
 from app.core.crypto import DecryptionError, aad, open_sealed, seal
 from app.db.event_scope import event_transaction
-from app.modules.events.service import EventKeyDestroyedError, data_key, destroy_event_key
-from app.modules.vision_pipeline import repository
-from app.ports.key_manager import KeyUnwrapError
+from app.features.events.service import EventKeyDestroyedError, data_key, destroy_event_key
+from app.features.photo_processing import repository
+from app.interfaces.key_manager import KeyUnwrapError
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from tests.conftest import make_png

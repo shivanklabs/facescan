@@ -5,6 +5,6 @@ Sign-in, sessions and role checks live in app/core/auth.py and app/core/deps.py:
   transaction (require_role);
 - organisers and photographers need a passkey session (PasskeyUser);
 - only guests can run a face search, never staff of the same event (invariant 5,
-  app/modules/matching/service.py).
+  app/features/face_matching/service.py).
 The temporary dev admin token of milestone 3 has been removed.
 """

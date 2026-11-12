@@ -7,13 +7,13 @@ import pytest
 from app.core.auth import CurrentUser
 from app.core.config import Settings
 from app.core.context import ContextConfigError
-from app.modules.ingest import router as ingest_router
-from app.modules.ingest.service import UploadResult
-from app.modules.matching import router as matching_router
-from app.modules.matching.service import SearchResult
-from app.modules.scene_search import service as scene_search_service
-from app.modules.scene_search.schemas import SceneSearchRequest, SceneSearchResponse
-from app.modules.scene_search.service import sign_preview_url
+from app.features.face_matching import router as matching_router
+from app.features.face_matching.service import SearchResult
+from app.features.photo_upload import router as ingest_router
+from app.features.photo_upload.service import UploadResult
+from app.features.scene_search import service as scene_search_service
+from app.features.scene_search.schemas import SceneSearchRequest, SceneSearchResponse
+from app.features.scene_search.service import sign_preview_url
 from starlette.requests import Request
 
 
@@ -39,7 +39,9 @@ async def test_upload_photos_offloads_to_threadpool() -> None:
 
     with (
         patch.object(ingest_router, "_read_files", new_callable=AsyncMock) as mock_read,
-        patch("app.modules.ingest.router.run_in_threadpool", new_callable=AsyncMock) as mock_pool,
+        patch(
+            "app.features.photo_upload.router.run_in_threadpool", new_callable=AsyncMock
+        ) as mock_pool,
     ):
         mock_read.return_value = ([b"photo_bytes"], None)
         mock_pool.return_value = dummy_result
@@ -70,7 +72,9 @@ async def test_upload_chunk_part_offloads_to_threadpool() -> None:
     user = MagicMock(spec=CurrentUser)
     ctx = MagicMock()
 
-    with patch("app.modules.ingest.router.run_in_threadpool", new_callable=AsyncMock) as mock_pool:
+    with patch(
+        "app.features.photo_upload.router.run_in_threadpool", new_callable=AsyncMock
+    ) as mock_pool:
         mock_pool.side_effect = [([0], 2)]
 
         res = await ingest_router.upload_chunk_part(
@@ -102,7 +106,9 @@ async def test_search_offloads_to_threadpool() -> None:
 
     with (
         patch.object(matching_router, "read_frames", new_callable=AsyncMock) as mock_read,
-        patch("app.modules.matching.router.run_in_threadpool", new_callable=AsyncMock) as mock_pool,
+        patch(
+            "app.features.face_matching.router.run_in_threadpool", new_callable=AsyncMock
+        ) as mock_pool,
     ):
         mock_read.return_value = [b"frame1", b"frame2"]
         mock_pool.return_value = dummy_result
@@ -131,7 +137,7 @@ async def test_scene_search_offloads_db_and_embeddings_to_threadpool() -> None:
     dummy_response = SceneSearchResponse(candidates=[], query_rewritten=True)
 
     with patch(
-        "app.modules.scene_search.service.run_in_threadpool", new_callable=AsyncMock
+        "app.features.scene_search.service.run_in_threadpool", new_callable=AsyncMock
     ) as mock_pool:
         mock_pool.side_effect = [
             ({uuid4()}, {uuid4(): MagicMock()}),

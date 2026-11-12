@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from app.adapters.storage.local_filesystem_download import build_local_storage
+from app.connectors.storage.local_filesystem_download import build_local_storage
 from app.core.config import Settings
 from app.main import create_app
 from fastapi.testclient import TestClient

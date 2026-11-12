@@ -2,8 +2,8 @@
 
 import pytest
 from app.core.context import AppContext
-from app.ports.capabilities import Capabilities
-from app.ports.identity_provider import IdTokenRejectedError, VerifiedIdentity
+from app.interfaces.capabilities import Capabilities
+from app.interfaces.identity_provider import IdTokenRejectedError, VerifiedIdentity
 from fastapi.testclient import TestClient
 from tests.conftest import make_png
 from tests.helpers import (

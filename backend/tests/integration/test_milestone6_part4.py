@@ -9,13 +9,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from app.background_jobs.models import Job
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
-from app.jobs.models import Job
-from app.modules.events.models import EventMember
-from app.modules.gallery.models import Claim
-from app.modules.ingest.models import Photo
-from app.modules.matching.models import CannotLink
+from app.features.events.models import EventMember
+from app.features.face_matching.models import CannotLink
+from app.features.gallery.models import Claim
+from app.features.photo_upload.models import Photo
 from fastapi.testclient import TestClient
 from sqlalchemy import insert
 from tests.conftest import make_png

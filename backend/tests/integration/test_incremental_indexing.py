@@ -5,12 +5,12 @@ from uuid import UUID
 
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
-from app.modules.events.models import Event
-from app.modules.events.service import data_key
-from app.modules.ingest.models import Photo
-from app.modules.vision_pipeline import repository
-from app.modules.vision_pipeline.models import Face
-from app.ports.face_analyzer import AnalysedFace
+from app.features.events.models import Event
+from app.features.events.service import data_key
+from app.features.photo_processing import repository
+from app.features.photo_processing.models import Face
+from app.features.photo_upload.models import Photo
+from app.interfaces.face_analyzer import AnalysedFace
 from app.worker import run_one
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -229,7 +229,7 @@ def test_engine_version_mismatch_triggers_full_rebuild(
         return_value=upgraded_versions,
     ):
         # Trigger index_event directly
-        from app.modules.vision_pipeline.service import index_event
+        from app.features.photo_processing.service import index_event
 
         summary = index_event(ctx, UUID(event_id))
         assert summary.photos == 2
@@ -250,7 +250,7 @@ def test_failed_removal_of_old_web_copy_keeps_photo_indexed(
     Outputs: None.
     Side effects: runs index_event with a storage whose delete_object raises.
     """
-    from app.modules.vision_pipeline.service import index_event
+    from app.features.photo_processing.service import index_event
 
     event_id, _, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
     with event_transaction(ctx.sessions, UUID(event_id)) as session:
@@ -286,7 +286,7 @@ def test_pending_claim_survives_full_rebuild_without_face_box(
     """
     import base64
 
-    from app.modules.vision_pipeline.service import index_event
+    from app.features.photo_processing.service import index_event
 
     event_id, invite_url, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
     guest = guest_client(ctx, "claim_rebuild@example.test", event_id, invite_url)

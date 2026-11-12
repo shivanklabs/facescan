@@ -13,8 +13,8 @@ from uuid import UUID
 
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
-from app.modules.events.models import Event
-from app.modules.ingest.models import Photo
+from app.features.events.models import Event
+from app.features.photo_upload.models import Photo
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import select

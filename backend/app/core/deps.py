@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from app.core.auth import SESSION_COOKIE, CurrentUser, admin_allowed, lookup_session
 from app.core.context import AppContext
 from app.db.event_scope import user_transaction
-from app.modules.events.models import EventMember
-from app.modules.identity.models import User as UserModel
+from app.features.events.models import EventMember
+from app.features.login.models import User as UserModel
 
 STAFF_ROLES = ("organiser", "photographer")
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")

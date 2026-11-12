@@ -6,7 +6,7 @@ import uuid
 from urllib.parse import urlsplit
 
 import pytest
-from app.adapters.storage.local_filesystem_storage import LocalFilesystemStorage
+from app.connectors.storage.local_filesystem_storage import LocalFilesystemStorage
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
 from fastapi.testclient import TestClient
@@ -207,9 +207,9 @@ def test_search_needs_consent_and_policy_governs_minors(
     # When policy is restricted, minors are blocked
     from app.core import policy as policy_module
     from app.core.policy import CountryPolicy
-    from app.modules.consent import service as consent_service
-    from app.modules.matching import service as matching_service
-    from app.modules.scene_search import service as scene_service
+    from app.features.consent import service as consent_service
+    from app.features.face_matching import service as matching_service
+    from app.features.scene_search import service as scene_service
 
     restricted_policy = CountryPolicy(
         country="IN", minor_age=18, minors_self_search="restricted", search_window_days=30
@@ -379,7 +379,7 @@ def test_claim_queue_shows_guest_number(
     Outputs: None.
     Side effects: creates claims and queries organiser queue.
     """
-    from app.modules.gallery.models import Claim
+    from app.features.gallery.models import Claim
 
     event_id, invite, photos = event
     event_uuid = uuid.UUID(event_id)

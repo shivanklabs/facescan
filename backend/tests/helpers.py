@@ -16,8 +16,8 @@ from dataclasses import dataclass, field
 from app.core.context import AppContext
 from app.core.crypto import new_data_key
 from app.db.event_scope import event_transaction
-from app.modules.events.models import Event, EventKey
-from app.ports.capabilities import Capabilities
+from app.features.events.models import Event, EventKey
+from app.interfaces.capabilities import Capabilities
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient

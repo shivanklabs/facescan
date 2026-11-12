@@ -19,11 +19,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from app.adapters.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
+from app.connectors.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
 from app.core.config import Settings
 from app.core.context import AppContext, build_context
+from app.interfaces.face_analyzer import AnalysedFace, SelfieQuery, SelfieRejectedError
 from app.main import create_app
-from app.ports.face_analyzer import AnalysedFace, SelfieQuery, SelfieRejectedError
 from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import SecretStr

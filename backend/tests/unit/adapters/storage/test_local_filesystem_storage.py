@@ -3,11 +3,11 @@ from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
-from app.adapters.storage.local_filesystem_storage import (
+from app.connectors.storage.local_filesystem_storage import (
     InvalidSignatureError,
     LocalFilesystemStorage,
 )
-from app.ports.object_storage import (
+from app.interfaces.object_storage import (
     InvalidObjectReferenceError,
     ObjectNotFoundError,
     ObjectStorage,

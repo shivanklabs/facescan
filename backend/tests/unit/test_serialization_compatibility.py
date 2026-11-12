@@ -11,9 +11,9 @@ import numpy as np
 from app.core.context import AppContext
 from app.core.crypto import aad, open_sealed, seal
 from app.db.event_scope import event_transaction
-from app.modules.vision_pipeline import repository
-from app.modules.vision_pipeline.repository import _pack, unpack_vectors
-from app.ports.face_analyzer import Vector
+from app.features.photo_processing import repository
+from app.features.photo_processing.repository import _pack, unpack_vectors
+from app.interfaces.face_analyzer import Vector
 from facescan_ai.index_store import decode_vector, encode_vector
 from facescan_ai.matching.calibration import EngineCalibration
 from fastapi.testclient import TestClient
@@ -157,7 +157,7 @@ def test_legacy_sealed_data_decrypts_with_new_code() -> None:
 def test_database_stored_faces_and_calibration_roundtrip(
     organiser: TestClient, ctx: AppContext
 ) -> None:
-    from app.modules.events.service import data_key
+    from app.features.events.service import data_key
     from tests.conftest import make_png
     from tests.helpers import searchable_event
 

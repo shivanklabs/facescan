@@ -4,11 +4,11 @@ import base64
 import json
 
 import pytest
-from app.adapters.identity.google_identity_provider import (
+from app.connectors.identity.google_identity_provider import (
     GoogleIdentityProvider,
     verify_id_token,
 )
-from app.ports.identity_provider import IdTokenRejectedError
+from app.interfaces.identity_provider import IdTokenRejectedError
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey

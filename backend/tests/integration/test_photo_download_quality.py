@@ -7,9 +7,9 @@ from uuid import UUID
 import numpy as np
 from app.core.context import AppContext
 from app.db.event_scope import event_transaction
-from app.modules.events.models import EventMember
-from app.modules.ingest.models import Photo
-from app.modules.matching.models import Match
+from app.features.events.models import EventMember
+from app.features.face_matching.models import Match
+from app.features.photo_upload.models import Photo
 from fastapi.testclient import TestClient
 from PIL import Image, ImageCms
 from sqlalchemy import select

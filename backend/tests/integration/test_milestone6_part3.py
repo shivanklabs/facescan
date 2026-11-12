@@ -57,9 +57,9 @@ def test_age_policy_allows_minors_and_blocks_when_restricted(
 
     # 2. Switch policy to restricted
     from app.core import policy as policy_module
-    from app.modules.consent import service as consent_service
-    from app.modules.matching import service as matching_service
-    from app.modules.scene_search import service as scene_service
+    from app.features.consent import service as consent_service
+    from app.features.face_matching import service as matching_service
+    from app.features.scene_search import service as scene_service
 
     restricted_policy = CountryPolicy(
         country="IN", minor_age=18, minors_self_search="restricted", search_window_days=30
