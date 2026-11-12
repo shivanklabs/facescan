@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from app.core.auth import CurrentUser
-from app.core.config import Settings
-from app.core.context import ContextConfigError
+from app.core.login_sessions import CurrentUser
+from app.core.services_setup import ContextConfigError
+from app.core.settings import Settings
 from app.features.face_matching import router as matching_router
 from app.features.face_matching.service import SearchResult
 from app.features.photo_upload import router as ingest_router

@@ -3,8 +3,8 @@
 from typing import Annotated
 from uuid import UUID
 
-from app.core.deps import Ctx, PasskeyUser, User
 from app.core.rate_limit import RateLimiter
+from app.core.request_checks import Ctx, PasskeyUser, User
 from app.features.scene_search import service
 from app.features.scene_search.schemas import (
     OrganiserClaimQueueResponse,

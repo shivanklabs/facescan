@@ -3,7 +3,7 @@
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config import Settings
+from app.core.settings import Settings
 
 
 class DatabaseNotConfiguredError(RuntimeError):

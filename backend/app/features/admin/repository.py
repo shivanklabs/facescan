@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.background_jobs.models import Job
+from app.background_jobs.job_table import Job
 from app.features.events.models import Event
 from app.features.face_matching.models import CannotLink
 from app.features.gallery.models import Claim

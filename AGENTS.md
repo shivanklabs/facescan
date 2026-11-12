@@ -106,7 +106,7 @@ backend/     FastAPI modular monolith; two processes: api (app.main) and worker 
   app/core/             config, logging (redaction), security, errors, rate limiting
   app/db/               session, declarative base, event scope (RLS)
   app/interfaces/       one Protocol per external dependency (a "port")
-  app/connectors/       free implementations of the interfaces (adapters) + registry.py
+  app/connectors/       free implementations of the interfaces (adapters) + service_picker.py
   app/features/         login, all_events_search, face_matching, photo_upload, photo_processing,
                         gallery, scene_search, consent, events, activity_log, admin
   app/background_jobs/  job type -> handler registry

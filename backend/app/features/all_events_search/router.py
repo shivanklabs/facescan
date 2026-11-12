@@ -10,7 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request
 from starlette.concurrency import run_in_threadpool
 
-from app.core.deps import Ctx, User
+from app.core.request_checks import Ctx, User
 from app.features.all_events_search import service
 from app.features.all_events_search.schemas import (
     DiscoverEvent,

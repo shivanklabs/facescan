@@ -17,7 +17,9 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.auth import (
+from app.core.encryption import new_data_key
+from app.core.errors import ConflictError, NotFoundError, UnprocessableError
+from app.core.login_sessions import (
     CurrentUser,
     create_anonymous_user,
     create_session,
@@ -26,12 +28,10 @@ from app.core.auth import (
     new_token,
     normalise_email,
 )
-from app.core.auth import organiser_allowed as is_organiser_allowed
-from app.core.context import AppContext
-from app.core.crypto import new_data_key
-from app.core.deps import STAFF_ROLES, require_role
-from app.core.errors import ConflictError, NotFoundError, UnprocessableError
-from app.db.event_scope import event_transaction, user_transaction
+from app.core.login_sessions import organiser_allowed as is_organiser_allowed
+from app.core.request_checks import STAFF_ROLES, require_role
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction, user_transaction
 from app.features.activity_log.service import record
 from app.features.events import repository
 from app.features.events.models import (
@@ -44,7 +44,7 @@ from app.features.events.models import (
 )
 from app.features.login.models import User
 from app.features.photo_upload.models import Photo
-from app.interfaces.key_manager import KeyManager
+from app.interfaces.encryption_keys import KeyManager
 
 
 class EventKeyDestroyedError(Exception):

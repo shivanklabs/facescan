@@ -5,8 +5,8 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import pytest
-from app.connectors.storage.local_filesystem_download import build_local_storage
-from app.core.context import AppContext
+from app.connectors.photo_storage.local_filesystem_download import build_local_storage
+from app.core.services_setup import AppContext
 from app.main import create_app
 from fastapi.testclient import TestClient
 from tests.conftest import make_png

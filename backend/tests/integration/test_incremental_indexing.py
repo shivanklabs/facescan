@@ -3,8 +3,8 @@
 from unittest.mock import PropertyMock, patch
 from uuid import UUID
 
-from app.core.context import AppContext
-from app.db.event_scope import event_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.events.models import Event
 from app.features.events.service import data_key
 from app.features.photo_processing import repository

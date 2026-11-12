@@ -13,9 +13,9 @@ import struct
 import uuid
 from dataclasses import dataclass, field
 
-from app.core.context import AppContext
-from app.core.crypto import new_data_key
-from app.db.event_scope import event_transaction
+from app.core.encryption import new_data_key
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.events.models import Event, EventKey
 from app.interfaces.capabilities import Capabilities
 from cryptography.hazmat.primitives import hashes
@@ -234,7 +234,7 @@ def searchable_event(
 ) -> tuple[str, str, list[str]]:
     """Create an event, upload and approve photos, run the worker, create an invite.
     Outputs: (event_id, invite_url, photo_ids in upload order)."""
-    from app.db.event_scope import DISPATCH_SCOPE, scoped_transaction
+    from app.db.event_isolation import DISPATCH_SCOPE, scoped_transaction
     from app.worker import run_one
     from sqlalchemy import text
 

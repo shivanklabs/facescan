@@ -9,8 +9,8 @@ import uuid
 from pathlib import Path
 
 import pytest
-from app.core.context import AppContext
-from app.db.event_scope import event_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.worker import run_one
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -203,16 +203,16 @@ def test_large_upload_parts_spool_only_under_the_spool_dir_and_are_deleted(
     Outputs: None.
     Side effects: performs multipart upload; intercepts SpooledTemporaryFile creation.
     """
-    import app.core.multipart
+    import app.core.upload_parsing
 
     recorded_dirs: list[str | None] = []
-    real_spooled = app.core.multipart.SpooledTemporaryFile
+    real_spooled = app.core.upload_parsing.SpooledTemporaryFile
 
     def recording_spooled(*args: object, **kwargs: object) -> object:
         recorded_dirs.append(kwargs.get("dir"))  # type: ignore[arg-type]
         return real_spooled(*args, **kwargs)
 
-    monkeypatch.setattr(app.core.multipart, "SpooledTemporaryFile", recording_spooled)
+    monkeypatch.setattr(app.core.upload_parsing, "SpooledTemporaryFile", recording_spooled)
     event_id = new_event(api)
     response = upload(api, event_id, [big_png()])
     assert response.status_code == 201, response.text

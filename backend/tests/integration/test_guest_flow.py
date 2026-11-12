@@ -6,9 +6,9 @@ import uuid
 from urllib.parse import urlsplit
 
 import pytest
-from app.connectors.storage.local_filesystem_storage import LocalFilesystemStorage
-from app.core.context import AppContext
-from app.db.event_scope import event_transaction
+from app.connectors.photo_storage.local_filesystem_storage import LocalFilesystemStorage
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import text
@@ -205,8 +205,8 @@ def test_search_needs_consent_and_policy_governs_minors(
     assert response.status_code == 200
 
     # When policy is restricted, minors are blocked
-    from app.core import policy as policy_module
-    from app.core.policy import CountryPolicy
+    from app.core import country_rules as policy_module
+    from app.core.country_rules import CountryPolicy
     from app.features.consent import service as consent_service
     from app.features.face_matching import service as matching_service
     from app.features.scene_search import service as scene_service

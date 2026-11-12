@@ -8,9 +8,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 
-from app.core.auth import CurrentUser, clear_session_cookie, set_session_cookie
-from app.core.deps import Ctx, User, optional_user
+from app.core.login_sessions import CurrentUser, clear_session_cookie, set_session_cookie
 from app.core.rate_limit import RateLimiter
+from app.core.request_checks import Ctx, User, optional_user
 from app.features.login import service
 from app.features.login.schemas import (
     AgeAnswer,

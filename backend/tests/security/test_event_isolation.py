@@ -7,14 +7,14 @@ service layer is involved: if these pass, a forgotten WHERE event_id = ... canno
 import uuid
 
 import pytest
-from app.core.context import AppContext
-from app.db.event_scope import (
+from app.core.services_setup import AppContext
+from app.db.all_tables import EVENT_SCOPED_TABLES
+from app.db.event_isolation import (
     ADMIN_SCOPE,
     DISPATCH_SCOPE,
     event_transaction,
     scoped_transaction,
 )
-from app.db.models import EVENT_SCOPED_TABLES
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, ProgrammingError
 from tests.helpers import quick_event

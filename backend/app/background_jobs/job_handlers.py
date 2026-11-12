@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from uuid import UUID
 
-from app.core.context import AppContext
+from app.core.services_setup import AppContext
 from app.features.photo_processing.service import index_event, mark_index_failed
 from app.features.photo_upload.service import INDEX_EVENT_JOB
 

@@ -12,9 +12,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request
 from starlette.concurrency import run_in_threadpool
 
-from app.core.deps import Ctx, User
 from app.core.errors import PayloadTooLargeError, UnprocessableError
 from app.core.rate_limit import RateLimiter
+from app.core.request_checks import Ctx, User
 from app.features.face_matching import service
 from app.features.face_matching.schemas import SearchResponse
 

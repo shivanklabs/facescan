@@ -23,11 +23,11 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.core.auth import CurrentUser
-from app.core.context import AppContext, guest_search_allowed
-from app.core.deps import STAFF_ROLES, roles_in_event
 from app.core.errors import ConflictError, NotFoundError, UnprocessableError
-from app.db.event_scope import ADMIN_SCOPE, event_transaction, scoped_transaction
+from app.core.login_sessions import CurrentUser
+from app.core.request_checks import STAFF_ROLES, roles_in_event
+from app.core.services_setup import AppContext, guest_search_allowed
+from app.db.event_isolation import ADMIN_SCOPE, event_transaction, scoped_transaction
 from app.features.activity_log.service import record
 from app.features.consent import service as consent_service
 from app.features.events.models import Event, EventMember
@@ -38,7 +38,7 @@ from app.features.face_matching.service import (
     release_in_event,
 )
 from app.features.gallery.service import GalleryItem, get_gallery_content
-from app.interfaces.key_manager import KeyUnwrapError
+from app.interfaces.encryption_keys import KeyUnwrapError
 
 logger = logging.getLogger("facescan.discover")
 

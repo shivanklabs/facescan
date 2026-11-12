@@ -13,8 +13,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.background_jobs.models import Job
-from app.db.event_scope import DISPATCH_SCOPE, scoped_transaction
+from app.background_jobs.job_table import Job
+from app.db.event_isolation import DISPATCH_SCOPE, scoped_transaction
 from app.interfaces.capabilities import Capabilities
 from app.interfaces.job_queue import ClaimedJob
 

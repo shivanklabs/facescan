@@ -4,7 +4,7 @@ Upload: photographers and organisers (passkey session). Approval: organisers. Up
 (field name "files", optional "collection_id"); the request size is checked from
 Content-Length before the body is parsed. Parts up to 1 MB stay in memory; larger event photos
 are spooled to FACESCAN_UPLOAD_SPOOL_DIR (under var/, git-ignored) while parsing and deleted
-when the request ends (app/core/multipart.py). Selfies never take this path.
+when the request ends (app/core/upload_parsing.py). Selfies never take this path.
 """
 
 from pathlib import Path
@@ -14,10 +14,10 @@ from fastapi import APIRouter, Depends, Query, Request
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
-from app.core.deps import Ctx, PasskeyUser
 from app.core.errors import PayloadTooLargeError, UnprocessableError
-from app.core.multipart import MultiPartException, parse_upload_form
 from app.core.rate_limit import RateLimiter
+from app.core.request_checks import Ctx, PasskeyUser
+from app.core.upload_parsing import MultiPartException, parse_upload_form
 from app.features.photo_upload import service
 from app.features.photo_upload.schemas import (
     ApproveResponse,

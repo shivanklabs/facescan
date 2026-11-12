@@ -5,8 +5,8 @@ a throwaway schema, so migrations run there instead of in the dev database's pub
 """
 
 from alembic import context
-from app.core.config import get_settings
-from app.db.models import Base
+from app.core.settings import get_settings
+from app.db.all_tables import Base
 from sqlalchemy import Connection, engine_from_config, pool
 
 target_metadata = Base.metadata

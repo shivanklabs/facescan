@@ -16,7 +16,7 @@ import httpx2
 from pydantic import SecretStr
 
 from app.interfaces.capabilities import Capabilities
-from app.interfaces.query_rewriter import QueryRewriter
+from app.interfaces.scene_search_ai import QueryRewriter
 
 logger = logging.getLogger("facescan.query_rewriter")
 

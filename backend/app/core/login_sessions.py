@@ -19,10 +19,10 @@ from fastapi import Response
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
-from app.core.crypto import DecryptionError, open_sealed, seal
+from app.core.encryption import DecryptionError, open_sealed, seal
+from app.core.settings import Settings
 from app.features.login.models import AuthSession, User
-from app.interfaces.key_manager import KeyManager
+from app.interfaces.encryption_keys import KeyManager
 
 SESSION_COOKIE = "fs_session"
 TOKEN_BYTES = 32

@@ -1,6 +1,6 @@
 """Imports every ORM model so Base.metadata is complete (Alembic and tests use this)."""
 
-from app.background_jobs.models import Job
+from app.background_jobs.job_table import Job
 from app.db.base import Base
 from app.features.activity_log.models import AuditLog
 from app.features.consent.models import Consent

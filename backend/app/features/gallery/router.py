@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response
 
-from app.core.deps import Ctx, User
+from app.core.request_checks import Ctx, User
 from app.features.gallery import service
 from app.features.gallery.schemas import GalleryPhoto, GalleryResponse
 

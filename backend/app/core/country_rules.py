@@ -32,7 +32,7 @@ def load_country_policy(country_code: str, policies_dir: str | Path | None = Non
     Side effects: reads yaml file from disk on cache miss.
     """
     if policies_dir is None:
-        from app.core.config import get_settings
+        from app.core.settings import get_settings
 
         dir_path = Path(get_settings().config_policies_dir)
     else:

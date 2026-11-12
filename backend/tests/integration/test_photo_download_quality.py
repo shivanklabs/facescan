@@ -5,8 +5,8 @@ import io
 from uuid import UUID
 
 import numpy as np
-from app.core.context import AppContext
-from app.db.event_scope import event_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.events.models import EventMember
 from app.features.face_matching.models import Match
 from app.features.photo_upload.models import Photo

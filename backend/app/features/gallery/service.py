@@ -15,11 +15,11 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import CurrentUser
-from app.core.context import AppContext
-from app.core.deps import require_role
 from app.core.errors import NotFoundError
-from app.db.event_scope import event_transaction
+from app.core.login_sessions import CurrentUser
+from app.core.request_checks import require_role
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.activity_log.service import record
 from app.features.consent.service import FACE_SEARCH, active_consent
 from app.features.face_matching.models import Match

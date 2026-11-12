@@ -4,9 +4,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
 
-from app.core.auth import set_session_cookie
-from app.core.deps import Ctx, MaybeUser, PasskeyUser, User
+from app.core.login_sessions import set_session_cookie
 from app.core.rate_limit import RateLimiter
+from app.core.request_checks import Ctx, MaybeUser, PasskeyUser, User
 from app.features.events import service
 from app.features.events.schemas import (
     AddStaffRequest,

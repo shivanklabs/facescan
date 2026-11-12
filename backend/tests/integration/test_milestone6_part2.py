@@ -11,8 +11,8 @@ import io
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from app.core.context import AppContext
-from app.db.event_scope import event_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.events.models import Event
 from app.features.photo_upload.models import Photo
 from fastapi.testclient import TestClient

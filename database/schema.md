@@ -36,7 +36,7 @@ dispatch scope can read every job.
 
 ## Row-level security
 One policy per event table: `event_id = nullif(current_setting('app.event_id', true), '')::uuid`.
-The app sets `app.event_id` per transaction (`app/db/event_scope.py`). With no scope set,
+The app sets `app.event_id` per transaction (`app/db/event_isolation.py`). With no scope set,
 nothing is visible. Three narrow extra policies:
 - `events`: SELECT in the `admin` scope (list event metadata only);
 - `audit_log`: rows without an event, in the `admin` scope;

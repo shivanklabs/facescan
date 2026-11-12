@@ -7,8 +7,8 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.core.context import AppContext
-from app.db.event_scope import ADMIN_SCOPE, event_transaction, scoped_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import ADMIN_SCOPE, event_transaction, scoped_transaction
 from app.features.admin.repository import get_event_health_counts, list_events_admin
 from app.features.admin.schemas import (
     AdminHealthResponse,

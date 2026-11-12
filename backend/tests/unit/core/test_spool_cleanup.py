@@ -6,8 +6,8 @@ import secrets
 import time
 from pathlib import Path
 
-from app.core.config import Settings
-from app.core.multipart import clean_orphaned_spool_files
+from app.core.settings import Settings
+from app.core.upload_parsing import clean_orphaned_spool_files
 from app.main import create_app
 from fastapi.testclient import TestClient
 from pydantic import SecretStr

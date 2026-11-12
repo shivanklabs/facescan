@@ -1,4 +1,4 @@
-# connectors/storage/
+# connectors/photo_storage/
 Adapters for ObjectStorage. Must not contain business rules.
 
 - `local_filesystem_storage.py` (default): files under `var/storage/<bucket>/<event_id>/`

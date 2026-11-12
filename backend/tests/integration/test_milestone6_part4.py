@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from app.background_jobs.models import Job
-from app.core.context import AppContext
-from app.db.event_scope import event_transaction
+from app.background_jobs.job_table import Job
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.events.models import EventMember
 from app.features.face_matching.models import CannotLink
 from app.features.gallery.models import Claim

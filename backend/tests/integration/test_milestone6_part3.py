@@ -8,9 +8,9 @@ import uuid
 from pathlib import Path
 
 import pytest
-from app.core.context import AppContext
-from app.core.policy import CountryPolicy
-from app.db.event_scope import event_transaction
+from app.core.country_rules import CountryPolicy
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from tests.conftest import make_png
@@ -56,7 +56,7 @@ def test_age_policy_allows_minors_and_blocks_when_restricted(
     assert resp.status_code == 200, f"Expected 200 with minors allowed, got {resp.text}"
 
     # 2. Switch policy to restricted
-    from app.core import policy as policy_module
+    from app.core import country_rules as policy_module
     from app.features.consent import service as consent_service
     from app.features.face_matching import service as matching_service
     from app.features.scene_search import service as scene_service

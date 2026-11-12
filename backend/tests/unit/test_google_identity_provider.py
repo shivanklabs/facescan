@@ -4,7 +4,7 @@ import base64
 import json
 
 import pytest
-from app.connectors.identity.google_identity_provider import (
+from app.connectors.login.google_login import (
     GoogleIdentityProvider,
     verify_id_token,
 )

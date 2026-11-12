@@ -20,11 +20,11 @@ from fastapi import HTTPException
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.core.auth import CurrentUser
-from app.core.context import AppContext, guest_search_allowed
+from app.core.country_rules import load_country_policy as load_country_policy
 from app.core.errors import ConflictError, TooManyRequestsError, UnprocessableError
-from app.core.policy import load_country_policy as load_country_policy
-from app.db.event_scope import event_transaction
+from app.core.login_sessions import CurrentUser
+from app.core.services_setup import AppContext, guest_search_allowed
+from app.db.event_isolation import event_transaction
 from app.features.activity_log.service import record
 from app.features.consent.service import (
     check_guest_search_access,

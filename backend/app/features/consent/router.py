@@ -5,8 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 
-from app.core.auth import clear_session_cookie
-from app.core.deps import Ctx, User
+from app.core.login_sessions import clear_session_cookie
+from app.core.request_checks import Ctx, User
 from app.features.consent import service
 from app.features.consent.schemas import (
     ConsentRecordResponse,

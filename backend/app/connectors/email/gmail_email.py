@@ -11,7 +11,7 @@ import logging
 import smtplib
 from email.message import EmailMessage
 
-from app.core.config import Settings
+from app.core.settings import Settings
 from app.interfaces.capabilities import Capabilities
 
 logger = logging.getLogger("facescan.email.smtp_gmail")

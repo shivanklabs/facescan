@@ -22,19 +22,19 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import numpy as np
-from app.core.auth import CurrentUser, is_anonymous_email, open_email
-from app.core.config import Settings
-from app.core.context import AppContext, ContextConfigError
-from app.core.crypto import aad, open_sealed
-from app.core.deps import require_role
+from app.core.country_rules import load_country_policy as load_country_policy
+from app.core.encryption import aad, open_sealed
 from app.core.errors import (
     DomainError,
     NotFoundError,
     PayloadTooLargeError,
     UnprocessableError,
 )
-from app.core.policy import load_country_policy as load_country_policy
-from app.db.event_scope import ADMIN_SCOPE, event_transaction, scoped_transaction
+from app.core.login_sessions import CurrentUser, is_anonymous_email, open_email
+from app.core.request_checks import require_role
+from app.core.services_setup import AppContext, ContextConfigError
+from app.core.settings import Settings
+from app.db.event_isolation import ADMIN_SCOPE, event_transaction, scoped_transaction
 from app.features.activity_log.service import record
 from app.features.consent.service import (
     check_guest_search_access,
@@ -66,7 +66,7 @@ from app.features.scene_search.schemas import (
     SubmitClaimResponse,
 )
 from app.interfaces.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejectedError
-from app.interfaces.object_storage import ObjectNotFoundError
+from app.interfaces.photo_storage import ObjectNotFoundError
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from starlette.concurrency import run_in_threadpool

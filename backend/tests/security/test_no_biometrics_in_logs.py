@@ -13,7 +13,7 @@ from pathlib import Path
 
 import cv2
 import pytest
-from app.core.context import AppContext
+from app.core.services_setup import AppContext
 from fastapi.testclient import TestClient
 from tests.conftest import REPO, make_png, person_vector
 from tests.helpers import FRAMES_HEADERS, frames_body, guest_client, searchable_event

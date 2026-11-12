@@ -20,11 +20,11 @@ from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.auth import CurrentUser
-from app.core.context import AppContext
-from app.core.deps import require_role
 from app.core.errors import ConflictError, NotFoundError, PayloadTooLargeError, UnprocessableError
-from app.db.event_scope import event_transaction
+from app.core.login_sessions import CurrentUser
+from app.core.request_checks import require_role
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.activity_log.service import record
 from app.features.events import repository as events_repo
 from app.features.events.models import CameraOffset, Collection, EventSection

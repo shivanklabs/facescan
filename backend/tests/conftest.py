@@ -19,9 +19,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from app.connectors.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
-from app.core.config import Settings
-from app.core.context import AppContext, build_context
+from app.connectors.face_ai.face_analyzer import FacescanAiFaceAnalyzer
+from app.core.services_setup import AppContext, build_context
+from app.core.settings import Settings
 from app.interfaces.face_analyzer import AnalysedFace, SelfieQuery, SelfieRejectedError
 from app.main import create_app
 from fastapi.testclient import TestClient

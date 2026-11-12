@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse
 
-from app.connectors.storage.local_filesystem_storage import (
+from app.connectors.photo_storage.local_filesystem_storage import (
     BUCKET_PATTERN,
     DOWNLOAD_ROUTE_PREFIX,
     EXTENSION_TO_CONTENT_TYPE,
@@ -21,8 +21,8 @@ from app.connectors.storage.local_filesystem_storage import (
     InvalidSignatureError,
     LocalFilesystemStorage,
 )
-from app.core.config import Settings
-from app.interfaces.object_storage import ObjectNotFoundError
+from app.core.settings import Settings
+from app.interfaces.photo_storage import ObjectNotFoundError
 
 DOWNLOAD_HEADERS = {
     "Cache-Control": "private, no-store",

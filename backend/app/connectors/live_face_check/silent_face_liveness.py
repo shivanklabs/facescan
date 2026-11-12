@@ -15,7 +15,7 @@ from facescan_ai.model_registry import ModelRegistry
 from facescan_ai.types import Face, ImageBGR
 
 from app.interfaces.capabilities import Capabilities
-from app.interfaces.liveness import LivenessVerdict
+from app.interfaces.live_face_check import LivenessVerdict
 
 
 class SilentFaceLiveness:

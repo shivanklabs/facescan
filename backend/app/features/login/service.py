@@ -31,7 +31,8 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from app.core.auth import (
+from app.core.errors import ForbiddenError, UnprocessableError
+from app.core.login_sessions import (
     EMAIL_RE,
     CurrentUser,
     admin_allowed,
@@ -46,9 +47,8 @@ from app.core.auth import (
     revoke_sessions,
     seal_email,
 )
-from app.core.context import AppContext
-from app.core.errors import ForbiddenError, UnprocessableError
-from app.db.event_scope import ADMIN_SCOPE, scoped_transaction, user_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import ADMIN_SCOPE, scoped_transaction, user_transaction
 from app.features.activity_log.service import record
 from app.features.events.models import EventMember
 from app.features.login.models import AuthChallenge, MagicLink, Passkey, User

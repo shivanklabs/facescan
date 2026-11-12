@@ -1,7 +1,7 @@
 """Milestone 7: Google sign-in, one scan across all events, and all of my photos."""
 
 import pytest
-from app.core.context import AppContext
+from app.core.services_setup import AppContext
 from app.interfaces.capabilities import Capabilities
 from app.interfaces.identity_provider import IdTokenRejectedError, VerifiedIdentity
 from fastapi.testclient import TestClient

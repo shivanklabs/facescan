@@ -19,12 +19,12 @@ from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.core import policy as policy_module
-from app.core.auth import CurrentUser, revoke_sessions
-from app.core.context import AppContext, guest_search_allowed
-from app.core.deps import STAFF_ROLES, require_role
+from app.core import country_rules as policy_module
 from app.core.errors import ConflictError
-from app.db.event_scope import event_transaction, user_transaction
+from app.core.login_sessions import CurrentUser, revoke_sessions
+from app.core.request_checks import STAFF_ROLES, require_role
+from app.core.services_setup import AppContext, guest_search_allowed
+from app.db.event_isolation import event_transaction, user_transaction
 from app.features.activity_log.service import record
 from app.features.consent.models import Consent
 from app.features.events import repository as events_repo
@@ -91,7 +91,7 @@ def load_country_policy(
     Purpose: load country policy delegation wrapper for consent checks.
     Inputs: country_code (e.g. 'IN'), optional policies_dir path.
     Outputs: CountryPolicy instance.
-    Side effects: delegates to app.core.policy.load_country_policy.
+    Side effects: delegates to app.core.country_rules.load_country_policy.
     """
     return policy_module.load_country_policy(country_code, policies_dir)
 

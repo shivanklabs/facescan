@@ -11,17 +11,17 @@ from starlette.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 
 from app import __version__
-from app.connectors.storage.local_filesystem_download import (
+from app.connectors.photo_storage.local_filesystem_download import (
     build_local_storage,
     create_download_router,
 )
-from app.core.config import Settings, get_settings
-from app.core.context import AppContext, build_context
-from app.core.deps import same_origin_guard
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
-from app.core.multipart import clean_orphaned_spool_files
 from app.core.rate_limit import RateLimitStore
+from app.core.request_checks import same_origin_guard
+from app.core.services_setup import AppContext, build_context
+from app.core.settings import Settings, get_settings
+from app.core.upload_parsing import clean_orphaned_spool_files
 
 
 class HealthResponse(BaseModel):

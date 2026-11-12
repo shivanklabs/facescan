@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.core.deps import AdminUser, Ctx
+from app.core.request_checks import AdminUser, Ctx
 from app.features.admin.schemas import AdminHealthResponse
 from app.features.admin.service import get_admin_health
 

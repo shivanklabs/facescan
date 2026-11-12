@@ -7,8 +7,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
-from app.core.context import AppContext
-from app.db.event_scope import event_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.consent.models import Consent
 from app.features.events.models import EventMember
 from app.features.face_matching.models import Match
@@ -214,8 +214,8 @@ def test_under_18_blocked_from_scene_search(
     Purpose: verify that under restricted policy guests answering under 18
         remain blocked from scene search.
     """
-    from app.core import policy as policy_module
-    from app.core.policy import CountryPolicy
+    from app.core import country_rules as policy_module
+    from app.core.country_rules import CountryPolicy
     from app.features.scene_search import service as scene_service
 
     monkeypatch.setattr(
@@ -469,7 +469,7 @@ def test_submit_claim_liveness_failure_creates_no_match_or_claim(
     Outputs: None.
     Side effects: tests HTTP endpoint and database records.
     """
-    from app.interfaces.liveness import LivenessVerdict
+    from app.interfaces.live_face_check import LivenessVerdict
 
     class FakeLivenessFailing:
         def verify_liveness(

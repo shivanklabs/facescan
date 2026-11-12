@@ -3,8 +3,8 @@
 from uuid import uuid4
 
 import numpy as np
-from app.connectors.liveness.silent_face_liveness import SilentFaceLiveness
-from app.connectors.vision.facescan_ai_face_analyzer import FacescanAiFaceAnalyzer
+from app.connectors.face_ai.face_analyzer import FacescanAiFaceAnalyzer
+from app.connectors.live_face_check.silent_face_liveness import SilentFaceLiveness
 from app.interfaces.face_analyzer import BuiltCluster, SelfieQuery, StoredFace
 
 

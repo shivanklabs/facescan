@@ -2,8 +2,8 @@ import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
-from app.core.config import Settings
-from app.core.context import ContextConfigError
+from app.core.services_setup import ContextConfigError
+from app.core.settings import Settings
 from app.worker import main, run
 
 

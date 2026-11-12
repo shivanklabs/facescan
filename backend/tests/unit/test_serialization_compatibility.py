@@ -8,9 +8,9 @@ import secrets
 import uuid
 
 import numpy as np
-from app.core.context import AppContext
-from app.core.crypto import aad, open_sealed, seal
-from app.db.event_scope import event_transaction
+from app.core.encryption import aad, open_sealed, seal
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.photo_processing import repository
 from app.features.photo_processing.repository import _pack, unpack_vectors
 from app.interfaces.face_analyzer import Vector

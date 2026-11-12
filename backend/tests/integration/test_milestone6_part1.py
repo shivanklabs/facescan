@@ -7,8 +7,8 @@
 import io
 from uuid import UUID
 
-from app.core.context import AppContext
-from app.db.event_scope import event_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.activity_log.models import AuditLog
 from app.features.face_matching.models import CannotLink, Match
 from app.features.photo_upload.models import Photo

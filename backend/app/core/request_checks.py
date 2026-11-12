@@ -11,9 +11,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import SESSION_COOKIE, CurrentUser, admin_allowed, lookup_session
-from app.core.context import AppContext
-from app.db.event_scope import user_transaction
+from app.core.login_sessions import SESSION_COOKIE, CurrentUser, admin_allowed, lookup_session
+from app.core.services_setup import AppContext
+from app.db.event_isolation import user_transaction
 from app.features.events.models import EventMember
 from app.features.login.models import User as UserModel
 

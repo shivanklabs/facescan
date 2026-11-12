@@ -6,9 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import UUID
 
-from app.core.context import AppContext
 from app.core.errors import UnprocessableError
-from app.db.event_scope import event_transaction
+from app.core.services_setup import AppContext
+from app.db.event_isolation import event_transaction
 from app.features.photo_upload.models import UploadSession
 from fastapi.testclient import TestClient
 from tests.conftest import make_png

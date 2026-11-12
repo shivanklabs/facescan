@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from app.core.config import Settings
+from app.core.settings import Settings
 
 
 def test_test_settings_do_not_load_env_file(

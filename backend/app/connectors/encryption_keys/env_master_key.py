@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from app.interfaces.capabilities import Capabilities
-from app.interfaces.key_manager import KeyUnwrapError
+from app.interfaces.encryption_keys import KeyUnwrapError
 
 MAGIC = b"FSK1"
 NONCE_BYTES = 12

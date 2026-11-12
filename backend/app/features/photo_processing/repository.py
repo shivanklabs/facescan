@@ -1,7 +1,7 @@
 """Encrypted storage of an event's faces, clusters (prototypes and membership) and calibration.
 
 Vectors are packed as little-endian float32 + base64 inside JSON, then sealed with the event
-data key; the associated data names the event, the table and the row (app/core/crypto.py).
+data key; the associated data names the event, the table and the row (app/core/encryption.py).
 Run every function inside the event's own transaction (RLS).
 """
 
@@ -13,7 +13,7 @@ from facescan_ai.index_store import decode_vector, encode_vector
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.core.crypto import MAGIC, NONCE_BYTES, aad, open_sealed, seal
+from app.core.encryption import MAGIC, NONCE_BYTES, aad, open_sealed, seal
 from app.features.photo_processing.models import Cluster, EventCalibration, Face
 from app.features.scene_search.models import SceneEmbedding, SceneSearchCandidate
 from app.interfaces.face_analyzer import AnalysedFace, BuiltCluster, BuiltEvent, StoredFace, Vector

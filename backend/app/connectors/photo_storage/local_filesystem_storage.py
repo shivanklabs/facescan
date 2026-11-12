@@ -18,7 +18,7 @@ from urllib.parse import quote, urlencode
 from uuid import UUID
 
 from app.interfaces.capabilities import Capabilities
-from app.interfaces.object_storage import (
+from app.interfaces.photo_storage import (
     InvalidObjectReferenceError,
     ObjectNotFoundError,
     SignedUrl,
