@@ -910,9 +910,7 @@ def test_ten_claims_produce_one_select_for_photos(organiser: TestClient, ctx: Ap
     assert sum(c["face_bbox"] is not None for c in resp.json()["claims"]) == 1
 
 
-def test_approving_claim_on_not_me_photo_gives_409(
-    organiser: TestClient, ctx: AppContext
-) -> None:
+def test_approving_claim_on_not_me_photo_gives_409(organiser: TestClient, ctx: AppContext) -> None:
     """
     Purpose: approving a claim on a photo already marked not_me gives 409; the match stays
         not_me and the claim stays pending.
