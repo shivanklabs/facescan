@@ -200,7 +200,7 @@ async def upload_chunk_part(
     chunk_data = b"".join(chunks)
     if not chunk_data:
         raise UnprocessableError("empty chunk data")
-    received = await run_in_threadpool(
+    received, total_chunks = await run_in_threadpool(
         service.upload_chunk,
         ctx,
         event_id,
@@ -210,12 +210,9 @@ async def upload_chunk_part(
         chunk_data,
         user,
     )
-    upload_sess = await run_in_threadpool(
-        service.get_upload_session, ctx, event_id, upload_id, user
-    )
     return UploadChunkResponse(
         received_chunks=received,
-        complete=len(received) == upload_sess.total_chunks,
+        complete=len(received) == total_chunks,
     )
 
 

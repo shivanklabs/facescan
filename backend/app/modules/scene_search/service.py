@@ -24,7 +24,7 @@ from uuid import UUID
 import numpy as np
 from app.core.auth import CurrentUser, is_anonymous_email, open_email
 from app.core.config import Settings
-from app.core.context import AppContext
+from app.core.context import AppContext, ContextConfigError
 from app.core.crypto import aad, open_sealed
 from app.core.deps import require_role
 from app.core.errors import (
@@ -86,12 +86,19 @@ def _advisory_lock_key(event_id: UUID, user_id: UUID, kind: str) -> int:
 
 
 def _signing_key_bytes(settings: Settings) -> bytes:
-    """Purpose: get secret bytes for HMAC signing from storage_signing_key or master key."""
+    """
+    Purpose: get secret bytes for HMAC signing from storage_signing_key or master key.
+    Inputs: settings.
+    Outputs: key bytes.
+    Side effects: raises ContextConfigError when neither key is configured (no built-in key).
+    """
     if settings.storage_signing_key is not None:
         return settings.storage_signing_key.get_secret_value().encode("utf-8")
     if settings.keys_master_key is not None:
         return settings.keys_master_key.get_secret_value().encode("utf-8")
-    return b"facescan-dev-scene-preview-signing-key"
+    raise ContextConfigError(
+        "set FACESCAN_STORAGE_SIGNING_KEY or FACESCAN_KEYS_MASTER_KEY to sign preview links"
+    )
 
 
 def sign_preview_url(

@@ -5,12 +5,15 @@ from uuid import uuid4
 
 import pytest
 from app.core.auth import CurrentUser
+from app.core.config import Settings
+from app.core.context import ContextConfigError
 from app.modules.ingest import router as ingest_router
 from app.modules.ingest.service import UploadResult
 from app.modules.matching import router as matching_router
 from app.modules.matching.service import SearchResult
 from app.modules.scene_search import service as scene_search_service
 from app.modules.scene_search.schemas import SceneSearchRequest, SceneSearchResponse
+from app.modules.scene_search.service import sign_preview_url
 from starlette.requests import Request
 
 
@@ -67,18 +70,15 @@ async def test_upload_chunk_part_offloads_to_threadpool() -> None:
     user = MagicMock(spec=CurrentUser)
     ctx = MagicMock()
 
-    dummy_session = MagicMock()
-    dummy_session.total_chunks = 2
-
     with patch("app.modules.ingest.router.run_in_threadpool", new_callable=AsyncMock) as mock_pool:
-        mock_pool.side_effect = [[0], dummy_session]
+        mock_pool.side_effect = [([0], 2)]
 
         res = await ingest_router.upload_chunk_part(
             event_id, upload_id, req, user, ctx, chunk_index=0
         )
-        assert mock_pool.call_count == 2
+        # One service call only: total_chunks comes back with the chunk, no second transaction.
+        assert mock_pool.call_count == 1
         assert mock_pool.call_args_list[0][0][0] == ingest_router.service.upload_chunk
-        assert mock_pool.call_args_list[1][0][0] == ingest_router.service.get_upload_session
         assert res.received_chunks == [0]
         assert res.complete is False
 
@@ -143,3 +143,16 @@ async def test_scene_search_offloads_db_and_embeddings_to_threadpool() -> None:
         assert mock_pool.call_args_list[0][0][0] == scene_search_service._prepare_scene_search
         assert mock_pool.call_args_list[1][0][0] == scene_search_service._rank_and_save_candidates
         assert res.query_rewritten is True
+
+
+def test_preview_signing_needs_a_configured_key(settings: Settings) -> None:
+    """
+    Purpose: with no signing key and no master key, preview signing raises a clear
+        configuration error instead of using a built-in key.
+    Inputs: settings fixture.
+    Outputs: None.
+    Side effects: none.
+    """
+    bare = settings.model_copy(update={"storage_signing_key": None, "keys_master_key": None})
+    with pytest.raises(ContextConfigError, match="FACESCAN_STORAGE_SIGNING_KEY"):
+        sign_preview_url(bare, uuid4(), uuid4())

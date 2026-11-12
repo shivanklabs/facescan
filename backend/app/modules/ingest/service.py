@@ -474,11 +474,11 @@ def upload_chunk(
     chunk_sha256: str | None,
     chunk_data: bytes,
     user: CurrentUser,
-) -> list[int]:
+) -> tuple[list[int], int]:
     """
     Purpose: store one validated chunk of a chunked upload using row-level locking.
     Inputs: event_id, upload_id, chunk_index, chunk_sha256, chunk_data, user.
-    Outputs: sorted list of received chunk indices.
+    Outputs: (sorted list of received chunk indices, total_chunks of the session).
     Side effects: writes chunk to disk spool; updates upload_sessions.received_chunks.
     """
     with event_transaction(ctx.sessions, event_id) as session:
@@ -508,7 +508,7 @@ def upload_chunk(
         received.add(chunk_index)
         upload_sess.received_chunks = sorted(received)
         session.flush()
-        return list(upload_sess.received_chunks)
+        return list(upload_sess.received_chunks), upload_sess.total_chunks
 
 
 def get_upload_session(
