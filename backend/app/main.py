@@ -53,10 +53,14 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     Side effects: configures root logging (with the redaction filter); builds the application
         context when FACESCAN_DB_URL is set; mounts the signed storage download route when
         FACESCAN_STORAGE_SIGNING_KEY is set; adds the same-origin guard for state changes.
+        In public/production mode every backend route lives only under /api, so browser
+        pages such as /auth/callback reach the SPA fallback; dev also mounts them at the
+        root (the Vite proxy strips /api).
     """
     settings = settings or get_settings()
     configure_logging(settings.log_level)
     is_prod = settings.env in ("prod", "production", "public")
+    api_mounts = ("/api",) if is_prod else ("", "/api")
     if ctx is None and settings.db_url is not None:
         ctx = build_context(settings)
 
@@ -85,17 +89,18 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     register_error_handlers(app)
     app.middleware("http")(same_origin_guard(settings.auth_rp_origin))
 
-    @app.get("/health", response_model=HealthResponse, tags=["ops"])
-    @app.get("/api/health", response_model=HealthResponse, tags=["ops"])
     def health() -> HealthResponse:
         """Purpose: liveness probe. Inputs: none. Outputs: status + version. Side effects: none."""
         return HealthResponse(status="ok", version=__version__)
 
+    for mount in api_mounts:
+        app.get(f"{mount}/health", response_model=HealthResponse, tags=["ops"])(health)
+
     # Signed downloads for the local filesystem storage adapter (invariant 6).
     if settings.storage_signing_key is not None:
         download_router = create_download_router(build_local_storage(settings))
-        app.include_router(download_router)
-        app.include_router(download_router, prefix="/api")
+        for mount in api_mounts:
+            app.include_router(download_router, prefix=mount)
 
     from app.modules.admin.router import router as admin_router
     from app.modules.consent.router import router as consent_router
@@ -122,8 +127,8 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         claims_router,
         admin_router,
     ):
-        app.include_router(router)
-        app.include_router(router, prefix="/api")
+        for mount in api_mounts:
+            app.include_router(router, prefix=mount)
 
     # In public or production mode (when frontend/dist is built), serve frontend SPA
     dist_dir = _get_dist_dir()
@@ -137,12 +142,10 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
             """
             Purpose: serve static SPA files or fallback to index.html for client-side routing.
             Inputs: full_path (str) requested path.
-            Outputs: FileResponse with file or index.html (or 404 for unmapped API/storage).
+            Outputs: FileResponse with file or index.html (JSON 404 only for unmapped /api).
             Side effects: reads static file from filesystem.
             """
-            api_prefixes = ("api", "storage", "auth", "events", "admin", "health")
-            first_segment = full_path.split("/", 1)[0]
-            if first_segment in api_prefixes:
+            if full_path.split("/", 1)[0] == "api":
                 return Response(
                     content='{"detail":"Not Found"}',
                     status_code=404,

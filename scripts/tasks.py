@@ -735,7 +735,8 @@ def task_public(_args: argparse.Namespace) -> None:
     env["FACESCAN_PUBLIC_BASE_URL"] = tunnel_url
     env["FACESCAN_AUTH_RP_ORIGIN"] = tunnel_url
     env["FACESCAN_AUTH_RP_ID"] = host
-    env["FACESCAN_STORAGE_PUBLIC_BASE_URL"] = tunnel_url
+    # In public mode the API (and its signed download route) is served only under /api.
+    env["FACESCAN_STORAGE_PUBLIC_BASE_URL"] = f"{tunnel_url}/api"
     env["FACESCAN_LIVENESS_ADAPTER"] = "silent_face"
     env["FACESCAN_EMAIL_ADAPTER"] = "console"
 

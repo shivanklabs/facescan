@@ -2,6 +2,7 @@
 and Gmail SMTP email adapter.
 """
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -108,7 +109,7 @@ def test_public_mode_disables_docs_and_openapi() -> None:
 
 def test_public_mode_serves_api_and_spa() -> None:
     """
-    Purpose: verify that API endpoints are accessible both directly and under /api prefix,
+    Purpose: verify that API endpoints are accessible under the /api prefix,
         ensuring relative frontend calls succeed in public mode.
     Inputs: none. Outputs: none. Side effects: creates test app and client.
     """
@@ -117,12 +118,8 @@ def test_public_mode_serves_api_and_spa() -> None:
     app = create_app(settings=settings, ctx=mock_ctx)
     client = TestClient(app)
 
-    # Health probe responds on both paths
-    assert client.get("/health").status_code == 200
-    assert client.get("/api/health").status_code == 200
-
-    # Auth endpoint responds on both paths (401 unauthorized, not 404)
-    assert client.get("/auth/me").status_code == 401
+    # Health probe and auth endpoint respond under /api (401 unauthorized, not 404)
+    assert client.get("/api/health").json()["status"] == "ok"
     assert client.get("/api/auth/me").status_code == 401
 
     # Unmapped /api route returns 404 JSON, not HTML fallback
@@ -214,3 +211,75 @@ def test_spa_serve_path_traversal_prevention(
         res = client.get(path)
         assert "secret_password_123" not in res.text
         assert "<html>SPA Index</html>" in res.text
+
+
+SAMPLE_ID = "11111111-1111-1111-1111-111111111111"
+SPA_INDEX = "<html>SPA Index</html>"
+
+
+def _fake_dist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Purpose: point the app at a temporary built frontend holding only index.html."""
+    dist = tmp_path / "frontend" / "dist"
+    dist.mkdir(parents=True)
+    (dist / "index.html").write_text(SPA_INDEX, encoding="utf-8")
+    monkeypatch.setattr("app.main._get_dist_dir", lambda: dist)
+
+
+def _frontend_paths() -> list[str]:
+    """Purpose: every route path in frontend/src/app/router.tsx, with sample ids filled in."""
+    source = (Path(__file__).resolve().parents[3] / "frontend/src/app/router.tsx").read_text(
+        encoding="utf-8"
+    )
+    paths = ["/"]
+    for raw in re.findall(r"path: '([^']+)'", source):
+        if raw == "/":
+            continue
+        filled = re.sub(r":\w+", SAMPLE_ID, "no/such/page" if raw == "*" else raw)
+        paths.append("/" + filled)
+    return paths
+
+
+def test_public_mode_every_frontend_route_returns_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Purpose: in public mode every browser route of the SPA (also those that start like a
+        backend route: /auth/callback, /events/..., /admin) returns index.html with 200.
+    Inputs: tmp_path, monkeypatch. Outputs: None. Side effects: creates a temporary dist.
+    """
+    _fake_dist(tmp_path, monkeypatch)
+    client = TestClient(create_app(settings=Settings(env="public"), ctx=MagicMock()))
+    paths = _frontend_paths()
+    assert "/auth/callback" in paths
+    assert f"/events/{SAMPLE_ID}/gallery" in paths
+    assert len(paths) >= 15
+    # Old backend root paths are browser pages now too.
+    for path in [*paths, "/health", "/auth/me", f"/events/{SAMPLE_ID}", "/storage/x"]:
+        res = client.get(path)
+        assert res.status_code == 200, path
+        assert res.text == SPA_INDEX, path
+
+
+def test_public_mode_mounts_every_api_route_only_under_api(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Purpose: public mode serves exactly the dev API (same paths and methods) under /api,
+        and nothing of it at the root.
+    Inputs: tmp_path, monkeypatch. Outputs: None. Side effects: builds two apps.
+    """
+    _fake_dist(tmp_path, monkeypatch)
+    key = SecretStr("k" * 32)
+
+    def table(env: str) -> set[tuple[str, str]]:
+        """Purpose: every (path, method) of the app, read from its OpenAPI description."""
+        app = create_app(settings=Settings(env=env, storage_signing_key=key), ctx=MagicMock())
+        return {(path, method) for path, item in app.openapi()["paths"].items() for method in item}
+
+    dev = table("dev")
+    dev_api = {entry for entry in dev if entry[0].startswith("/api/")}
+    assert len(dev_api) > 30
+    assert any(path.startswith("/api/storage/") for path, _ in dev_api)
+    # Dev serves the same API at the root and under /api; public keeps only /api.
+    assert {(f"/api{path}", method) for path, method in dev - dev_api} == dev_api
+    assert table("public") == dev_api
