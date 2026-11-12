@@ -32,9 +32,11 @@ export default function AuthCallbackPage() {
   }, [navigate, reload]);
 
   return (
-    <>
+    <section className="st-page">
       <h1>{t('signIn.title')}</h1>
-      <p role="status">{failed ? t('signIn.linkInvalid') : t('signIn.checking')}</p>
-    </>
+      <p className={failed ? 'st-alert' : 'st-note'} role="status">
+        {failed ? t('signIn.linkInvalid') : t('signIn.checking')}
+      </p>
+    </section>
   );
 }

@@ -38,6 +38,10 @@
   }
 }
 
+body {
+  margin: 0;
+}
+
 body:has(.studio) {
   background: var(--fs-bg);
 }

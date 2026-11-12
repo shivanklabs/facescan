@@ -1,4 +1,4 @@
 # pages/guest/
 
-The guest website (milestone 7): Welcome (Google sign-in), Scan, My Photos, and Studio (the
-owner's upload page). The older per-event guest flow lives in `pages/guest-old/`.
+The guest pages: Login (Google, plus staff sign-in), Face scan, My photos, Find more
+(scene search + claim), Privacy, and the QR / invite link page.

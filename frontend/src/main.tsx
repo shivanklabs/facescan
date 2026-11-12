@@ -2,7 +2,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import './styles/old.css';
 
 /**
  * Purpose: in development, move 127.0.0.1 to localhost. The API only accepts requests from

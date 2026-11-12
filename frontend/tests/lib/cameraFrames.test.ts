@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  FRONT_ONLY_STEPS,
-  framesBody,
-  FRAMES_CONTENT_TYPE,
-  GUIDED_STEPS,
-} from '@/lib/cameraFrames';
+import { framesBody, FRAMES_CONTENT_TYPE } from '@/lib/cameraFrames';
 
 describe('framesBody', () => {
   it('prefixes every frame with its 4-byte big-endian length', async () => {
@@ -16,15 +11,5 @@ describe('framesBody', () => {
 
   it('uses the content type the API expects', () => {
     expect(FRAMES_CONTENT_TYPE).toBe('application/x-facescan-frames');
-  });
-
-  it('defines 4-step sequence for guided scan and 3-step for front-only', () => {
-    expect(GUIDED_STEPS.map((s) => s.key)).toEqual([
-      'lookStraight',
-      'blink',
-      'turnLeft',
-      'turnRight',
-    ]);
-    expect(FRONT_ONLY_STEPS.map((s) => s.key)).toEqual(['lookStraight', 'blink', 'lookStraight']);
   });
 });

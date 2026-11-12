@@ -1,17 +1,10 @@
 {
-  "app": {
-    "name": "FaceScan",
-    "tagline": "Find your own photos from an event."
-  },
   "common": {
     "loading": "Loading…",
     "error": "Something went wrong. Please try again.",
     "signOut": "Sign out",
     "signOutEverywhere": "Sign out on all devices",
-    "privacy": "Privacy settings",
-    "home": "Home",
-    "language": "हिन्दी",
-    "signedOut": "You are signed out."
+    "language": "हिन्दी"
   },
   "signIn": {
     "title": "Sign in",
@@ -19,133 +12,13 @@
     "sendLink": "Email me a sign-in link",
     "linkSent": "If this address can sign in, a link is on its way. It works once and expires in 15 minutes.",
     "devHint": "Development: the link is printed in the API terminal.",
-    "orPasskey": "Or sign in with a passkey",
     "passkey": "Sign in with passkey",
     "checking": "Signing you in…",
     "linkInvalid": "This sign-in link is invalid or has expired. Please request a new one."
   },
   "passkey": {
-    "offerTitle": "Sign in faster next time",
-    "offerText": "Add a passkey on this device. No password needed.",
     "add": "Add a passkey",
-    "added": "Passkey added.",
-    "staffRequired": "Organisers and photographers must use a passkey.",
     "useIt": "Sign in with your passkey"
-  },
-  "landing": {
-    "invalid": "This invite link is invalid or has expired. Ask the organiser for a new one.",
-    "intro": "You are invited to find your photos from",
-    "signInToContinue": "Sign in with your email to continue.",
-    "continue": "Continue",
-    "notReady": "Photos are still being prepared. Please check back later."
-  },
-  "consent": {
-    "yes": "Yes",
-    "no": "No",
-    "submit": "I agree, continue",
-    "outdated": "The notice was updated. Please read it again."
-  },
-  "selfie": {
-    "title": "Take a selfie",
-    "devBanner": "Development: liveness not active.",
-    "disabled": "Face search is not available yet.",
-    "instructions": "Follow the prompts on screen: look straight, blink, turn slightly left, turn slightly right. Frames stay in memory only.",
-    "guidanceTitle": "For best results:",
-    "guidanceLighting": "Use good lighting (avoid dark or back-lit rooms).",
-    "guidanceFace": "Ensure your face is in the frame and remove sunglasses or face mask.",
-    "start": "Start camera",
-    "capture": "Start scan",
-    "capturing": "Scanning…",
-    "searching": "Searching…",
-    "stepLookStraight": "Look straight at the camera",
-    "stepBlink": "Blink your eyes",
-    "stepTurnLeft": "Turn slightly left",
-    "stepTurnRight": "Turn slightly right",
-    "frontOnlyOption": "Cannot turn head? Use front-only scan",
-    "guidedOption": "Switch to full guided scan",
-    "cameraError": "The camera could not be opened. Allow camera access and try again.",
-    "tooMany": "Too many searches. Please try again later.",
-    "errSpoof": "Live face not detected. Printed photos or screens are not allowed. Please present your real face directly to the camera.",
-    "errBlurry": "The scan was blurry. Please hold steady and try again.",
-    "errDark": "Too dark. Please move to a brighter, well-lit area.",
-    "errBright": "Too bright or overexposed. Please adjust your lighting.",
-    "errBlink": "Blink was not detected. Please make sure to blink clearly.",
-    "errTurn": "Head turns were not completed. Please follow prompts or use front-only scan.",
-    "errFaceCount": "Please make sure only one face is visible without sunglasses or mask.",
-    "borderlineFirst": "Possible match found, but not clear enough to safely release photos. Please try a second scan from a slightly different angle or lighting.",
-    "borderlineSecond": "We still couldn't confirm your match with enough certainty to release photos. You can search by scene description and claim your photos.",
-    "goToSceneSearch": "Search scenes & claim photos"
-  },
-  "gallery": {
-    "title": "Your photos",
-    "empty": "No photos found yet.",
-    "download": "Download",
-    "notMe": "Not me",
-    "notMeConfirm": "Are you sure this is not you? This photo will be removed immediately and will never be released to you again.",
-    "notMeDone": "Photo removed and excluded from future matches.",
-    "missing": "Some photos missing? We only show photos we are sure about.",
-    "rejectionNotice": "A photo claim was reviewed by the organiser and not approved.",
-    "searchAgain": "Search again"
-  },
-  "privacy": {
-    "title": "Privacy settings",
-    "none": "You have not consented to face search for any event.",
-    "active": "Face search allowed",
-    "withdrawnOn": "Withdrawn",
-    "withdraw": "Withdraw consent",
-    "confirm": "Withdraw? Your matches for this event are deleted and you are signed out of it.",
-    "done": "Consent withdrawn. Your matches were deleted."
-  },
-  "organiser": {
-    "title": "Your events",
-    "create": "Create event",
-    "name": "Event name",
-    "country": "Country code",
-    "roles": "Your roles",
-    "invites": "Guest invite links",
-    "createInvite": "Create invite link",
-    "inviteOnce": "Copy this link now; it is shown only once:",
-    "expires": "Expires",
-    "revoke": "Revoke",
-    "revoked": "Revoked",
-    "addPhotographer": "Add a photographer",
-    "photographerEmail": "Photographer's email",
-    "add": "Add",
-    "added": "Added. They can sign in with their email and must add a passkey.",
-    "approval": "Review and approve uploads",
-    "upload": "Upload photos",
-    "status": "Status"
-  },
-  "approval": {
-    "title": "Approve uploads",
-    "collection": "Upload batch",
-    "photos": "photos",
-    "approve": "Approve",
-    "approved": "Approved",
-    "indexing": "Approved. Photos are being indexed."
-  },
-  "upload": {
-    "title": "Upload photos",
-    "choose": "Choose photos",
-    "send": "Upload",
-    "done": "Uploaded. The organiser will review them.",
-    "alreadyUploaded": "Already uploaded: {{names}}",
-    "sending": "Uploading…",
-    "processingStatus": "Processing Status",
-    "uploadingProgress": "Uploading {{current}}/{{total}} ({{name}})…",
-    "failedUploading": "Failed uploading \"{{name}}\": {{msg}}. Please retry."
-  },
-  "claims": {
-    "title": "Review claims",
-    "empty": "No pending claims to review.",
-    "claimant": "Claimant",
-    "reason": "Reason",
-    "faceCheckFailed": "Face check failed",
-    "frontOnlyScan": "Front-only scan fallback",
-    "approve": "Approve claim",
-    "reject": "Reject claim",
-    "approved": "Claim approved. Photo released to guest's gallery.",
-    "rejected": "Claim rejected."
   },
   "welcome": {
     "eyebrow": "Event photos, found by your face",
@@ -241,7 +114,6 @@
   },
   "studio": {
     "nav": "Account",
-    "adminLink": "Studio",
     "eyebrow": "Studio",
     "title": "Your events",
     "eventName": "Event name",
@@ -433,5 +305,9 @@
     "title": "Staff sign-in",
     "open": "Staff sign-in (organisers, photographers)",
     "passkeyNeeded": "You signed in with an email link. For staff work (events, uploads, claims) add a passkey on this device, or use the one you have."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "text": "This address does not exist. Use the menu to go on."
   }
 }

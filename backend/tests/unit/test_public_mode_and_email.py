@@ -251,8 +251,9 @@ def test_public_mode_every_frontend_route_returns_index(
     client = TestClient(create_app(settings=Settings(env="public"), ctx=MagicMock()))
     paths = _frontend_paths()
     assert "/auth/callback" in paths
-    assert f"/events/{SAMPLE_ID}/gallery" in paths
-    assert len(paths) >= 15
+    assert "/admin" in paths  # starts like the backend's /admin/health
+    assert f"/e/{SAMPLE_ID}" in paths
+    assert len(paths) >= 13
     # Old backend root paths are browser pages now too.
     for path in [*paths, "/health", "/auth/me", f"/events/{SAMPLE_ID}", "/storage/x"]:
         res = client.get(path)
