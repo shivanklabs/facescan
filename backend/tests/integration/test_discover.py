@@ -97,6 +97,31 @@ def test_one_scan_finds_my_photos_in_every_event(
     assert "score" not in response.text and "embedding" not in response.text
 
 
+def test_a_new_scan_never_undoes_a_withdrawal(
+    ctx: AppContext, events: tuple[list[str], list[str]]
+) -> None:
+    """
+    Purpose: after a person withdraws consent for one event, scanning again searches only the
+        other events and shows nothing from the withdrawn one, until they turn it back on.
+    """
+    (event_a, _event_b), _ = events
+    guest = google_client(ctx, "person1@example.test")
+    assert scan(guest, 1).json()["events_searched"] == 2
+
+    assert guest.post(f"/events/{event_a}/consent/withdraw").status_code == 200
+    again = scan(guest, 1).json()
+    assert again["events_searched"] == 1
+    names = {e["event_name"] for e in guest.get("/discover/photos").json()["events"]}
+    assert names == {"Event B"}
+
+    # Turning it back on (Privacy page) brings the event back.
+    body = {"notice_version": notice_version(guest), "language": "en", "face_search": True}
+    assert guest.post(f"/events/{event_a}/consent", json=body).status_code == 204
+    assert scan(guest, 1).json()["events_searched"] == 2
+    names = {e["event_name"] for e in guest.get("/discover/photos").json()["events"]}
+    assert names == {"Event A", "Event B"}
+
+
 def test_person_without_photos_gets_nothing(
     ctx: AppContext, events: tuple[list[str], list[str]]
 ) -> None:

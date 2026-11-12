@@ -84,6 +84,28 @@ def active_consent(session: Session, event_id: UUID, user_id: UUID, purpose: str
     ).first()
 
 
+def ever_consented(session: Session, event_id: UUID, user_id: UUID, purpose: str) -> bool:
+    """
+    Purpose: whether the person ever gave this consent in this event (active or not). With
+        no active consent, True means they withdrew it themselves: a new notice version always
+        adds a new active row when it replaces an old one.
+    Inputs: event-scoped session, event_id, user_id, purpose. Outputs: bool.
+    Side effects: none (one indexed lookup).
+    """
+    return (
+        session.scalars(
+            select(Consent.id)
+            .where(
+                Consent.event_id == event_id,
+                Consent.user_id == user_id,
+                Consent.purpose == purpose,
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
 def load_country_policy(
     country_code: str, policies_dir: str | Path | None = None
 ) -> policy_module.CountryPolicy:

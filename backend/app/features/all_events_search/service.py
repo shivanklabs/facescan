@@ -81,19 +81,25 @@ def _enrol(ctx: AppContext, user: CurrentUser, event_id: UUID, notice_version: s
     """
     Purpose: make the person a guest of one event and record consent when missing.
     Inputs: ctx, user, event_id, the notice version they agreed to.
-    Outputs: False when the person is staff of this event (never searched), else True.
+    Outputs: False when the person is staff of this event, or withdrew their consent for it
+        (never searched: a new scan must not silently undo a withdrawal; they can turn it back
+        on from Privacy), else True.
     Side effects: may insert event_members (guest) and consent rows; audit rows.
     """
     with event_transaction(ctx.sessions, event_id) as session:
         roles = roles_in_event(session, event_id, user.user_id)
         if roles & set(STAFF_ROLES):
             return False
-        if "guest" not in roles:
-            session.add(EventMember(event_id=event_id, user_id=user.user_id, role="guest"))
-            record(session, event_id=event_id, actor=user.actor, action="discover.joined")
         consent = consent_service.active_consent(
             session, event_id, user.user_id, consent_service.FACE_SEARCH
         )
+        if consent is None and consent_service.ever_consented(
+            session, event_id, user.user_id, consent_service.FACE_SEARCH
+        ):
+            return False  # withdrawn by the person
+        if "guest" not in roles:
+            session.add(EventMember(event_id=event_id, user_id=user.user_id, role="guest"))
+            record(session, event_id=event_id, actor=user.actor, action="discover.joined")
         consent_current = consent is not None and consent.notice_version == notice_version
     if not consent_current:
         consent_service.grant(ctx, user, event_id, notice_version, "en")

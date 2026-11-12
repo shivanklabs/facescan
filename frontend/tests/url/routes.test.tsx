@@ -80,7 +80,10 @@ describe('router', () => {
  * Purpose: answer /auth/me with the given flags and every other call with an empty list.
  * Inputs: user flags. Outputs: the fetch mock (to count calls). Side effects: stubs fetch.
  */
-function signedInAs(flags: { can_create_events: boolean; is_admin: boolean }) {
+function signedInAs(
+  flags: { can_create_events: boolean; is_admin: boolean },
+  extra: Record<string, unknown> = {},
+) {
   const me = {
     user_id: 'u1',
     auth_method: 'google',
@@ -91,7 +94,8 @@ function signedInAs(flags: { can_create_events: boolean; is_admin: boolean }) {
   };
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
-    const body = url.endsWith('/auth/me') ? me : { events: [] };
+    const path = Object.keys(extra).find((p) => url.endsWith(p));
+    const body = url.endsWith('/auth/me') ? me : path ? extra[path] : { events: [] };
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -124,5 +128,51 @@ describe('site menu', () => {
     await screen.findByRole('navigation', { name: 'Main menu' });
     const meCalls = fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/auth/me'));
     expect(meCalls).toHaveLength(1);
+  });
+});
+
+describe('privacy page', () => {
+  it('shows one line per event, on or off, ignoring rows closed by a new notice', async () => {
+    signedInAs(
+      { can_create_events: false, is_admin: false },
+      {
+        '/me/consents': {
+          consents: [
+            // Event A: old notice row closed when the new one was given -> still On.
+            {
+              event_id: 'a',
+              event_name: 'Event A',
+              purpose: 'face_search',
+              granted_at: '2026-11-10T10:00:00Z',
+              withdrawn_at: '2026-11-12T10:00:00Z',
+            },
+            {
+              event_id: 'a',
+              event_name: 'Event A',
+              purpose: 'face_search',
+              granted_at: '2026-11-12T10:00:00Z',
+              withdrawn_at: null,
+            },
+            // Event B: withdrawn by the person -> Off.
+            {
+              event_id: 'b',
+              event_name: 'Event B',
+              purpose: 'face_search',
+              granted_at: '2026-11-11T10:00:00Z',
+              withdrawn_at: '2026-11-12T11:00:00Z',
+            },
+          ],
+        },
+      },
+    );
+    renderAt('/privacy');
+    const rows = await screen.findAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('Event A');
+    expect(rows[0]).toHaveTextContent('On');
+    expect(rows[0]).toHaveTextContent('Turn off');
+    expect(rows[1]).toHaveTextContent('Event B');
+    expect(rows[1]).toHaveTextContent('Off');
+    expect(rows[1]).toHaveTextContent('Turn back on');
   });
 });

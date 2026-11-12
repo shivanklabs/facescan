@@ -278,5 +278,19 @@
     "privacy": "Privacy",
     "studio": "Studio",
     "admin": "Health"
+  },
+  "privacyPage": {
+    "eyebrow": "Your privacy",
+    "title": "Privacy",
+    "intro": "Choose which events may look for your face. Turning an event off hides its photos from you and keeps it out of new scans. Nothing is deleted, so you can turn it back on.",
+    "none": "No events yet. After your first scan, every event you were searched in appears here.",
+    "on": "On",
+    "off": "Off",
+    "turnOff": "Turn off",
+    "turnOn": "Turn back on",
+    "confirmOff": "Turn off face search for this event? Its photos are hidden and new scans skip it. You can turn it back on later.",
+    "doneOff": "Turned off. This event's photos are hidden and new scans will skip it.",
+    "doneOn": "Turned back on. Your photos from this event are visible again.",
+    "everywhereText": "Lost a phone or used a shared computer? Sign out everywhere at once."
   }
 }

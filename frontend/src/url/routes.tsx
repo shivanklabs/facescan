@@ -15,7 +15,7 @@ import ConsentPage from '@/pages/guest-old/ConsentPage';
 import SelfieCapturePage from '@/pages/guest-old/SelfieCapturePage';
 import GalleryPage from '@/pages/guest-old/GalleryPage';
 import ClaimPhotoPage from '@/pages/guest-old/ClaimPhotoPage';
-import PrivacySettingsPage from '@/pages/guest-old/PrivacySettingsPage';
+import PrivacyPage from '@/pages/guest/PrivacyPage';
 import UploadPage from '@/pages/photographer/UploadPage';
 import ProcessingStatusPage from '@/pages/photographer/ProcessingStatusPage';
 import EventSetupPage from '@/pages/organiser/EventSetupPage';
@@ -36,6 +36,7 @@ export const routes = [
       { path: 'scan', element: <FaceScanPage /> },
       { path: 'photos', element: <MyPhotosPage /> },
       { path: 'studio', element: <OwnerUploadPage /> },
+      { path: 'privacy', element: <PrivacyPage /> },
     ],
   },
   {
@@ -49,7 +50,6 @@ export const routes = [
       { path: 'events/:eventId/selfie', element: <SelfieCapturePage /> },
       { path: 'events/:eventId/gallery', element: <GalleryPage /> },
       { path: 'events/:eventId/claim/:photoId', element: <ClaimPhotoPage /> },
-      { path: 'privacy', element: <PrivacySettingsPage /> },
       { path: 'photographer/events/:eventId/upload', element: <UploadPage /> },
       { path: 'photographer/events/:eventId/status', element: <ProcessingStatusPage /> },
       { path: 'organiser', element: <EventSetupPage /> },

@@ -935,6 +935,59 @@ body:has(.studio) {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* ---------------------------------------------------------------- simple pages (privacy, find more) */
+
+.st-page {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+}
+
+.st-page h1 {
+  font-size: clamp(2rem, 4.5vw, 2.8rem);
+}
+
+.st-lead-small {
+  color: var(--fs-muted);
+  margin: 10px 0 0;
+  max-width: 60ch;
+}
+
+.st-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.st-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.st-list-row strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.st-pill {
+  display: inline-block;
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--fs-line);
+  color: var(--fs-muted);
+}
+
+.st-pill.is-on {
+  border-color: rgba(143, 209, 139, 0.5);
+  color: var(--fs-ok);
+}
+
 /* ---------------------------------------------------------------- studio (admin) */
 
 .st-admin {
