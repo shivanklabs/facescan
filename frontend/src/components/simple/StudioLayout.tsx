@@ -2,7 +2,7 @@
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMe } from '@/features/auth/useMe';
-import { forgetGoogleSelection } from '@/features/simple/googleSignIn';
+import { forgetGoogleSelection } from '@/features/auth/googleSignIn';
 import { api } from '@/lib/apiClient';
 import '@/styles/studio.css';
 

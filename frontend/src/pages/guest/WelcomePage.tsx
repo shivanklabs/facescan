@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMe } from '@/features/auth/useMe';
-import { devSignIn, renderGoogleButton, signInConfig } from '@/features/simple/googleSignIn';
+import { devSignIn, renderGoogleButton, signInConfig } from '@/features/auth/googleSignIn';
 
 /**
  * Purpose: landing page with Google sign-in.

@@ -1,8 +1,8 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Providers } from '@/app/providers';
-import { routes } from '@/app/router';
+import { Providers } from '@/url/providers';
+import { routes } from '@/url/router';
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
