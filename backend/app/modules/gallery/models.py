@@ -28,7 +28,10 @@ class Claim(Base):
         UUID(as_uuid=True), ForeignKey("photos.id", ondelete="CASCADE"), nullable=False, index=True
     )
     face_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("faces.id", ondelete="CASCADE"), nullable=True
+        # SET NULL: a full re-index recreates faces; the claim must survive without its box.
+        UUID(as_uuid=True),
+        ForeignKey("faces.id", ondelete="SET NULL"),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
     reason: Mapped[str] = mapped_column(

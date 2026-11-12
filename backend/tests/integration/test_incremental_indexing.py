@@ -272,3 +272,53 @@ def test_failed_removal_of_old_web_copy_keeps_photo_indexed(
         assert photo.web_object_key is not None
         web_key = photo.web_object_key
     assert ctx.storage.get_object(ctx.settings.storage_bucket_derivatives, UUID(event_id), web_key)
+
+
+def test_pending_claim_survives_full_rebuild_without_face_box(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: a full rebuild (engine version change) recreates faces; a pending claim must
+        stay in the organiser queue, only without its face box.
+    Inputs: organiser client, ctx.
+    Outputs: None.
+    Side effects: queues a claim through the API, then runs a full index_event.
+    """
+    import base64
+
+    from app.modules.vision_pipeline.service import index_event
+
+    event_id, invite_url, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
+    guest = guest_client(ctx, "claim_rebuild@example.test", event_id, invite_url)
+    candidate = guest.post(f"/events/{event_id}/scene-search", json={"query": "person"}).json()[
+        "candidates"
+    ][0]
+    other_person = base64.b64encode(make_png(3, 1, (40, 30))).decode()
+    claimed = guest.post(
+        f"/events/{event_id}/scene-search/claims",
+        json={
+            "photo_id": candidate["photo_id"],
+            "face_id": candidate["faces"][0]["face_id"],
+            "frames": [other_person] * 3,
+            "front_only": False,
+        },
+    )
+    assert claimed.json()["status"] == "queued_for_review"
+    before = organiser.get(f"/events/{event_id}/claims").json()["claims"]
+    assert len(before) == 1
+    assert before[0]["face_bbox"] is not None
+
+    with event_transaction(ctx.sessions, UUID(event_id)) as session:
+        key, _ = data_key(session, ctx.keys, UUID(event_id))
+        versions = dict(repository.load_engine_versions(session, UUID(event_id), key))
+    versions["auraface"] = "v2_test_upgraded"
+    with patch.object(
+        type(ctx.analyzer), "engine_versions", new_callable=PropertyMock, return_value=versions
+    ):
+        index_event(ctx, UUID(event_id))
+
+    after = organiser.get(f"/events/{event_id}/claims").json()["claims"]
+    assert [c["claim_id"] for c in after] == [before[0]["claim_id"]]
+    assert after[0]["face_id"] is None
+    assert after[0]["face_bbox"] is None
+    assert after[0]["photo_url"]
