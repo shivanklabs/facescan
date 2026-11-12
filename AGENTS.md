@@ -120,7 +120,7 @@ var/         local runtime data, git-ignored (storage/<bucket>/<event_id>/)
 ## Naming rules
 - Folders are lowercase. Python packages and modules use snake_case; multi-word non-Python
   folders use kebab-case.
-- Name by responsibility, not technology: `interfaces/face_embedder.py`, not `interfaces/onnx.py`.
+- Name by responsibility, not technology: `interfaces/face_analyzer.py`, not `interfaces/onnx.py`.
   Adapters are named `<vendor>_<port>.py` (`local_filesystem_storage.py`, `env_master_key.py`).
 - Backend module files have fixed roles: `router.py` (HTTP), `service.py` (business logic),
   `schemas.py` (API models), `models.py` (DB tables), `repository.py` (queries).
