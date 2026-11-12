@@ -347,3 +347,51 @@ describe('owner pages', () => {
     expect(screen.getByText(/2 photos look almost the same/)).toBeInTheDocument();
   });
 });
+
+describe('admin health page', () => {
+  it('shows disk, backup warning and per-event counts in the site layout', async () => {
+    signedInAs(
+      { can_create_events: false, is_admin: true },
+      {
+        '/admin/health': {
+          system: {
+            disk_free_bytes: 50 * 1024 ** 3,
+            disk_total_bytes: 100 * 1024 ** 3,
+            disk_used_percent: 50,
+            last_backup_at: null,
+          },
+          events: [
+            {
+              event_id: 'e1',
+              name: 'Sharma Wedding',
+              status: 'searchable',
+              photos_quarantined: 0,
+              photos_approved: 0,
+              photos_indexed: 9,
+              photos_failed: 1,
+              photos_total: 10,
+              indexing_progress_pct: 90,
+              job_failures: 0,
+              pending_claims: 2,
+              not_me_count: 1,
+            },
+          ],
+        },
+      },
+    );
+    renderAt('/admin');
+    expect(await screen.findByRole('heading', { name: 'Sharma Wedding' })).toBeInTheDocument();
+    expect(screen.getByText('50.0 GB')).toBeInTheDocument();
+    expect(screen.getByText(/older than a day/)).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Main menu' })).toHaveTextContent('Health');
+    expect(screen.queryByText(/Organisers and photographers must use a passkey/)).toBeNull();
+  });
+
+  it('flags a missing or day-old backup', async () => {
+    const { backupIsStale } = await import('@/pages/admin/AdminHealthPage');
+    const now = Date.parse('2026-11-12T12:00:00Z');
+    expect(backupIsStale(null, now)).toBe(true);
+    expect(backupIsStale('2026-11-12T06:00:00Z', now)).toBe(false);
+    expect(backupIsStale('2026-11-11T06:00:00Z', now)).toBe(true);
+  });
+});

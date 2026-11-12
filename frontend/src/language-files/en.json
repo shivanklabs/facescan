@@ -409,5 +409,20 @@
     "reject": "Reject",
     "approved": "Approved: the photo is now in that guest's photos.",
     "rejected": "Rejected."
+  },
+  "health": {
+    "eyebrow": "Platform",
+    "title": "Health",
+    "intro": "Counts only: no photos, faces or personal data are shown here. Refreshes every 30 seconds.",
+    "notAllowed": "Only platform admins signed in with Google or a passkey can see this page.",
+    "diskFree": "free · {{used}}% of {{total}} used",
+    "never": "Never",
+    "backupOk": "last backup",
+    "backupOld": "last backup is older than a day: run a backup",
+    "events": "events",
+    "noEvents": "No events yet.",
+    "jobFailures": "Job failures",
+    "pendingClaims": "Claims waiting",
+    "notMe": "\"Not me\""
   }
 }

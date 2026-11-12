@@ -1124,6 +1124,28 @@ body:has(.studio) {
   flex: none;
 }
 
+/* ---------------------------------------------------------------- admin health */
+
+.st-stat.is-warn {
+  border-color: rgba(255, 122, 102, 0.55);
+}
+
+.st-stat.is-warn span,
+.st-health-list .is-warn {
+  color: var(--fs-danger);
+}
+
+.st-health-list {
+  gap: 4px;
+  width: 100%;
+  font-size: 0.92rem;
+  color: var(--fs-muted);
+}
+
+.st-health-list b {
+  color: var(--fs-text);
+}
+
 /* ---------------------------------------------------------------- studio (admin) */
 
 .st-admin {

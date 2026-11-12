@@ -25,7 +25,7 @@ import ProcessingStatusPage from '@/pages/photographer/ProcessingStatusPage';
 import EventSetupPage from '@/pages/organiser/EventSetupPage';
 import CollectionApprovalPage from '@/pages/organiser/CollectionApprovalPage';
 import ClaimQueuePage from '@/pages/organiser/ClaimQueuePage';
-import AdminDashboardPage from '@/pages/admin/AdminDashboardPage';
+import AdminHealthPage from '@/pages/admin/AdminHealthPage';
 
 function NotFoundPage() {
   return <h1>Page not found</h1>;
@@ -46,6 +46,7 @@ export const routes = [
       { path: 'privacy', element: <PrivacyPage /> },
       { path: 'find', element: <FindMorePhotosPage /> },
       { path: 'e/:eventId', element: <EventLinkPage /> },
+      { path: 'admin', element: <AdminHealthPage /> },
     ],
   },
   {
@@ -63,7 +64,6 @@ export const routes = [
       { path: 'organiser', element: <EventSetupPage /> },
       { path: 'organiser/events/:eventId/approval', element: <CollectionApprovalPage /> },
       { path: 'organiser/events/:eventId/claims', element: <ClaimQueuePage /> },
-      { path: 'admin', element: <AdminDashboardPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
