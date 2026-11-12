@@ -30,7 +30,11 @@ def test_worker_cleanup_runs_at_most_once_an_hour(settings: Settings) -> None:
     # Use 0 second sleep for fast test execution
     test_settings = settings.model_copy(update={"worker_poll_interval_seconds": 0})
 
-    with patch("app.worker.cleanup_expired_attempts") as mock_cleanup:
+    # A small monotonic clock (machine just booted) must still allow the first cleanup.
+    with (
+        patch("app.worker.time.monotonic", return_value=5.0),
+        patch("app.worker.cleanup_expired_attempts") as mock_cleanup,
+    ):
         iterations = run(test_settings, threading.Event(), max_iterations=5, ctx=mock_ctx)
         assert iterations == 5
         # Even across 5 idle polls, cleanup runs exactly once

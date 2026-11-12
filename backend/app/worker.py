@@ -90,7 +90,7 @@ def run(
     """
     iterations = 0
     worker = worker_id()
-    last_cleanup: float = 0.0
+    last_cleanup: float | None = None  # None = not run yet (monotonic may start near 0)
     logger.info("worker started", extra={"poll_interval": settings.worker_poll_interval_seconds})
     while not stop.is_set():
         busy = run_one(ctx, worker) if ctx is not None else False
@@ -100,7 +100,7 @@ def run(
         if not busy:
             if ctx is not None:
                 now = time.monotonic()
-                if now - last_cleanup >= CLEANUP_INTERVAL_SECONDS:
+                if last_cleanup is None or now - last_cleanup >= CLEANUP_INTERVAL_SECONDS:
                     last_cleanup = now
                     try:
                         cleanup_expired_attempts(ctx)
