@@ -10,6 +10,7 @@ enforces the forbidden list. Every model must also appear in `ai/models/models.l
 | SFace `face_recognition_sface_2021dec.onnx` | recognition, second opinion | OpenCV Zoo `models/face_recognition_sface` | Apache-2.0 (model folder LICENSE) | 2026-11-08 |
 | AuraFace-v1 `glintr100.onnx` | recognition, primary | Hugging Face `fal/AuraFace-v1` | Apache-2.0 (model card) | 2026-11-08 |
 | Silent-Face MiniFASNetV2 / MiniFASNetV1SE | passive liveness | GitHub `minivision-ai/Silent-Face-Anti-Spoofing` | Apache-2.0 (repo) | 2026-11-08 |
+| MediaPipe Face Landmarker `face_landmarker.task` (float16 v1, SHA-256 `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff`) | on-device blink detection in the browser (milestone 7); served from `frontend/src/assets/models/`, no CDN | `storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/` (Google MediaPipe) | Apache-2.0 (MediaPipe model card) | 2026-11-12 |
 | OFIQ | face image quality | GitHub `BSI-OFIQ/OFIQ-Project` | MIT for OFIQ code; see note | partial |
 
 Notes
@@ -46,4 +47,5 @@ Notes
 | cryptography | Apache-2.0 OR BSD-3-Clause |
 | python-multipart (backend uploads) | Apache-2.0 |
 | React, React Router, Vite, vite-plugin-pwa, i18next, qrcode.react | MIT |
+| @mediapipe/tasks-vision (1.1.1; verified 2026-11-12; wasm served by FaceScan, loaded only for the live-blink scan) | Apache-2.0 |
 | PostgreSQL | PostgreSQL licence |

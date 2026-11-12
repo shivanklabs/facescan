@@ -163,6 +163,28 @@ def test_check_blink_and_evaluate_frames(detector: SilentFaceDetector) -> None:
     assert result_front.blink_detected is True
     assert result_front.turn_detected is True
 
+    # Front-only burst: the blink can be in any middle frame (eyes open in the others).
+    burst = [
+        (img_front, face_front),
+        (img_front, face_front),
+        (img_front, face_front),
+        (img_blink, face_blink),
+        (img_front, face_front),
+        (img_front, face_front),
+    ]
+    assert detector.evaluate_frames(burst, front_only=True).blink_detected is True
+
+    # No blink anywhere in the burst is still refused.
+    no_blink = [(img_front, face_front)] * 6
+    result_none = detector.evaluate_frames(no_blink, front_only=True)
+    assert result_none.blink_detected is False
+    assert "blink_not_detected" in result_none.reasons
+
+    # require_blink=False (dev-only "look" scan) skips only the blink challenge.
+    result_look = detector.evaluate_frames(no_blink, front_only=True, require_blink=False)
+    assert "blink_not_detected" not in result_look.reasons
+    assert result_look.is_live == result_none.is_live
+
 
 def _upstream_crop_reference(
     image: np.ndarray, bbox: tuple[int, int, int, int], scale: float

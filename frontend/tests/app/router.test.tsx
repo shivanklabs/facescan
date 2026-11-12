@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Providers } from '@/app/providers';
@@ -26,12 +26,28 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 
 describe('router', () => {
-  it('renders the home page with sign-in when signed out', async () => {
+  it('renders the simple welcome page when signed out', async () => {
     renderAt('/');
+    expect(
+      await screen.findByRole('heading', { name: 'Every photo of you, in one scan.', level: 1 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Sign in with Google')).toBeInTheDocument();
+  });
+
+  it('sends signed-out visitors from the scan and photos pages to the welcome page', async () => {
+    renderAt('/photos');
+    expect(
+      await screen.findByRole('heading', { name: 'Every photo of you, in one scan.', level: 1 }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the older staff sign-in page on /staff', async () => {
+    renderAt('/staff');
     expect(await screen.findByRole('heading', { name: 'FaceScan', level: 1 })).toBeInTheDocument();
     expect(
       await screen.findByRole('button', { name: 'Email me a sign-in link' }),

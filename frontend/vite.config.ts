@@ -11,6 +11,9 @@ export default defineConfig({
       workbox: {
         // Never cache API responses: photos are served via short-lived signed URLs.
         navigateFallbackDenylist: [/^\/api\//],
+        // The on-device blink model (MediaPipe wasm ~13 MB, model ~4 MB) is loaded only when
+        // the live-blink scan is used; it is not precached for offline use.
+        globIgnores: ['**/*.wasm', '**/*.task', '**/liveBlink-*.js'],
       },
     }),
   ],

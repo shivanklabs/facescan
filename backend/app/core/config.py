@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # Who may view the platform admin health page (comma-separated emails).
     # Admins must use a passkey.
     auth_admin_emails: str = ""
+    # Google sign-in (milestone 7): the OAuth web client id; empty disables Google sign-in.
+    google_client_id: str = Field(default="", max_length=200)
+    google_timeout_seconds: float = Field(default=5.0, gt=0, le=15)
     # Magic-link delivery: "console" (dev only) or "smtp_gmail" (production / public testing).
     email_adapter: Literal["console", "smtp_gmail"] = "console"
     email_smtp_user: str | None = None
@@ -90,6 +93,8 @@ class Settings(BaseSettings):
     search_per_event_per_hour: int = Field(default=500, ge=1, le=100_000)
     search_min_frames: int = Field(default=3, ge=1, le=10)
     search_max_frames: int = Field(default=5, ge=1, le=10)
+    # Simple-site scan (milestone 7): front frame, a burst while blinking, front frame.
+    discover_max_frames: int = Field(default=7, ge=3, le=10)
     # Liveness adapter: silent_face (default) or empty (dev only).
     liveness_adapter: Literal["", "silent_face"] = "silent_face"
     search_front_only_threshold_offset: float = Field(default=0.03, ge=0.0, le=0.2)

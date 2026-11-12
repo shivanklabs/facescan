@@ -59,7 +59,9 @@ class AuthSession(Base):
 
     __tablename__ = "sessions"
     __table_args__ = (
-        CheckConstraint("auth_method IN ('magic_link', 'passkey')", name="auth_method"),
+        CheckConstraint(
+            "auth_method IN ('magic_link', 'passkey', 'google', 'dev')", name="auth_method"
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()

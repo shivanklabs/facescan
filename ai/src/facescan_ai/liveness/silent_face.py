@@ -269,12 +269,16 @@ class SilentFaceDetector:
         self,
         frames: list[tuple[ImageBGR, Face]],
         front_only: bool = False,
+        require_blink: bool = True,
     ) -> LivenessResult:
         """
         Purpose: full liveness evaluation for guided scan or front-only fallback.
         Inputs: list of (ImageBGR, Face) pairs in pose order:
             Guided: [front, blink, left, right] (or [front, blink, right, left])
-            Front-only: [front, blink, front]
+            Front-only: [front, blink..., front]; the blink may be in any middle frame, so a
+                client can send a short burst taken while the person blinks.
+            require_blink=False skips only the blink challenge (dev-only "look" scan); the
+                anti-spoofing score, frame quality and head-turn checks are unchanged.
         Outputs: LivenessResult.
         Side effects: none.
         """
@@ -302,9 +306,13 @@ class SilentFaceDetector:
         if not is_live:
             reasons.append("silent_face_spoof_detected")
 
-        # 2. Blink check between front frame (0) and blink frame (1)
-        blink_ok = self.check_blink(frames[0][0], frames[0][1], frames[1][0], frames[1][1])
-        if not blink_ok:
+        # 2. Blink check against the front frame (0). Guided: frame 1 is the blink frame.
+        # Front-only: any middle frame (a burst taken while the person blinks).
+        candidates = frames[1:-1] if front_only and len(frames) >= 3 else frames[1:2]
+        blink_ok = any(
+            self.check_blink(frames[0][0], frames[0][1], img, face) for img, face in candidates
+        )
+        if not blink_ok and require_blink:
             reasons.append("blink_not_detected")
 
         # 3. Head turn challenge check
@@ -325,7 +333,7 @@ class SilentFaceDetector:
             if not turn_ok:
                 reasons.append("head_turn_not_completed")
 
-        passed = is_live and blink_ok and turn_ok and (len(reasons) == 0)
+        passed = is_live and (blink_ok or not require_blink) and turn_ok and (len(reasons) == 0)
         return LivenessResult(
             passed=passed,
             is_live=is_live,

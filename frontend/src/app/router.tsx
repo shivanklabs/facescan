@@ -1,6 +1,13 @@
-// Route table. Guest flow: /e/:eventId?k=… → sign-in → consent → selfie → gallery.
+// Route table.
+// Simple site (milestone 7): / (Google sign-in) -> /scan -> /photos; /studio for the owner.
+// Older pages stay reachable on their own paths (not linked from the simple site).
 import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from '@/components/ui/AppLayout';
+import { StudioLayout } from '@/components/simple/StudioLayout';
+import WelcomePage from '@/pages/simple/WelcomePage';
+import ScanPage from '@/pages/simple/ScanPage';
+import MyPhotosPage from '@/pages/simple/MyPhotosPage';
+import StudioPage from '@/pages/simple/StudioPage';
 import HomePage from '@/pages/HomePage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import EventLandingPage from '@/pages/guest/EventLandingPage';
@@ -23,9 +30,19 @@ function NotFoundPage() {
 export const routes = [
   {
     path: '/',
+    element: <StudioLayout />,
+    children: [
+      { index: true, element: <WelcomePage /> },
+      { path: 'scan', element: <ScanPage /> },
+      { path: 'photos', element: <MyPhotosPage /> },
+      { path: 'studio', element: <StudioPage /> },
+    ],
+  },
+  {
+    path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, element: <HomePage /> },
+      { path: 'staff', element: <HomePage /> },
       { path: 'auth/callback', element: <AuthCallbackPage /> },
       { path: 'e/:eventId', element: <EventLandingPage /> },
       { path: 'events/:eventId/consent', element: <ConsentPage /> },

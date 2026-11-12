@@ -16,6 +16,7 @@ from app.core.config import Settings
 from app.db.session import make_engine, make_session_factory
 from app.ports.email_sender import EmailSender
 from app.ports.face_analyzer import FaceAnalyzer
+from app.ports.identity_provider import IdentityProvider
 from app.ports.job_queue import JobQueue
 from app.ports.key_manager import KeyManager
 from app.ports.liveness import Liveness
@@ -41,6 +42,7 @@ class AppContext:
     email: EmailSender
     liveness: Liveness | None = None
     rewriter: QueryRewriter | None = None
+    identity: IdentityProvider | None = None
 
 
 def build_context(
@@ -50,11 +52,13 @@ def build_context(
     email: EmailSender | None = None,
     liveness: Liveness | None = None,
     rewriter: QueryRewriter | None = None,
+    identity: IdentityProvider | None = None,
 ) -> AppContext:
     """
     Purpose: build the adapters from settings (adapters.yaml defaults: local storage,
         env master key, Postgres queue, facescan_ai).
-    Inputs: settings; optional analyzer, schema search path and email sender (tests).
+    Inputs: settings; optional analyzer, schema search path, email sender and identity
+        provider (tests).
     Outputs: AppContext. Side effects: creates a DB engine (no connection yet).
     Raises ContextConfigError naming the missing setting.
     """
@@ -105,6 +109,12 @@ def build_context(
             model=settings.gemini_model,
             timeout_seconds=settings.gemini_timeout_seconds,
         )
+    if identity is None:
+        from app.adapters.identity.google_identity_provider import GoogleIdentityProvider
+
+        identity = GoogleIdentityProvider(
+            settings.google_client_id, timeout_seconds=settings.google_timeout_seconds
+        )
     return AppContext(
         settings=settings,
         engine=engine,
@@ -121,6 +131,7 @@ def build_context(
         email=email,
         liveness=liveness,
         rewriter=rewriter,
+        identity=identity,
     )
 
 

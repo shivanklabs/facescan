@@ -47,3 +47,8 @@ Build a fully working product first; new security and legal hardening comes late
 
 ## Correction (11 Nov 2026)
 Correction: cancel the legal update and the "no email" rule; keep the Gmail magic-link login as built. Skip rate caps review and alerts; build the admin health page without alerts. Everything else continues as planned.
+
+---
+
+## Decision (12 Nov 2026)
+Guests use the no-email anonymous flow as built in a090c21: invite link, consent, anonymous guest account with a session cookie, optional passkey for return visits. Guests never give an email, name or phone. Staff (organisers, photographers, admins) keep magic-link sign-in (console adapter in development, Gmail SMTP in public mode) and passkeys. This replaces the guest part of the 11 Nov correction; the rest of that correction stands.

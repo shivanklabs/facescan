@@ -81,3 +81,65 @@ export async function framesBody(frames: Blob[]): Promise<Uint8Array<ArrayBuffer
   }
   return body;
 }
+
+export const BLINK_BURST_FRAMES = 5;
+export const BLINK_BURST_GAP_MS = 140;
+const BLINK_REACTION_MS = 250;
+const SETTLE_MS = 900;
+
+/**
+ * Purpose: draw the current video frame into a new canvas (fast; no encoding yet), so a burst
+ *   can be taken at an even pace while the person blinks.
+ * Inputs: playing video element. Outputs: canvas holding the frame.
+ * Side effects: none (memory only).
+ */
+function grabCanvas(video: HTMLVideoElement): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('canvas not available');
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+/**
+ * Purpose: encode a grabbed canvas as JPEG in memory.
+ * Inputs: canvas. Outputs: JPEG blob. Side effects: none.
+ */
+function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('could not capture frame'))),
+      'image/jpeg',
+      0.9,
+    );
+  });
+}
+
+/**
+ * Purpose: simple-site scan (milestone 7): front frame, a burst of frames while the person
+ *   blinks (so one of them catches the eyes closed), then a front frame again.
+ * Inputs: playing video, callback for the current instruction.
+ * Outputs: JPEG blobs [front, burst..., front] (memory only).
+ * Side effects: calls onStep; nothing is stored.
+ */
+export async function captureBlinkScan(
+  video: HTMLVideoElement,
+  onStep: (step: ScanStep['key']) => void,
+): Promise<Blob[]> {
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  onStep('lookStraight');
+  await wait(SETTLE_MS);
+  const canvases = [grabCanvas(video)];
+  onStep('blink');
+  await wait(BLINK_REACTION_MS);
+  for (let i = 0; i < BLINK_BURST_FRAMES; i += 1) {
+    canvases.push(grabCanvas(video));
+    await wait(BLINK_BURST_GAP_MS);
+  }
+  onStep('lookStraight');
+  await wait(SETTLE_MS);
+  canvases.push(grabCanvas(video));
+  return Promise.all(canvases.map(canvasToJpeg));
+}

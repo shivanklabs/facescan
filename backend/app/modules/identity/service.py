@@ -52,6 +52,7 @@ from app.db.event_scope import ADMIN_SCOPE, scoped_transaction, user_transaction
 from app.modules.audit.service import record
 from app.modules.events.models import EventMember
 from app.modules.identity.models import AuthChallenge, MagicLink, Passkey, User
+from app.ports.identity_provider import IdTokenRejectedError
 
 CHALLENGE_MINUTES = 5
 NEXT_PATH_RE = re.compile(r"^/(?!/)[A-Za-z0-9/_\-.?=&%]{0,199}$")
@@ -216,6 +217,81 @@ def verify_magic_link(ctx: AppContext, token: str, current_session: UUID | None)
         user_id, next_path = user.id, link.next_path
     audit_global(ctx, f"user:{user_id}", "auth.signed_in", {"method": "magic_link"})
     return SignInResult(session_token, user_id, next_path, has_passkey)
+
+
+# ---------------------------------------------------------------- Google sign-in
+
+
+def sign_in_with_google(
+    ctx: AppContext, id_token: str, current_session: UUID | None
+) -> SignInResult:
+    """
+    Purpose: verify a Google ID token and start a session (milestone 7: everyone signs in
+        with Google; the account is keyed by the verified email, stored hashed + encrypted).
+    Inputs: ctx, the ID token from Google Identity Services, the session it replaces.
+    Outputs: SignInResult (next path is "/").
+    Raises SignInError for any rejected token (one generic message).
+    Side effects: may fetch Google's public keys; creates the user on first sign-in; rotates
+        the session; writes an audit row (no email in it).
+    """
+    if ctx.identity is None or not ctx.identity.enabled:
+        raise SignInError("Google sign-in is not configured")
+    try:
+        identity = ctx.identity.verify(id_token)
+        email = normalise_email(identity.email)
+    except (IdTokenRejectedError, ValueError) as exc:
+        raise SignInError("Google sign-in failed") from exc
+    with ctx.sessions() as session, session.begin():
+        user = find_or_create_user(session, ctx.keys, email)
+        has_passkey = bool(
+            session.scalar(
+                select(func.count()).select_from(Passkey).where(Passkey.user_id == user.id)
+            )
+        )
+        token = create_session(
+            session, ctx.settings, user.id, "google", None, replaces=current_session
+        )
+        user_id = user.id
+    audit_global(ctx, f"user:{user_id}", "auth.signed_in", {"method": "google"})
+    return SignInResult(token, user_id, "/", has_passkey)
+
+
+def dev_login_allowed(ctx: AppContext) -> bool:
+    """
+    Purpose: the email-only dev sign-in exists only in local development (FACESCAN_ENV=dev).
+    Inputs: ctx. Outputs: bool. Side effects: none.
+    """
+    return ctx.settings.env == "dev"
+
+
+def sign_in_dev(ctx: AppContext, address: str, current_session: UUID | None) -> SignInResult:
+    """
+    Purpose: local-development sign-in with an email address only (stand-in for Google while
+        no OAuth client id exists). Refused outside FACESCAN_ENV=dev.
+    Inputs: ctx, email address, the session it replaces.
+    Outputs: SignInResult (next path "/").
+    Raises ForbiddenError outside dev, UnprocessableError for a malformed address.
+    Side effects: creates the user on first sign-in; rotates the session; audit row (no email).
+    """
+    if not dev_login_allowed(ctx):
+        raise ForbiddenError("dev sign-in is only available in development")
+    try:
+        email = normalise_email(address)
+    except ValueError as exc:
+        raise UnprocessableError("enter a valid email address") from exc
+    with ctx.sessions() as session, session.begin():
+        user = find_or_create_user(session, ctx.keys, email)
+        has_passkey = bool(
+            session.scalar(
+                select(func.count()).select_from(Passkey).where(Passkey.user_id == user.id)
+            )
+        )
+        token = create_session(
+            session, ctx.settings, user.id, "dev", None, replaces=current_session
+        )
+        user_id = user.id
+    audit_global(ctx, f"user:{user_id}", "auth.signed_in", {"method": "dev"})
+    return SignInResult(token, user_id, "/", has_passkey)
 
 
 # ---------------------------------------------------------------- passkeys

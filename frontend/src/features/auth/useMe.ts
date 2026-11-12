@@ -4,7 +4,7 @@ import { api, ApiError } from '@/lib/apiClient';
 
 export interface Me {
   user_id: string;
-  auth_method: 'magic_link' | 'passkey';
+  auth_method: 'magic_link' | 'passkey' | 'google';
   has_passkey: boolean;
   age_answered: boolean;
   is_minor: boolean;

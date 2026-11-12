@@ -1,5 +1,6 @@
 """FastAPI dependencies: application context, signed-in user, roles, CSRF guard."""
 
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Annotated
@@ -58,8 +59,13 @@ MaybeUser = Annotated[CurrentUser | None, Depends(optional_user)]
 
 
 def passkey_user(user: User) -> CurrentUser:
-    """Purpose: require a session started with a passkey (organisers and photographers)."""
-    if user.auth_method != "passkey":
+    """
+    Purpose: require a strong sign-in for staff pages: a passkey, Google sign-in (milestone 7;
+        Google verifies the account) or the dev-only email sign-in (exists only when
+        FACESCAN_ENV=dev). Magic-link sessions are refused.
+    Inputs: the signed-in user. Outputs: the same user. Side effects: none.
+    """
+    if user.auth_method not in ("passkey", "google", "dev"):
         raise HTTPException(status_code=403, detail="passkey_required")
     return user
 
@@ -111,6 +117,9 @@ def require_role(
     return roles
 
 
+_guard_logger = logging.getLogger("facescan.origin")
+
+
 def same_origin_guard(
     allowed_origin: str,
 ) -> Callable[[Request, Callable[[Request], Awaitable[Response]]], Awaitable[Response]]:
@@ -126,6 +135,15 @@ def same_origin_guard(
         if request.method not in SAFE_METHODS:
             origin = request.headers.get("origin")
             if origin is not None and origin.rstrip("/") != allowed_origin.rstrip("/"):
+                # The origin is a site address (no personal data); logging it shows which
+                # address to put in FACESCAN_AUTH_RP_ORIGIN.
+                _guard_logger.warning(
+                    "refused cross-origin %s %s from origin %s (allowed: %s)",
+                    request.method,
+                    request.url.path,
+                    origin[:200],
+                    allowed_origin,
+                )
                 return JSONResponse({"error": "cross_origin"}, status_code=403)
         return await call_next(request)
 

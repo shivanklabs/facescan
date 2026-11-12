@@ -104,6 +104,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
 
     from app.modules.admin.router import router as admin_router
     from app.modules.consent.router import router as consent_router
+    from app.modules.discover.router import router as discover_router
     from app.modules.events.router import router as events_router
     from app.modules.gallery.router import router as gallery_router
     from app.modules.identity.router import router as identity_router
@@ -122,6 +123,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         ingest_router,
         consent_router,
         matching_router,
+        discover_router,
         gallery_router,
         scene_search_router,
         claims_router,

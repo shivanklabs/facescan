@@ -472,7 +472,9 @@ def test_submit_claim_liveness_failure_creates_no_match_or_claim(
     from app.ports.liveness import LivenessVerdict
 
     class FakeLivenessFailing:
-        def verify_liveness(self, frames: list[bytes], front_only: bool = False) -> LivenessVerdict:
+        def verify_liveness(
+            self, frames: list[bytes], front_only: bool = False, require_blink: bool = True
+        ) -> LivenessVerdict:
             return LivenessVerdict(
                 passed=False,
                 is_live=False,
@@ -533,7 +535,9 @@ def test_submit_claim_no_consent_never_calls_liveness_or_analyzer(
     called = {"liveness": False, "analyzer": False}
 
     class SpyLiveness:
-        def verify_liveness(self, frames: list[bytes], front_only: bool = False) -> object:
+        def verify_liveness(
+            self, frames: list[bytes], front_only: bool = False, require_blink: bool = True
+        ) -> object:
             called["liveness"] = True
             pytest.fail("liveness must never be called without consent")
 

@@ -14,6 +14,9 @@ from app.core.rate_limit import RateLimiter
 from app.modules.identity import service
 from app.modules.identity.schemas import (
     AgeAnswer,
+    DevSignIn,
+    GoogleConfigResponse,
+    GoogleSignIn,
     MagicLinkRequest,
     MagicLinkVerify,
     MeResponse,
@@ -74,6 +77,46 @@ def verify_link(body: MagicLinkVerify, ctx: Ctx, user: MaybeUser) -> JSONRespons
         result = service.verify_magic_link(ctx, body.token, user.session_id if user else None)
     except service.SignInError as exc:
         raise HTTPException(status_code=400, detail="link_invalid_or_expired") from exc
+    return _signed_in(ctx, result)
+
+
+@router.get("/google/config", response_model=GoogleConfigResponse)
+def google_config(ctx: Ctx) -> GoogleConfigResponse:
+    """
+    Purpose: the public Google OAuth client id the sign-in button needs ("" when disabled)
+        and whether the dev-only email sign-in is available.
+    Inputs: ctx. Outputs: GoogleConfigResponse. Side effects: none.
+    """
+    return GoogleConfigResponse(
+        client_id=ctx.settings.google_client_id.strip(),
+        dev_login=service.dev_login_allowed(ctx),
+    )
+
+
+@router.post("/google", dependencies=[Depends(sign_in_limiter)])
+def google_sign_in(body: GoogleSignIn, ctx: Ctx, user: MaybeUser) -> JSONResponse:
+    """
+    Purpose: sign in with a Google ID token. Inputs: body.credential, current session.
+    Outputs: SignInResponse with the new session cookie; 401 when the token is rejected.
+    Side effects: see service.sign_in_with_google.
+    """
+    try:
+        result = service.sign_in_with_google(
+            ctx, body.credential, user.session_id if user else None
+        )
+    except service.SignInError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return _signed_in(ctx, result)
+
+
+@router.post("/dev-login", dependencies=[Depends(sign_in_limiter)])
+def dev_login(body: DevSignIn, ctx: Ctx, user: MaybeUser) -> JSONResponse:
+    """
+    Purpose: email-only sign-in for local development (FACESCAN_ENV=dev only; 403 otherwise).
+    Inputs: body.email, current session. Outputs: SignInResponse with the session cookie.
+    Side effects: see service.sign_in_dev.
+    """
+    result = service.sign_in_dev(ctx, body.email, user.session_id if user else None)
     return _signed_in(ctx, result)
 
 
