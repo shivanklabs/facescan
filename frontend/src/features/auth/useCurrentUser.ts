@@ -21,6 +21,7 @@ export interface Me {
   is_minor: boolean;
   can_create_events: boolean;
   is_admin?: boolean;
+  is_staff?: boolean; // organiser or photographer of an event
 }
 
 export interface CurrentUser {

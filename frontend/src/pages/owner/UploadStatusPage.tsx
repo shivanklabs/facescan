@@ -1,5 +1,6 @@
 // UploadStatusPage: how far an event's photos are: ready, waiting, failed (with Retry) and
-// near-duplicates. Refreshes every few seconds while the page is open.
+// near-duplicates. Refreshes every few seconds while the page is open. Organisers also see
+// photographers' uploads waiting for their approval (indexing starts after approval).
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +22,12 @@ interface ProcessingStatus {
   failed_photos: FailedPhoto[];
 }
 
+interface Collection {
+  collection_id: string;
+  status: string;
+  photos: number;
+}
+
 const POLL_MS = 4000;
 
 /**
@@ -36,6 +43,7 @@ export default function UploadStatusPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState<Collection[]>([]);
 
   const load = useCallback(() => {
     api<ProcessingStatus>(`/events/${eventId}/processing-status`)
@@ -52,12 +60,32 @@ export default function UploadStatusPage() {
       );
   }, [eventId, t]);
 
+  // Organisers only: the server answers 403 for photographers, who simply see no list.
+  const loadWaiting = useCallback(() => {
+    api<{ collections: Collection[] }>(`/events/${eventId}/collections`)
+      .then((data) => setWaiting(data.collections.filter((c) => c.status === 'open')))
+      .catch(() => setWaiting([]));
+  }, [eventId]);
+
   useEffect(() => {
     if (!me) return;
+    loadWaiting();
     load();
     const timer = window.setInterval(load, POLL_MS);
     return () => window.clearInterval(timer);
-  }, [me, load]);
+  }, [me, load, loadWaiting]);
+
+  async function approve(collectionId: string) {
+    setMessage('');
+    try {
+      await api(`/events/${eventId}/collections/${collectionId}/approve`, { method: 'POST' });
+      setMessage(t('status.approved'));
+      loadWaiting();
+      load();
+    } catch {
+      setMessage(t('common.error'));
+    }
+  }
 
   async function retry(photoId: string) {
     setRetrying(photoId);
@@ -119,6 +147,25 @@ export default function UploadStatusPage() {
               </div>
             </div>
           </div>
+          {waiting.length > 0 && (
+            <div className="st-card st-claim">
+              <h2>{t('status.approvalTitle')}</h2>
+              <ul className="st-list">
+                {waiting.map((c) => (
+                  <li key={c.collection_id} className="st-list-row">
+                    <span>{t('settings.photoCount', { count: c.photos })}</span>
+                    <button
+                      type="button"
+                      className="st-btn st-btn-primary st-btn-small"
+                      onClick={() => void approve(c.collection_id)}
+                    >
+                      {t('status.approve')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {status.near_duplicates > 0 && (
             <p className="st-note">
               {t('status.nearDuplicates', { count: status.near_duplicates })}

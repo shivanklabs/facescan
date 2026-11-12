@@ -172,6 +172,7 @@ def get_me(user: User, ctx: Ctx) -> MeResponse:
         is_minor=m.is_minor,
         can_create_events=m.can_create_events,
         is_admin=m.is_admin,
+        is_staff=m.is_staff,
     )
 
 

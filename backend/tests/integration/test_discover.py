@@ -158,6 +158,29 @@ def test_organiser_never_sees_a_google_guests_email_on_claims(
     assert email not in queue.text
 
 
+def test_me_says_who_is_staff(
+    ctx: AppContext, organiser: TestClient, events: tuple[list[str], list[str]]
+) -> None:
+    """
+    Purpose: /auth/me tells the site who may open Studio: organisers and photographers of any
+        event are staff; a guest is not.
+    """
+    (event_a, _), _ = events
+    guest = google_client(ctx, "just.a.guest@example.test")
+    assert guest.get("/auth/me").json()["is_staff"] is False
+    assert organiser.get("/auth/me").json()["is_staff"] is True
+
+    email = "camera.person@example.test"
+    added = organiser.post(
+        f"/events/{event_a}/members", json={"email": email, "role": "photographer"}
+    )
+    assert added.status_code == 204, added.text
+    photographer = google_client(ctx, email)
+    me = photographer.get("/auth/me").json()
+    assert me["is_staff"] is True
+    assert me["can_create_events"] is False
+
+
 def test_person_without_photos_gets_nothing(
     ctx: AppContext, events: tuple[list[str], list[str]]
 ) -> None:

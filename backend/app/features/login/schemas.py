@@ -66,6 +66,7 @@ class MeResponse(BaseModel):
     is_minor: bool
     can_create_events: bool
     is_admin: bool = False
+    is_staff: bool = False
 
 
 class AgeAnswer(BaseModel):

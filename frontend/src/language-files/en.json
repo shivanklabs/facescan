@@ -270,7 +270,8 @@
       "searchable": "Live",
       "failed": "Needs attention",
       "closed": "Closed"
-    }
+    },
+    "uploadedForApproval": "{{count}} photos uploaded. The organiser approves them, then they become searchable."
   },
   "menu": {
     "label": "Main menu",
@@ -398,7 +399,10 @@
     "retryFailed": "Could not retry this photo.",
     "failedTitle": "Photos that failed",
     "nearDuplicates_one": "{{count}} photo looks almost the same as another one (kept, only marked).",
-    "nearDuplicates_other": "{{count}} photos look almost the same as others (kept, only marked)."
+    "nearDuplicates_other": "{{count}} photos look almost the same as others (kept, only marked).",
+    "approvalTitle": "Uploads waiting for your approval",
+    "approve": "Approve",
+    "approved": "Approved: these photos are being prepared for search."
   },
   "review": {
     "eyebrow": "Claims",

@@ -460,6 +460,7 @@ class Me:
     is_minor: bool
     can_create_events: bool
     is_admin: bool = False
+    is_staff: bool = False  # organiser or photographer of at least one event
 
 
 def me(ctx: AppContext, user: CurrentUser) -> Me:
@@ -481,6 +482,27 @@ def me(ctx: AppContext, user: CurrentUser) -> Me:
             is_minor=row.is_minor,
             can_create_events=organiser_allowed(ctx.settings, ctx.keys, row),
             is_admin=admin_allowed(ctx.settings, ctx.keys, row),
+            is_staff=_is_staff(ctx, user.user_id),
+        )
+
+
+def _is_staff(ctx: AppContext, user_id: UUID) -> bool:
+    """
+    Purpose: whether the user is an organiser or photographer of any event (so the site shows
+        them Studio). Inputs: ctx, user_id. Outputs: bool.
+    Side effects: one indexed lookup in the user's own read-only scope.
+    """
+    with user_transaction(ctx.sessions, user_id) as session:
+        return (
+            session.scalar(
+                select(EventMember.event_id)
+                .where(
+                    EventMember.user_id == user_id,
+                    EventMember.role.in_(("organiser", "photographer")),
+                )
+                .limit(1)
+            )
+            is not None
         )
 
 

@@ -81,7 +81,7 @@ describe('router', () => {
  * Inputs: user flags. Outputs: the fetch mock (to count calls). Side effects: stubs fetch.
  */
 function signedInAs(
-  flags: { can_create_events: boolean; is_admin: boolean },
+  flags: { can_create_events: boolean; is_admin: boolean; is_staff?: boolean },
   extra: Record<string, unknown> = {},
 ) {
   const me = {
@@ -393,5 +393,70 @@ describe('admin health page', () => {
     expect(backupIsStale(null, now)).toBe(true);
     expect(backupIsStale('2026-11-12T06:00:00Z', now)).toBe(false);
     expect(backupIsStale('2026-11-11T06:00:00Z', now)).toBe(true);
+  });
+});
+
+describe('photographers in Studio', () => {
+  it('shows Studio to a photographer with upload and status only', async () => {
+    signedInAs(
+      { can_create_events: false, is_admin: false, is_staff: true },
+      {
+        '/events': {
+          events: [
+            {
+              event_id: 'ev1',
+              name: 'Sharma Wedding',
+              status: 'searchable',
+              created_at: '2026-11-12T10:00:00Z',
+              roles: ['photographer'],
+            },
+          ],
+        },
+        '/processing-status': {
+          quarantined: 0,
+          approved: 0,
+          indexed: 0,
+          failed: 0,
+          near_duplicates: 0,
+          failed_photos: [],
+        },
+      },
+    );
+    renderAt('/studio');
+    const menu = await screen.findByRole('navigation', { name: 'Main menu' });
+    expect(menu).toHaveTextContent('Studio');
+    expect(await screen.findByRole('heading', { name: 'Sharma Wedding' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Upload status' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Claims' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create event' })).toBeNull();
+  });
+
+  it("lists photographers' uploads waiting for the organiser's approval", async () => {
+    signedInAs(
+      { can_create_events: true, is_admin: false },
+      {
+        '/collections': {
+          collections: [
+            { collection_id: 'c1', status: 'open', photos: 12, previews: [] },
+            { collection_id: 'c2', status: 'approved', photos: 5, previews: [] },
+          ],
+        },
+        '/processing-status': {
+          quarantined: 12,
+          approved: 0,
+          indexed: 5,
+          failed: 0,
+          near_duplicates: 0,
+          failed_photos: [],
+        },
+      },
+    );
+    renderAt('/studio/events/ev1/status');
+    expect(
+      await screen.findByRole('heading', { name: 'Uploads waiting for your approval' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('12 photos')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
   });
 });

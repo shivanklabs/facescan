@@ -181,7 +181,10 @@ export default function OwnerUploadPage() {
   const loadEvents = useCallback(() => {
     api<{ events: EventItem[] }>('/events')
       .then((value) => {
-        const mine = value.events.filter((e) => e.roles.includes('organiser'));
+        // Organisers see their events; photographers see the events they upload to.
+        const mine = value.events.filter(
+          (e) => e.roles.includes('organiser') || e.roles.includes('photographer'),
+        );
         setEvents(mine);
         setActiveId((current) => current ?? mine[0]?.event_id ?? null);
       })
@@ -189,7 +192,7 @@ export default function OwnerUploadPage() {
   }, [t]);
 
   useEffect(() => {
-    if (me?.can_create_events) loadEvents();
+    if (me?.can_create_events || me?.is_staff) loadEvents();
   }, [me, loadEvents]);
 
   useEffect(() => {
@@ -215,7 +218,7 @@ export default function OwnerUploadPage() {
   }, [activeId, loadEvents]);
 
   if (!loading && !me) return <Navigate to="/" replace />;
-  if (!loading && me && !me.can_create_events) {
+  if (!loading && me && !me.can_create_events && !me.is_staff) {
     return (
       <section className="st-empty">
         <div>
@@ -247,6 +250,8 @@ export default function OwnerUploadPage() {
 
   async function upload(list: FileList | File[]) {
     if (!activeId) return;
+    const isOrganiser =
+      events.find((e) => e.event_id === activeId)?.roles.includes('organiser') ?? false;
     const files = Array.from(list).filter((f) => ACCEPTED.includes(f.type));
     if (files.length === 0) {
       setMessage(t('studio.noImages'));
@@ -286,19 +291,23 @@ export default function OwnerUploadPage() {
         done += 1;
         setProgress({ done, total: files.length });
       }
-      if (collectionId) {
+      // Organisers' uploads are approved at once; a photographer's wait for the organiser
+      // (Upload status page), as the server requires.
+      if (collectionId && isOrganiser) {
         const approveId = collectionId;
         await withRetry(() =>
           api(`/events/${activeId}/collections/${approveId}/approve`, { method: 'POST' }),
         );
       }
       setMessage(
-        skipped > 0
-          ? t('studio.uploadedSkipped', { count: files.length - skipped, skipped })
-          : t('studio.uploaded', { count: files.length }),
+        !isOrganiser
+          ? t('studio.uploadedForApproval', { count: files.length - skipped })
+          : skipped > 0
+            ? t('studio.uploadedSkipped', { count: files.length - skipped, skipped })
+            : t('studio.uploaded', { count: files.length }),
       );
     } catch (error) {
-      if (collectionId) {
+      if (collectionId && isOrganiser) {
         // Approve what did arrive, so nothing uploaded is left waiting.
         await api(`/events/${activeId}/collections/${collectionId}/approve`, {
           method: 'POST',
@@ -318,6 +327,7 @@ export default function OwnerUploadPage() {
   }
 
   const active = events.find((e) => e.event_id === activeId) ?? null;
+  const activeIsOrganiser = active?.roles.includes('organiser') ?? false;
   const total = status ? status.quarantined + status.approved + status.indexed + status.failed : 0;
   const ready = status && total > 0 ? Math.round((status.indexed / total) * 100) : 0;
 
@@ -328,31 +338,33 @@ export default function OwnerUploadPage() {
         <h1>{t('studio.title')}</h1>
       </div>
 
-      <div className="st-card">
-        <form
-          className="st-form-row"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void createEvent();
-          }}
-        >
-          <label className="st-visually-hidden" htmlFor="event-name">
-            {t('studio.eventName')}
-          </label>
-          <input
-            id="event-name"
-            className="st-input"
-            type="text"
-            maxLength={200}
-            placeholder={t('studio.eventNamePlaceholder')}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <button type="submit" className="st-btn st-btn-primary" disabled={busy || !name.trim()}>
-            {t('studio.create')}
-          </button>
-        </form>
-      </div>
+      {me?.can_create_events && (
+        <div className="st-card">
+          <form
+            className="st-form-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createEvent();
+            }}
+          >
+            <label className="st-visually-hidden" htmlFor="event-name">
+              {t('studio.eventName')}
+            </label>
+            <input
+              id="event-name"
+              className="st-input"
+              type="text"
+              maxLength={200}
+              placeholder={t('studio.eventNamePlaceholder')}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <button type="submit" className="st-btn st-btn-primary" disabled={busy || !name.trim()}>
+              {t('studio.create')}
+            </button>
+          </form>
+        </div>
+      )}
 
       {events.length > 0 && (
         <div className="st-events" role="list">
@@ -385,24 +397,28 @@ export default function OwnerUploadPage() {
         <div className="st-card st-stack-gap">
           <h2>{active.name}</h2>
           <nav className="st-form-row" aria-label={t('owner.eventLinks')}>
-            <Link
-              to={`/studio/events/${active.event_id}/settings`}
-              className="st-btn st-btn-ghost st-btn-small"
-            >
-              {t('owner.settings')}
-            </Link>
+            {activeIsOrganiser && (
+              <Link
+                to={`/studio/events/${active.event_id}/settings`}
+                className="st-btn st-btn-ghost st-btn-small"
+              >
+                {t('owner.settings')}
+              </Link>
+            )}
             <Link
               to={`/studio/events/${active.event_id}/status`}
               className="st-btn st-btn-ghost st-btn-small"
             >
               {t('owner.status')}
             </Link>
-            <Link
-              to={`/studio/events/${active.event_id}/claims`}
-              className="st-btn st-btn-ghost st-btn-small"
-            >
-              {t('owner.claims')}
-            </Link>
+            {activeIsOrganiser && (
+              <Link
+                to={`/studio/events/${active.event_id}/claims`}
+                className="st-btn st-btn-ghost st-btn-small"
+              >
+                {t('owner.claims')}
+              </Link>
+            )}
           </nav>
           <label
             className={`st-drop ${over ? 'is-over' : ''}`}
