@@ -224,3 +224,42 @@ describe('find more photos page', () => {
     expect(screen.getByRole('button', { name: 'Open camera' })).toBeInTheDocument();
   });
 });
+
+describe('invite link page', () => {
+  it('says the link does not work when the key is missing (no endless loading)', async () => {
+    renderAt('/e/00000000-0000-0000-0000-000000000000');
+    expect(await screen.findByRole('alert')).toHaveTextContent('invalid or has expired');
+  });
+
+  it('asks signed-out people to sign in and come back to the same link', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/resolve')) {
+          return Promise.resolve(new Response(JSON.stringify({ name: 'Sharma Wedding' })));
+        }
+        return Promise.resolve(new Response('{"detail":"sign_in_required"}', { status: 401 }));
+      }),
+    );
+    const eventId = '11111111-1111-1111-1111-111111111111';
+    renderAt(`/e/${eventId}?k=abcdefghijklmnopqrstuv`);
+    expect(await screen.findByRole('heading', { name: 'Sharma Wedding' })).toBeInTheDocument();
+    const signIn = screen.getByRole('link', { name: 'Sign in' });
+    expect(signIn.getAttribute('href')).toBe(
+      `/?next=${encodeURIComponent(`/e/${eventId}?k=abcdefghijklmnopqrstuv`)}`,
+    );
+  });
+});
+
+describe('return address after sign-in', () => {
+  it('allows only invite links and falls back to My photos', async () => {
+    const { afterSignInPath } = await import('@/pages/guest/LoginPage');
+    const invite = '/e/11111111-1111-1111-1111-111111111111?k=abcdefghijklmnopqrstuv';
+    expect(afterSignInPath(invite)).toBe(invite);
+    expect(afterSignInPath(null)).toBe('/photos');
+    expect(afterSignInPath('https://evil.example/e/x')).toBe('/photos');
+    expect(afterSignInPath('//evil.example')).toBe('/photos');
+    expect(afterSignInPath('/admin')).toBe('/photos');
+  });
+});

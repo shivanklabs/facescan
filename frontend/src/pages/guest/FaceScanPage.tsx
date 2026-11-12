@@ -1,7 +1,7 @@
 // FaceScanPage (milestone 7): one live scan (look straight, blink) searched in every event.
 // Frames are captured into memory and sent once; nothing is saved in the browser.
 import { useEffect, useRef, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { api, ApiError } from '@/lib/serverApi';
@@ -81,6 +81,9 @@ function messageFor(t: (key: string) => string, error: unknown): string {
 export default function FaceScanPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  // From a QR link: after the scan, show that event's photos first.
+  const [params] = useSearchParams();
+  const focusEvent = params.get('event');
   const { me, loading } = useCurrentUser();
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -233,7 +236,8 @@ export default function FaceScanPage() {
           `&method=${method === 'look' ? 'look' : 'blink'}`,
         { body, headers: { 'Content-Type': FRAMES_CONTENT_TYPE }, timeoutMs: 180_000 },
       );
-      navigate('/photos', { replace: true, state: { scanned: true, found: result.released } });
+      const target = focusEvent ? `/photos?event=${encodeURIComponent(focusEvent)}` : '/photos';
+      navigate(target, { replace: true, state: { scanned: true, found: result.released } });
     } catch (error) {
       setMessage(messageFor(t, error));
       setStep(null);

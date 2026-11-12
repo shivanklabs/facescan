@@ -236,7 +236,8 @@
     "noneText": "We did not find you in any event photos right now. If the photographer is still uploading, try again a little later.",
     "loadFailed": "Your photos could not load.",
     "notMeFailed": "That did not work. Please try again.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "allEvents": "All my photos"
   },
   "studio": {
     "nav": "Account",
@@ -320,5 +321,18 @@
     "openPhotos": "Open My photos",
     "queued": "We could not confirm it automatically, so the organiser will check your request.",
     "claimFailed": "The claim could not be sent. Please try again."
+  },
+  "eventLink": {
+    "eyebrow": "You're invited",
+    "invalidTitle": "This link does not work",
+    "invalid": "This invite link is invalid or has expired. Ask the organiser for a new one.",
+    "intro": "Find every photo of you from this event with one quick face scan.",
+    "signInFirst": "Sign in first. You will come straight back here.",
+    "signIn": "Sign in",
+    "scanNow": "Scan your face to find your photos from this event.",
+    "scan": "Scan my face",
+    "foundAlready": "We already found photos of you here.",
+    "seePhotos": "See my photos",
+    "scanAgain": "Scan again"
   }
 }

@@ -1,19 +1,33 @@
 // LoginPage (milestone 7): the front door. Signed-out visitors see the hero and the Google
 // button; signed-in people go straight to their photos.
 import { useEffect, useRef, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { devSignIn, renderGoogleButton, signInConfig } from '@/features/auth/googleSignIn';
 
+// Only an event invite link (from a QR code) may be a return address after sign-in; anything
+// else falls back to My photos, so a crafted link cannot send people to another site.
+const SAFE_NEXT = /^\/e\/[0-9a-f-]{36}(\?k=[A-Za-z0-9_-]{16,128})?$/;
+
+/**
+ * Purpose: where to go after sign-in: the invite link the person came from, else My photos.
+ * Inputs: the raw ?next= value. Outputs: a same-site path. Side effects: none.
+ */
+export function afterSignInPath(next: string | null): string {
+  return next && SAFE_NEXT.test(next) ? next : '/photos';
+}
+
 /**
  * Purpose: landing page with Google sign-in.
- * Inputs: none. Outputs: page element.
+ * Inputs: optional ?next= (an invite link to return to). Outputs: page element.
  * Side effects: loads Google's script and renders its button; redirects when signed in.
  */
 export default function LoginPage() {
   const { t } = useTranslation();
   const { me, loading } = useCurrentUser();
+  const [params] = useSearchParams();
+  const destination = afterSignInPath(params.get('next'));
   const slot = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
@@ -39,7 +53,7 @@ export default function LoginPage() {
           target,
           config.client_id,
           // Full load so the header picks up the new session.
-          () => window.location.assign('/photos'),
+          () => window.location.assign(destination),
           (reason) => {
             if (active) setError(reason === 'google_cancelled' ? '' : t('welcome.signInFailed'));
           },
@@ -51,9 +65,9 @@ export default function LoginPage() {
     return () => {
       active = false;
     };
-  }, [loading, me, t, attempt]);
+  }, [loading, me, t, attempt, destination]);
 
-  if (!loading && me) return <Navigate to="/photos" replace />;
+  if (!loading && me) return <Navigate to={destination} replace />;
 
   /**
    * Purpose: dev-only sign-in with an email (stand-in for Google in local development).
@@ -66,7 +80,7 @@ export default function LoginPage() {
     setError('');
     try {
       await devSignIn(devEmail.trim());
-      window.location.assign('/photos');
+      window.location.assign(destination);
     } catch {
       setError(t('welcome.devFailed'));
       setDevBusy(false);

@@ -1,7 +1,7 @@
 // MyPhotosPage (milestone 7): all of my photos, grouped by event, with a full-screen viewer,
 // original-quality downloads and "Not me". Shows a friendly empty state when nothing matched.
 import { useCallback, useEffect, useState } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { api, apiUrl } from '@/lib/serverApi';
@@ -42,12 +42,15 @@ function downloadOriginal(path: string): void {
 }
 
 /**
- * Purpose: the gallery page. Inputs: none. Outputs: page element.
+ * Purpose: the gallery page. Inputs: optional ?event= (from a QR link) to show only that
+ *   event's photos. Outputs: page element.
  * Side effects: loads photos; downloads; "Not me" requests.
  */
 export default function MyPhotosPage() {
   const { t } = useTranslation();
   const location = useLocation();
+  const [params] = useSearchParams();
+  const focus = params.get('event');
   const scanState = location.state as { scanned?: boolean } | null;
   const { me, loading: meLoading } = useCurrentUser();
   const [events, setEvents] = useState<EventPhotos[] | null>(null);
@@ -57,9 +60,11 @@ export default function MyPhotosPage() {
 
   const load = useCallback(() => {
     api<{ events: EventPhotos[] }>('/discover/photos')
-      .then((value) => setEvents(value.events))
+      .then((value) =>
+        setEvents(focus ? value.events.filter((e) => e.event_id === focus) : value.events),
+      )
       .catch(() => setError(t('photos.loadFailed')));
-  }, [t]);
+  }, [t, focus]);
 
   useEffect(() => {
     if (me) load();
@@ -160,6 +165,11 @@ export default function MyPhotosPage() {
           <Link to="/scan" className="st-btn st-btn-primary">
             {scanState?.scanned ? t('photos.scanAgain') : t('photos.scanNow')}
           </Link>
+          {focus && (
+            <p>
+              <Link to="/photos">{t('photos.allEvents')}</Link>
+            </p>
+          )}
         </div>
       </section>
     );
@@ -177,9 +187,16 @@ export default function MyPhotosPage() {
           <h1>{t('photos.title')}</h1>
           <p className="st-count">{t('photos.count', { count: total, events: events.length })}</p>
         </div>
-        <Link to="/scan" className="st-btn st-btn-ghost">
-          {t('photos.scanAgain')}
-        </Link>
+        <div className="st-bar-actions">
+          {focus && (
+            <Link to="/photos" className="st-btn st-btn-ghost">
+              {t('photos.allEvents')}
+            </Link>
+          )}
+          <Link to="/scan" className="st-btn st-btn-ghost">
+            {t('photos.scanAgain')}
+          </Link>
+        </div>
       </div>
       {error && (
         <p className="st-alert" role="alert">

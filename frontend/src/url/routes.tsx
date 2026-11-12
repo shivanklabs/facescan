@@ -10,13 +10,13 @@ import MyPhotosPage from '@/pages/guest/MyPhotosPage';
 import OwnerUploadPage from '@/pages/guest/OwnerUploadPage';
 import HomePage from '@/pages/HomePage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
-import EventLandingPage from '@/pages/guest-old/EventLandingPage';
 import ConsentPage from '@/pages/guest-old/ConsentPage';
 import SelfieCapturePage from '@/pages/guest-old/SelfieCapturePage';
 import GalleryPage from '@/pages/guest-old/GalleryPage';
 import ClaimPhotoPage from '@/pages/guest-old/ClaimPhotoPage';
 import PrivacyPage from '@/pages/guest/PrivacyPage';
 import FindMorePhotosPage from '@/pages/guest/FindMorePhotosPage';
+import EventLinkPage from '@/pages/guest/EventLinkPage';
 import UploadPage from '@/pages/photographer/UploadPage';
 import ProcessingStatusPage from '@/pages/photographer/ProcessingStatusPage';
 import EventSetupPage from '@/pages/organiser/EventSetupPage';
@@ -39,6 +39,7 @@ export const routes = [
       { path: 'studio', element: <OwnerUploadPage /> },
       { path: 'privacy', element: <PrivacyPage /> },
       { path: 'find', element: <FindMorePhotosPage /> },
+      { path: 'e/:eventId', element: <EventLinkPage /> },
     ],
   },
   {
@@ -47,7 +48,6 @@ export const routes = [
     children: [
       { path: 'staff', element: <HomePage /> },
       { path: 'auth/callback', element: <AuthCallbackPage /> },
-      { path: 'e/:eventId', element: <EventLandingPage /> },
       { path: 'events/:eventId/consent', element: <ConsentPage /> },
       { path: 'events/:eventId/selfie', element: <SelfieCapturePage /> },
       { path: 'events/:eventId/gallery', element: <GalleryPage /> },
