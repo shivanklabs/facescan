@@ -12,7 +12,7 @@ from app.core.context import AppContext
 from app.core.crypto import aad, open_sealed, seal
 from app.db.event_scope import event_transaction
 from app.modules.vision_pipeline import repository
-from app.modules.vision_pipeline.repository import _pack, _unpack
+from app.modules.vision_pipeline.repository import _pack, unpack_vectors
 from app.ports.face_analyzer import Vector
 from facescan_ai.index_store import decode_vector, encode_vector
 from facescan_ai.matching.calibration import EngineCalibration
@@ -93,7 +93,7 @@ def test_vector_serialization_byte_for_byte_identical() -> None:
 
     # 3. Unpack equivalence
     assert all(
-        np.array_equal(_unpack(new_packed)[k], _legacy_unpack(legacy_packed)[k])
+        np.array_equal(unpack_vectors(new_packed)[k], _legacy_unpack(legacy_packed)[k])
         for k in test_vectors
     )
 
@@ -149,7 +149,7 @@ def test_legacy_sealed_data_decrypts_with_new_code() -> None:
     # Decrypted and decoded with new code
     decrypted_raw = open_sealed(key, sealed_bytes, aad(event_id, "faces", row_id))
     unpacked_payload = json.loads(decrypted_raw)
-    unpacked_vec = _unpack(unpacked_payload["embeddings"])["sface"]
+    unpacked_vec = unpack_vectors(unpacked_payload["embeddings"])["sface"]
 
     assert np.array_equal(unpacked_vec, vec)
 

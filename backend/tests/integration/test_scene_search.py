@@ -19,6 +19,7 @@ from app.modules.scene_search.models import (
     SceneSearchCandidate,
 )
 from app.modules.scene_search.service import cleanup_expired_attempts
+from app.modules.vision_pipeline.models import Face
 from fastapi.testclient import TestClient
 from sqlalchemy import event as sa_event
 from sqlalchemy import func, select, update
@@ -869,13 +870,15 @@ def test_ten_claims_produce_one_select_for_photos(organiser: TestClient, ctx: Ap
     with event_transaction(ctx.sessions, UUID(event_id)) as s:
         consent_row = s.scalar(select(Consent).where(Consent.event_id == UUID(event_id)))
         user_id = consent_row.user_id if consent_row else uuid.uuid4()
+        face_id = s.scalar(select(Face.id).where(Face.event_id == UUID(event_id)).limit(1))
+        assert face_id is not None
         for i in range(10):
             s.add(
                 Claim(
                     event_id=UUID(event_id),
                     user_id=user_id,
                     photo_id=UUID(photos[0]),
-                    face_id=None,
+                    face_id=face_id if i == 0 else None,  # one pending claim per face
                     status="pending",
                     reason=f"test claim {i}",
                 )
@@ -902,6 +905,9 @@ def test_ten_claims_produce_one_select_for_photos(organiser: TestClient, ctx: Ap
     assert len(photo_queries) == 1, (
         f"Expected 1 photo query, got {len(photo_queries)}: {photo_queries}"
     )
+    # Faces come from the same joined query: no separate face lookup per claim.
+    assert not [q for q in captured_queries if "from faces" in q.lower()]
+    assert sum(c["face_bbox"] is not None for c in resp.json()["claims"]) == 1
 
 
 def test_approving_claim_on_not_me_photo_leaves_it_as_not_me(

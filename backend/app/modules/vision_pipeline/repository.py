@@ -26,8 +26,13 @@ def _pack(vectors: dict[str, Vector]) -> dict[str, str]:
     return {k: encode_vector(v) for k, v in vectors.items()}
 
 
-def _unpack(packed: dict[str, str]) -> dict[str, Vector]:
-    """Purpose: inverse of _pack."""
+def unpack_vectors(packed: dict[str, str]) -> dict[str, Vector]:
+    """
+    Purpose: inverse of _pack; public so claims can decode one stored face.
+    Inputs: name -> base64 float32 text.
+    Outputs: name -> vector.
+    Side effects: none.
+    """
     return {k: decode_vector(v) for k, v in packed.items()}
 
 
@@ -176,7 +181,7 @@ def load_faces(session: Session, event_id: UUID, data_key: bytes) -> list[Stored
                 quality=face.quality,
                 detector_score=face.detector_score,
                 weak=face.weak,
-                embeddings=_unpack(payload["embeddings"]),
+                embeddings=unpack_vectors(payload["embeddings"]),
             )
         )
     return faces
@@ -244,7 +249,7 @@ def load_event_model(
             BuiltCluster(
                 members=[UUID(f) for f in payload["members"]],
                 attached_weak=[UUID(f) for f in payload["attached_weak"]],
-                prototypes=_unpack(payload["prototypes"]),
+                prototypes=unpack_vectors(payload["prototypes"]),
             )
         )
     calibration: CalibrationDict = {}
