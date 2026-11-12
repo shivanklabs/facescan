@@ -270,5 +270,13 @@
       "failed": "Needs attention",
       "closed": "Closed"
     }
+  },
+  "menu": {
+    "label": "Main menu",
+    "photos": "My photos",
+    "scan": "Scan",
+    "privacy": "Privacy",
+    "studio": "Studio",
+    "admin": "Health"
   }
 }

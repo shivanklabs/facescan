@@ -1,13 +1,49 @@
-// SiteLayout: the frame of the new guest website (milestone 7) for every page: brand, account actions, page.
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+// SiteLayout: the frame of the new website (milestone 7) for every page: brand, account actions,
+// a menu that shows each person only what their role allows, and the page.
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useCurrentUser } from '@/features/auth/useCurrentUser';
+import { useCurrentUser, type Me } from '@/features/auth/useCurrentUser';
 import { forgetGoogleSelection } from '@/features/auth/googleSignIn';
 import { api } from '@/lib/serverApi';
 import '@/styles/site.css';
 
+interface MenuItem {
+  to: string;
+  label: string;
+}
+
 /**
- * Purpose: page frame with the FaceScan brand and, when signed in, links and sign-out.
+ * Purpose: the role-based menu under the top bar. Everyone signed in sees their own photos,
+ *   scan and privacy; event owners also see Studio; platform admins also see Health.
+ *   The server still checks every permission; the menu only hides what would be refused.
+ * Inputs: the signed-in user's flags. Outputs: nav element. Side effects: none.
+ */
+function SiteMenu({ me }: { me: Me }) {
+  const { t } = useTranslation();
+  const items: MenuItem[] = [
+    { to: '/photos', label: t('menu.photos') },
+    { to: '/scan', label: t('menu.scan') },
+    { to: '/privacy', label: t('menu.privacy') },
+  ];
+  if (me.can_create_events) items.push({ to: '/studio', label: t('menu.studio') });
+  if (me.is_admin) items.push({ to: '/admin', label: t('menu.admin') });
+  return (
+    <nav className="st-menu" aria-label={t('menu.label')}>
+      {items.map((item) => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          className={({ isActive }) => (isActive ? 'st-menu-link is-active' : 'st-menu-link')}
+        >
+          {item.label}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+/**
+ * Purpose: page frame with the FaceScan brand and, when signed in, the menu and sign-out.
  * Inputs: none (reads the session). Outputs: layout element. Side effects: sign-out request.
  */
 export function SiteLayout() {
@@ -40,11 +76,6 @@ export function SiteLayout() {
           >
             {t('common.language')}
           </button>
-          {me?.can_create_events && (
-            <Link to="/studio" className="st-btn st-btn-ghost st-btn-small">
-              {t('studio.adminLink')}
-            </Link>
-          )}
           {me && (
             <button
               type="button"
@@ -56,6 +87,7 @@ export function SiteLayout() {
           )}
         </nav>
       </header>
+      {me && <SiteMenu me={me} />}
       <main className="st-main">
         <Outlet />
       </main>

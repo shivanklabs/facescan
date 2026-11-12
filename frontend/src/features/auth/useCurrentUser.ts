@@ -1,5 +1,16 @@
 // useCurrentUser: the signed-in user's flags (null when signed out). No email is ever returned.
-import { useCallback, useEffect, useState } from 'react';
+// The flags are loaded once by CurrentUserProvider and shared by every page and the menu, so a
+// page view asks the server once instead of once per component.
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { api, ApiError } from '@/lib/serverApi';
 
 export interface Me {
@@ -12,7 +23,20 @@ export interface Me {
   is_admin?: boolean;
 }
 
-export function useCurrentUser(): { me: Me | null; loading: boolean; reload: () => void } {
+export interface CurrentUser {
+  me: Me | null;
+  loading: boolean;
+  reload: () => void;
+}
+
+const CurrentUserContext = createContext<CurrentUser | null>(null);
+
+/**
+ * Purpose: load the signed-in user's flags once and share them with every component below.
+ * Inputs: children. Outputs: provider element.
+ * Side effects: GET /auth/me on mount and on every reload(); a 401 means signed out (me = null).
+ */
+export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
@@ -34,6 +58,23 @@ export function useCurrentUser(): { me: Me | null; loading: boolean; reload: () 
     };
   }, [version]);
 
-  const reload = useCallback(() => setVersion((v) => v + 1), []);
-  return { me, loading, reload };
+  // loading goes back to true so pages wait for the fresh flags instead of acting on old ones
+  // (for example redirecting to sign-in right after a sign-in).
+  const reload = useCallback(() => {
+    setLoading(true);
+    setVersion((v) => v + 1);
+  }, []);
+  const value = useMemo(() => ({ me, loading, reload }), [me, loading, reload]);
+  return createElement(CurrentUserContext.Provider, { value }, children);
+}
+
+/**
+ * Purpose: read the shared signed-in user's flags.
+ * Inputs: none. Outputs: { me, loading, reload }.
+ * Side effects: none (throws if used outside CurrentUserProvider, a programming error).
+ */
+export function useCurrentUser(): CurrentUser {
+  const value = useContext(CurrentUserContext);
+  if (!value) throw new Error('useCurrentUser must be used inside CurrentUserProvider');
+  return value;
 }

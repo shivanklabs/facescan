@@ -75,3 +75,54 @@ describe('router', () => {
     expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
   });
 });
+
+/**
+ * Purpose: answer /auth/me with the given flags and every other call with an empty list.
+ * Inputs: user flags. Outputs: the fetch mock (to count calls). Side effects: stubs fetch.
+ */
+function signedInAs(flags: { can_create_events: boolean; is_admin: boolean }) {
+  const me = {
+    user_id: 'u1',
+    auth_method: 'google',
+    has_passkey: false,
+    age_answered: true,
+    is_minor: false,
+    ...flags,
+  };
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const body = url.endsWith('/auth/me') ? me : { events: [] };
+    return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+describe('site menu', () => {
+  it('shows a guest only their own pages', async () => {
+    signedInAs({ can_create_events: false, is_admin: false });
+    renderAt('/photos');
+    const menu = await screen.findByRole('navigation', { name: 'Main menu' });
+    expect(menu).toHaveTextContent('My photos');
+    expect(menu).toHaveTextContent('Scan');
+    expect(menu).toHaveTextContent('Privacy');
+    expect(menu).not.toHaveTextContent('Studio');
+    expect(menu).not.toHaveTextContent('Health');
+  });
+
+  it('adds Studio for event owners and Health for admins', async () => {
+    signedInAs({ can_create_events: true, is_admin: true });
+    renderAt('/photos');
+    const menu = await screen.findByRole('navigation', { name: 'Main menu' });
+    expect(menu).toHaveTextContent('Studio');
+    expect(menu).toHaveTextContent('Health');
+  });
+
+  it('asks the server who is signed in only once per page view', async () => {
+    const fetchMock = signedInAs({ can_create_events: false, is_admin: false });
+    renderAt('/photos');
+    await screen.findByRole('navigation', { name: 'Main menu' });
+    const meCalls = fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/auth/me'));
+    expect(meCalls).toHaveLength(1);
+  });
+});
