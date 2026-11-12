@@ -5,6 +5,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { devSignIn, renderGoogleButton, signInConfig } from '@/features/auth/googleSignIn';
+import { MagicLinkForm } from '@/features/auth/MagicLinkForm';
 
 // Only an event invite link (from a QR code) may be a return address after sign-in; anything
 // else falls back to My photos, so a crafted link cannot send people to another site.
@@ -35,6 +36,8 @@ export default function LoginPage() {
   const [devLogin, setDevLogin] = useState(false);
   const [devEmail, setDevEmail] = useState('');
   const [devBusy, setDevBusy] = useState(false);
+  // Staff (organisers, photographers, admins) can also sign in with an email link or passkey.
+  const [staffOpen, setStaffOpen] = useState(false);
 
   useEffect(() => {
     if (loading || me || !slot.current) return;
@@ -146,6 +149,17 @@ export default function LoginPage() {
             </>
           )}
           <p className="st-fine">{t('welcome.fine')}</p>
+          {staffOpen ? (
+            <MagicLinkForm next="/studio" onSignedIn={() => window.location.assign('/studio')} />
+          ) : (
+            <button
+              type="button"
+              className="st-btn st-btn-ghost st-btn-small"
+              onClick={() => setStaffOpen(true)}
+            >
+              {t('staff.open')}
+            </button>
+          )}
         </div>
         <ol className="st-steps">
           <li>

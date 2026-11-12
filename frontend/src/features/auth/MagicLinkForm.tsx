@@ -1,4 +1,6 @@
-// MagicLinkForm: email magic link, or a passkey. `next` is where the link returns the user.
+// MagicLinkForm: staff sign-in in the site design: an email link (staff addresses only; the
+// server never says whether an address is known) or a passkey. `next` is where the email
+// link returns the person.
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/serverApi';
@@ -9,6 +11,11 @@ interface Props {
   onSignedIn: (next: string) => void;
 }
 
+/**
+ * Purpose: staff sign-in form (email link or passkey).
+ * Inputs: next path, onSignedIn callback (passkey sign-in finished).
+ * Outputs: form element. Side effects: POST /auth/magic-link; WebAuthn passkey sign-in.
+ */
 export function MagicLinkForm({ next, onSignedIn }: Props) {
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
@@ -41,34 +48,45 @@ export function MagicLinkForm({ next, onSignedIn }: Props) {
   }
 
   return (
-    <section className="card">
-      <h2>{t('signIn.title')}</h2>
+    <div className="st-card st-claim st-staff">
+      <p className="st-badge">{t('staff.title')}</p>
       {sent ? (
         <>
           <p role="status">{t('signIn.linkSent')}</p>
-          {import.meta.env.DEV && <p className="hint">{t('signIn.devHint')}</p>}
+          {import.meta.env.DEV && <p className="st-fine">{t('signIn.devHint')}</p>}
         </>
       ) : (
-        <form onSubmit={(e) => void sendLink(e)}>
-          <label htmlFor="email">{t('signIn.email')}</label>
+        <form className="st-form-row" onSubmit={(e) => void sendLink(e)}>
+          <label className="st-visually-hidden" htmlFor="staff-email">
+            {t('signIn.email')}
+          </label>
           <input
-            id="email"
+            id="staff-email"
+            className="st-input"
             type="email"
             autoComplete="email"
             required
+            placeholder={t('signIn.email')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <button type="submit" disabled={busy}>
+          <button type="submit" className="st-btn st-btn-primary" disabled={busy}>
             {t('signIn.sendLink')}
           </button>
         </form>
       )}
-      <p className="hint">{t('signIn.orPasskey')}</p>
-      <button type="button" className="secondary" onClick={() => void signInPasskey()}>
+      <button
+        type="button"
+        className="st-btn st-btn-ghost st-btn-small"
+        onClick={() => void signInPasskey()}
+      >
         {t('signIn.passkey')}
       </button>
-      {error && <p role="alert">{error}</p>}
-    </section>
+      {error && (
+        <p className="st-alert" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

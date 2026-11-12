@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
+import { registerPasskey, signInWithPasskey } from '@/lib/passkeys';
 import { api, ApiError } from '@/lib/serverApi';
 
 interface EventItem {
@@ -167,7 +168,8 @@ const POLL_MS = 4000;
  */
 export default function OwnerUploadPage() {
   const { t } = useTranslation();
-  const { me, loading } = useCurrentUser();
+  const { me, loading, reload } = useCurrentUser();
+  const [passkeyError, setPasskeyError] = useState('');
   const [events, setEvents] = useState<EventItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -337,6 +339,26 @@ export default function OwnerUploadPage() {
         <p className="st-eyebrow">{t('studio.eyebrow')}</p>
         <h1>{t('studio.title')}</h1>
       </div>
+
+      {/* An email-link session is not strong enough for staff actions: add or use a passkey. */}
+      {me?.auth_method === 'magic_link' && (
+        <div className="st-card st-claim">
+          <p>{t('staff.passkeyNeeded')}</p>
+          <button
+            type="button"
+            className="st-btn st-btn-primary"
+            onClick={() => {
+              setPasskeyError('');
+              (me.has_passkey ? signInWithPasskey() : registerPasskey().then(signInWithPasskey))
+                .then(() => reload())
+                .catch(() => setPasskeyError(t('common.error')));
+            }}
+          >
+            {me.has_passkey ? t('passkey.useIt') : t('passkey.add')}
+          </button>
+          {passkeyError && <p className="st-alert">{passkeyError}</p>}
+        </div>
+      )}
 
       {me?.can_create_events && (
         <div className="st-card">

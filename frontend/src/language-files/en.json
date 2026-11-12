@@ -428,5 +428,10 @@
     "jobFailures": "Job failures",
     "pendingClaims": "Claims waiting",
     "notMe": "\"Not me\""
+  },
+  "staff": {
+    "title": "Staff sign-in",
+    "open": "Staff sign-in (organisers, photographers)",
+    "passkeyNeeded": "You signed in with an email link. For staff work (events, uploads, claims) add a passkey on this device, or use the one you have."
   }
 }
