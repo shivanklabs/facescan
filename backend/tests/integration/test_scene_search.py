@@ -910,11 +910,12 @@ def test_ten_claims_produce_one_select_for_photos(organiser: TestClient, ctx: Ap
     assert sum(c["face_bbox"] is not None for c in resp.json()["claims"]) == 1
 
 
-def test_approving_claim_on_not_me_photo_leaves_it_as_not_me(
+def test_approving_claim_on_not_me_photo_gives_409(
     organiser: TestClient, ctx: AppContext
 ) -> None:
     """
-    Purpose: verify that approving a claim on a photo already marked not_me leaves it as not_me.
+    Purpose: approving a claim on a photo already marked not_me gives 409; the match stays
+        not_me and the claim stays pending.
     Inputs: organiser (TestClient), ctx (AppContext).
     Outputs: None.
     Side effects: tests claim submission and organiser review with pre-existing not_me match.
@@ -969,8 +970,8 @@ def test_approving_claim_on_not_me_photo_leaves_it_as_not_me(
         f"/events/{event_id}/claims/{claim_id}/review",
         json={"action": "approve"},
     )
-    assert review_resp.status_code == 200
-    assert review_resp.json()["status"] == "approved"
+    assert review_resp.status_code == 409
+    assert organiser.get(f"/events/{event_id}/claims").json()["claims"][0]["claim_id"] == claim_id
 
     # Match in DB must still be score_band == 'not_me'
     with event_transaction(ctx.sessions, UUID(event_id)) as s:
@@ -983,3 +984,4 @@ def test_approving_claim_on_not_me_photo_leaves_it_as_not_me(
         )
         assert match_row is not None
         assert match_row.score_band == "not_me"
+        assert match_row.source == "search"

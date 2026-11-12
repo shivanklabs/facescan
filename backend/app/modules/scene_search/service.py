@@ -650,7 +650,8 @@ def review_claim(
     Inputs: ctx, user (must be organiser), event_id, claim_id, req (action: "approve" | "reject").
     Outputs: ReviewClaimResponse.
     Side effects: updates Claim status and reviewed_at/by, creates Match on approve,
-                  and logs audit event.
+                  and logs audit event. Approving a photo the guest marked 'not me' raises
+                  409 and changes nothing.
     """
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("organiser",))
@@ -691,10 +692,12 @@ def review_claim(
                         released_at=now,
                     )
                 )
+            elif existing_match.score_band == "not_me":
+                # The guest said "not me": never flip it back. The rollback keeps the claim pending.
+                raise HTTPException(status_code=409, detail="photo_marked_not_me")
             else:
-                if existing_match.score_band != "not_me":
-                    existing_match.score_band = "release"
-                    existing_match.released_at = now
+                existing_match.score_band = "release"
+                existing_match.released_at = now
                 existing_match.source = "claim"
 
             record(
