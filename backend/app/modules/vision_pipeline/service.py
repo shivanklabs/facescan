@@ -47,6 +47,8 @@ def index_event(ctx: AppContext, event_id: UUID) -> IndexSummary:
     Outputs: IndexSummary (photo count, face count, weak faces count, cluster count).
     Side effects: reads originals, writes web copies, saves faces and scene embeddings,
         rebuilds clusters and calibration, updates photo/event status, writes audit row.
+        A replaced web copy is removed only after the new one is committed; if that removal
+        fails the photo stays indexed and a warning is logged.
     """
     derivatives = ctx.settings.storage_bucket_derivatives
     with event_transaction(ctx.sessions, event_id) as session:
@@ -100,9 +102,6 @@ def index_event(ctx: AppContext, event_id: UUID) -> IndexSummary:
                 if photo is not None:
                     photo.web_object_key = new_web_key
                     photo.status = "indexed"
-
-            if old_web_key is not None and old_web_key != new_web_key:
-                ctx.storage.delete_object(derivatives, event_id, old_web_key)
         except Exception as exc:
             logger.warning(
                 "photo analysis failed",
@@ -114,6 +113,16 @@ def index_event(ctx: AppContext, event_id: UUID) -> IndexSummary:
                 photo = session.get(Photo, photo_id)
                 if photo is not None:
                     photo.status = "failed"
+        else:
+            # The new web copy is committed: a failed removal of the old one must not undo it.
+            if old_web_key is not None and old_web_key != new_web_key:
+                try:
+                    ctx.storage.delete_object(derivatives, event_id, old_web_key)
+                except Exception as exc:
+                    logger.warning(
+                        "old web copy not removed",
+                        extra={"photo_id": str(photo_id), "error": type(exc).__name__},
+                    )
 
     with event_transaction(ctx.sessions, event_id) as session:
         repository.delete_clusters_and_calibration(session, event_id)

@@ -10,6 +10,7 @@ from app.modules.events.service import data_key
 from app.modules.ingest.models import Photo
 from app.modules.vision_pipeline import repository
 from app.modules.vision_pipeline.models import Face
+from app.ports.face_analyzer import AnalysedFace
 from app.worker import run_one
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -176,7 +177,7 @@ def test_incremental_indexing_failing_photo_marked_failed_others_succeed(
 
     original_analyse = ctx.analyzer.analyse_photo
 
-    def fail_on_bad(data: bytes):  # type: ignore[no-untyped-def]
+    def fail_on_bad(data: bytes) -> list[AnalysedFace]:
         if data == photo_bad:
             raise RuntimeError("simulated corrupt photo analysis failure")
         return original_analyse(data)
@@ -237,3 +238,37 @@ def test_engine_version_mismatch_triggers_full_rebuild(
             key, _ = data_key(session, ctx.keys, UUID(event_id))
             new_versions = repository.load_engine_versions(session, UUID(event_id), key)
             assert new_versions.get("auraface") == "v2_test_upgraded"
+
+
+def test_failed_removal_of_old_web_copy_keeps_photo_indexed(
+    organiser: TestClient, ctx: AppContext
+) -> None:
+    """
+    Purpose: on a full rebuild, when the old web copy cannot be removed, the photo stays
+        indexed and its new web copy stays readable.
+    Inputs: organiser client, ctx.
+    Outputs: None.
+    Side effects: runs index_event with a storage whose delete_object raises.
+    """
+    from app.modules.vision_pipeline.service import index_event
+
+    event_id, _, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
+    with event_transaction(ctx.sessions, UUID(event_id)) as session:
+        key, _ = data_key(session, ctx.keys, UUID(event_id))
+        versions = dict(repository.load_engine_versions(session, UUID(event_id), key))
+    versions["auraface"] = "v2_test_upgraded"
+
+    with (
+        patch.object(
+            type(ctx.analyzer), "engine_versions", new_callable=PropertyMock, return_value=versions
+        ),
+        patch.object(type(ctx.storage), "delete_object", side_effect=OSError("disk busy")),
+    ):
+        index_event(ctx, UUID(event_id))
+
+    with event_transaction(ctx.sessions, UUID(event_id)) as session:
+        photo = session.scalars(select(Photo).where(Photo.event_id == UUID(event_id))).one()
+        assert photo.status == "indexed"
+        assert photo.web_object_key is not None
+        web_key = photo.web_object_key
+    assert ctx.storage.get_object(ctx.settings.storage_bucket_derivatives, UUID(event_id), web_key)
