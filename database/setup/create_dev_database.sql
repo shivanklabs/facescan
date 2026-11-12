@@ -9,7 +9,7 @@
 -- password is reset to the value in .env.
 --
 -- Row-level security: the app role is NOBYPASSRLS and NOSUPERUSER, so the per-event RLS policies
--- (database/policies/rls_event_isolation.sql, FORCE ROW LEVEL SECURITY) apply to it.
+-- (database/security_rules/event_isolation.sql, FORCE ROW LEVEL SECURITY) apply to it.
 
 \set ON_ERROR_STOP on
 

@@ -9,7 +9,7 @@ biometrics or personal data. See security invariants in `/CLAUDE.md`.
 
 ## Database
 `uv run tasks db-init` (once, as the PostgreSQL superuser), then `uv run tasks db-migrate`.
-Every transaction sets its RLS scope (`app/db/event_isolation.py`); see `database/schema.md`.
+Every transaction sets its RLS scope (`app/db/event_isolation.py`); see `database/tables_guide.md`.
 
 ## Sign-in and roles
 - Email magic links (single use, 15 minutes, stored as a hash). In dev the console email adapter

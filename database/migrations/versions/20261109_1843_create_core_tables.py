@@ -4,7 +4,7 @@ Revision ID: 0001
 Revises:
 Create Date: 2026-11-09 18:43:57.315204
 
-Tables follow database/schema.md. Every event-scoped table has row-level security enabled and
+Tables follow database/tables_guide.md. Every event-scoped table has row-level security enabled and
 FORCED (so it also binds the table owner, the facescan role) with one policy keyed on
 current_setting('app.event_id'). Three narrow extra policies (see app/db/event_isolation.py):
 - events: SELECT in the 'admin' scope (list event metadata);
