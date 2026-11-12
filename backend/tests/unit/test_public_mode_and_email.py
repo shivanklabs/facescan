@@ -194,7 +194,9 @@ def test_spa_serve_path_traversal_prevention(
     monkeypatch.setattr("app.main._get_dist_dir", lambda: fake_dist)
 
     settings = Settings(env="public")
-    app = create_app(settings)
+    # Mock context: this test needs no database, and a real one needs a master key
+    # whenever FACESCAN_DB_URL is set (as in CI).
+    app = create_app(settings=settings, ctx=MagicMock())
     client = TestClient(app)
 
     # 1. Normal asset inside dist is served
