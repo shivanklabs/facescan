@@ -7,7 +7,7 @@ Library package. No web, database, storage or network code.
 | `detection/` | YuNet decoding, tiled pyramid, NMS (`geometry.py` is pure maths) |
 | `alignment/` | 5-point similarity transform to the 112x112 ArcFace template |
 | `embedding/` | AuraFace and SFace embedders, cosine similarity |
-| `quality/` | `FaceQuality` interface; `basic_quality.py` (temporary), `ofiq.py` (TODO) |
+| `quality/` | `FaceQuality` interface; `basic_quality.py` (temporary; OFIQ may replace it later) |
 | `privacy/` | irreversible face blur |
 | `pipeline.py` | detect -> align -> quality -> embed; selfie rule (exactly one face) |
 | `matching/` | quality gate, calibration, margin, bands, matcher |

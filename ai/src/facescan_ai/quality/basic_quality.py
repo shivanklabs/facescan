@@ -1,4 +1,4 @@
-"""Temporary face quality score until OFIQ is integrated (quality/ofiq.py).
+"""Temporary face quality score until OFIQ is integrated.
 
 Combines four signals, each mapped to [0, 1]:
 - size: shorter box side between min_face_px (0) and good_face_px (1)
