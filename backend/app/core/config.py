@@ -98,15 +98,15 @@ class Settings(BaseSettings):
     # Liveness adapter: silent_face (default) or empty (dev only).
     liveness_adapter: Literal["", "silent_face"] = "silent_face"
     search_front_only_threshold_offset: float = Field(default=0.03, ge=0.0, le=0.2)
-    consent_notice_path: str = "config/consent/face_search_notice.yaml"
+    consent_notice_path: str = "settings/consent/face_search_notice.yaml"
 
     worker_poll_interval_seconds: float = Field(default=2.0, gt=0, le=60)
     job_max_attempts: int = Field(default=3, ge=1, le=20)
     job_retry_base_seconds: float = Field(default=10.0, gt=0, le=3600)
     job_lock_timeout_seconds: float = Field(default=1800.0, ge=60)
 
-    config_adapters_path: str = "config/adapters.yaml"
-    config_policies_dir: str = "config/policies"
+    config_adapters_path: str = "settings/services.yaml"
+    config_policies_dir: str = "settings/country-rules"
 
 
 @lru_cache(maxsize=1)

@@ -4,7 +4,7 @@
 
 - Consent must be free, specific, informed, unconditional and unambiguous, with a clear notice.
 - Withdrawal must be as easy as giving consent.
-- Children (under 18): verifiable consent of a parent/guardian is required. Policy: `config/policies/in.yaml`.
+- Children (under 18): verifiable consent of a parent/guardian is required. Policy: `settings/country-rules/in.yaml`.
 - Data must be erased when the purpose is served or consent is withdrawn (retention in policy file).
 - Personal data breaches must be notified to the Data Protection Board and affected users.
 

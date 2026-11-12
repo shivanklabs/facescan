@@ -17,7 +17,7 @@ This checklist guides organisers, photographers, and administrators through prep
 - [ ] **Configure Event Sections**: Define time-bounded sections (e.g. "Ceremony", "Reception", "Cocktail Hour") in Event Setup for scene search filters.
 - [ ] **Set Search Window**: Configure an optional search window end date (`search_window_ends_at`). Confirm searches stop after the window while galleries and downloads remain active.
 - [ ] **Print QR Codes**: In the Event Invite section, preview the QR code and click **Download QR Code for Printing** to prepare venue signage and table cards.
-- [ ] **Age & Consent Policy**: Verify `config/policies/in.yaml` has `minors_self_search: allowed` (or `restricted` if age verification is required).
+- [ ] **Age & Consent Policy**: Verify `settings/country-rules/in.yaml` has `minors_self_search: allowed` (or `restricted` if age verification is required).
 
 ---
 

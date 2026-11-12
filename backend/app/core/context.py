@@ -55,7 +55,7 @@ def build_context(
     identity: IdentityProvider | None = None,
 ) -> AppContext:
     """
-    Purpose: build the adapters from settings (adapters.yaml defaults: local storage,
+    Purpose: build the adapters from settings (services.yaml defaults: local storage,
         env master key, Postgres queue, facescan_ai).
     Inputs: settings; optional analyzer, schema search path, email sender and identity
         provider (tests).

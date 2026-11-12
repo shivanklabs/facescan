@@ -1,4 +1,4 @@
-"""Jurisdiction and country policy loader (e.g. DPDP rules in config/policies/in.yaml)."""
+"""Jurisdiction and country policy loader (e.g. DPDP rules in settings/country-rules/in.yaml)."""
 
 from dataclasses import dataclass
 from functools import lru_cache

@@ -12,7 +12,7 @@ browser (PWA) ──HTTPS──> api (FastAPI) ──> PostgreSQL 15+ (RLS per e
 - **Modular monolith** (ADR 0001): modules identity, events, ingest, vision_pipeline, matching,
   gallery, consent, audit, admin. Two processes: api and worker.
 - **Ports and adapters** (ADR 0003): every external dependency behind `app/ports`; adapters chosen
-  via `config/adapters.yaml`.
+  via `settings/services.yaml`.
 - **Face as query** (ADR 0002): selfies search one event; login is passkeys/magic links.
 - **Encrypted in-memory search** (ADR 0004). No pgvector.
 - **Storage**: `local_filesystem` adapter by default (`var/storage/<bucket>/<event_id>/`, random

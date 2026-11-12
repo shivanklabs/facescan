@@ -100,7 +100,7 @@ Never commit `.env` or the PostgreSQL superuser password.
 
 ## Folder map
 ```
-config/      adapters.yaml (port -> adapter per default/region/plan), policies/<country>.yaml
+settings/    services.yaml (port -> adapter per default/region/plan), country-rules/<country>.yaml, consent/
 frontend/    React + TS + Vite PWA (url/, pages/, features/, components/ui/, lib/, language-files/)
 backend/     FastAPI modular monolith; two processes: api (app.main) and worker (app.worker)
   app/core/      config, logging (redaction), security, errors, rate limiting

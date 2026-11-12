@@ -37,7 +37,7 @@ SCAN_FILES = (
     "ai/requirements.txt",
     "frontend/package.json",
     MODEL_LOCK,
-    "config/adapters.yaml",
+    "settings/services.yaml",
 )
 SCAN_GLOBS = ("ai/src/**/*.py", "ai/benchmark/**/*.py", "backend/app/**/*.py")
 SKIP_DIRS = frozenset(
