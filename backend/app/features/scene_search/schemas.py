@@ -84,6 +84,9 @@ class OrganiserClaimItem(BaseModel):
     photo_url: str
     face_id: UUID | None
     face_bbox: FaceBBox | None
+    # Original photo size (face_bbox is in its pixels); None if the photo row is gone.
+    photo_width: int | None = None
+    photo_height: int | None = None
     claimant_email: str
     reason: str
     status: str

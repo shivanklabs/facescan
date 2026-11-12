@@ -8,6 +8,9 @@ import LoginPage from '@/pages/guest/LoginPage';
 import FaceScanPage from '@/pages/guest/FaceScanPage';
 import MyPhotosPage from '@/pages/guest/MyPhotosPage';
 import OwnerUploadPage from '@/pages/owner/OwnerUploadPage';
+import EventSettingsPage from '@/pages/owner/EventSettingsPage';
+import UploadStatusPage from '@/pages/owner/UploadStatusPage';
+import ClaimReviewPage from '@/pages/owner/ClaimReviewPage';
 import HomePage from '@/pages/HomePage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import ConsentPage from '@/pages/guest-old/ConsentPage';
@@ -37,6 +40,9 @@ export const routes = [
       { path: 'scan', element: <FaceScanPage /> },
       { path: 'photos', element: <MyPhotosPage /> },
       { path: 'studio', element: <OwnerUploadPage /> },
+      { path: 'studio/events/:eventId/settings', element: <EventSettingsPage /> },
+      { path: 'studio/events/:eventId/status', element: <UploadStatusPage /> },
+      { path: 'studio/events/:eventId/claims', element: <ClaimReviewPage /> },
       { path: 'privacy', element: <PrivacyPage /> },
       { path: 'find', element: <FindMorePhotosPage /> },
       { path: 'e/:eventId', element: <EventLinkPage /> },

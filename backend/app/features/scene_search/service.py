@@ -605,7 +605,7 @@ def list_event_claims(
         require_role(session, event_id, user.user_id, ("organiser",))
 
         rows = session.execute(
-            select(Claim, Photo.web_object_key, Face)
+            select(Claim, Photo.web_object_key, Photo.width, Photo.height, Face)
             .outerjoin(Photo, Claim.photo_id == Photo.id)
             .outerjoin(Face, Claim.face_id == Face.id)
             .where(Claim.event_id == event_id, Claim.status == "pending")
@@ -616,7 +616,7 @@ def list_event_claims(
         items: list[OrganiserClaimItem] = []
         guest_numbers: dict[UUID, int] = {}
 
-        for claim, web_object_key, face in rows:
+        for claim, web_object_key, photo_width, photo_height, face in rows:
             if claim.user_id not in guest_numbers:
                 guest_numbers[claim.user_id] = len(guest_numbers) + 1
             claimant_email = f"Guest #{guest_numbers[claim.user_id]}"
@@ -643,6 +643,8 @@ def list_event_claims(
                     photo_url=photo_url,
                     face_id=claim.face_id,
                     face_bbox=bbox_model,
+                    photo_width=photo_width,
+                    photo_height=photo_height,
                     claimant_email=claimant_email,
                     reason=claim.reason,
                     status=claim.status,

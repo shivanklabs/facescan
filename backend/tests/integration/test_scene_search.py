@@ -343,6 +343,7 @@ def test_organiser_claim_queue_and_approve_flow(organiser: TestClient, ctx: AppC
     assert item["reason"] == "face_check_failed"
     assert item["status"] == "pending"
     assert item["face_bbox"] is not None
+    assert item["photo_width"] > 0 and item["photo_height"] > 0
     assert "x" in item["face_bbox"]
 
     # 4. Guest cannot review claims (403)

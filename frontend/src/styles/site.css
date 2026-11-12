@@ -1079,6 +1079,51 @@ body:has(.studio) {
   aspect-ratio: 3 / 4;
 }
 
+/* ---------------------------------------------------------------- owner pages */
+
+.st-back {
+  display: inline-block;
+  margin-bottom: 14px;
+  color: var(--fs-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.st-back:hover {
+  color: var(--fs-accent);
+}
+
+.st-invite-new {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+/* QR codes need a light background and quiet zone to scan reliably, in both themes. */
+.st-qr {
+  background: #ffffff;
+  padding: 10px;
+  border-radius: 14px;
+  line-height: 0;
+}
+
+.st-code {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--fs-surface);
+  border: 1px solid var(--fs-line);
+  max-width: 100%;
+}
+
+.studio .st-input-short {
+  min-width: 0;
+  width: 90px;
+  flex: none;
+}
+
 /* ---------------------------------------------------------------- studio (admin) */
 
 .st-admin {

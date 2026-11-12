@@ -1,8 +1,11 @@
 // OwnerUploadPage (milestone 7): the owner's one admin page. Create an event, drop photos, watch
 // them become searchable. Uploads go in small batches into one collection, which is then
 // approved so the worker indexes it (no separate approval step for the owner).
+// Uploads survive bad connections: every request is retried a few times; files over 5 MB go
+// in 5 MB pieces that resume after a reload; dropping the same photos again skips the ones
+// the server already has (it recognises them by their SHA-256).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { api, ApiError } from '@/lib/serverApi';
@@ -29,6 +32,131 @@ interface UploadResult {
 }
 
 const BATCH_SIZE = 8;
+const CHUNK_BYTES = 5 * 1024 * 1024; // must match the server's CHUNK_SIZE
+const RETRIES = 3;
+
+interface ChunkInit {
+  upload_id: string;
+  collection_id: string;
+  received_chunks: number[];
+}
+
+/**
+ * Purpose: run a request again after a short wait when the network or server failed
+ *   (no connection, timeout, 429 too many requests, 5xx). Other errors fail at once.
+ * Inputs: the request, an optional wait function (tests). Outputs: the request's result.
+ * Side effects: waits 2 s, 4 s, 8 s between attempts.
+ */
+export async function withRetry<T>(
+  work: () => Promise<T>,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      const status = error instanceof ApiError ? error.status : 0;
+      const retryable = status === 0 || status === 429 || status >= 500;
+      if (!retryable || attempt >= RETRIES) throw error;
+      await wait(2000 * 2 ** attempt);
+    }
+  }
+}
+
+/**
+ * Purpose: SHA-256 of a file as lower-case hex (the server checks it after the last piece).
+ * Inputs: file. Outputs: hex string. Side effects: reads the file into memory once.
+ */
+async function sha256Hex(file: Blob): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Purpose: remember / forget the upload id of a big file so a reload can resume it.
+ * Inputs: key, value. Outputs: stored value or null. Side effects: localStorage (optional:
+ *   private windows may block it; then a reload simply starts that file again).
+ */
+function readResume(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeResume(key: string, value: string | null): void {
+  try {
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  } catch {
+    // storage blocked: resume after reload is not available, uploading still works
+  }
+}
+
+/**
+ * Purpose: upload one big file in 5 MB pieces, skipping pieces the server already has.
+ * Inputs: event id, file, collection id to join (or null). Outputs: the collection id used
+ *   and whether the server already had this photo.
+ * Side effects: upload session, chunk and complete requests; localStorage resume entry.
+ */
+async function uploadInChunks(
+  eventId: string,
+  file: File,
+  collectionId: string | null,
+): Promise<{ collectionId: string; skipped: boolean }> {
+  const sha = await sha256Hex(file);
+  const total = Math.max(1, Math.ceil(file.size / CHUNK_BYTES));
+  const resumeKey = `fs-upload:${eventId}:${sha}`;
+  let uploadId = readResume(resumeKey);
+  let received: number[] = [];
+  if (uploadId) {
+    try {
+      const state = await api<{ status: string; received_chunks: number[] }>(
+        `/events/${eventId}/uploads/${uploadId}`,
+      );
+      if (state.status === 'in_progress') received = state.received_chunks;
+      else uploadId = null;
+    } catch {
+      uploadId = null;
+    }
+  }
+  if (!uploadId) {
+    const init = await withRetry(() =>
+      api<ChunkInit>(`/events/${eventId}/uploads/init`, {
+        json: {
+          collection_id: collectionId,
+          filename: file.name.slice(0, 255),
+          byte_size: file.size,
+          total_chunks: total,
+          expected_sha256: sha,
+        },
+      }),
+    );
+    uploadId = init.upload_id;
+    received = init.received_chunks;
+    writeResume(resumeKey, uploadId);
+  }
+  const id = uploadId;
+  for (let index = 0; index < total; index += 1) {
+    if (received.includes(index)) continue;
+    const part = file.slice(index * CHUNK_BYTES, (index + 1) * CHUNK_BYTES);
+    await withRetry(() =>
+      api(`/events/${eventId}/uploads/${id}/chunk?chunk_index=${index}`, {
+        body: part,
+        headers: { 'Content-Type': 'application/octet-stream' },
+        timeoutMs: 120_000,
+      }),
+    );
+  }
+  const done = await withRetry(() =>
+    api<{ collection_id: string; already_uploaded: boolean }>(
+      `/events/${eventId}/uploads/${id}/complete`,
+      { method: 'POST', timeoutMs: 120_000 },
+    ),
+  );
+  writeResume(resumeKey, null);
+  return { collectionId: done.collection_id, skipped: done.already_uploaded };
+}
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const POLL_MS = 4000;
 
@@ -129,21 +257,40 @@ export default function OwnerUploadPage() {
     setProgress({ done: 0, total: files.length });
     let collectionId: string | null = null;
     let skipped = 0;
+    let done = 0;
+    const small = files.filter((f) => f.size <= CHUNK_BYTES);
+    const big = files.filter((f) => f.size > CHUNK_BYTES);
     try {
-      for (let i = 0; i < files.length; i += BATCH_SIZE) {
-        const form = new FormData();
-        if (collectionId) form.append('collection_id', collectionId);
-        for (const file of files.slice(i, i + BATCH_SIZE)) form.append('files', file, file.name);
-        const result = await api<UploadResult>(`/events/${activeId}/photos`, {
-          body: form,
-          timeoutMs: 300_000,
+      for (let i = 0; i < small.length; i += BATCH_SIZE) {
+        const batch = small.slice(i, i + BATCH_SIZE);
+        const joinId = collectionId;
+        const result = await withRetry(() => {
+          // A fresh form each attempt: a request body can be sent only once.
+          const form = new FormData();
+          if (joinId) form.append('collection_id', joinId);
+          for (const file of batch) form.append('files', file, file.name);
+          return api<UploadResult>(`/events/${activeId}/photos`, {
+            body: form,
+            timeoutMs: 300_000,
+          });
         });
         collectionId = result.collection_id;
         skipped += result.already_uploaded.length;
-        setProgress({ done: Math.min(i + BATCH_SIZE, files.length), total: files.length });
+        done += batch.length;
+        setProgress({ done, total: files.length });
+      }
+      for (const file of big) {
+        const result = await uploadInChunks(activeId, file, collectionId);
+        collectionId = result.collectionId;
+        if (result.skipped) skipped += 1;
+        done += 1;
+        setProgress({ done, total: files.length });
       }
       if (collectionId) {
-        await api(`/events/${activeId}/collections/${collectionId}/approve`, { method: 'POST' });
+        const approveId = collectionId;
+        await withRetry(() =>
+          api(`/events/${activeId}/collections/${approveId}/approve`, { method: 'POST' }),
+        );
       }
       setMessage(
         skipped > 0
@@ -237,6 +384,26 @@ export default function OwnerUploadPage() {
       {active && (
         <div className="st-card st-stack-gap">
           <h2>{active.name}</h2>
+          <nav className="st-form-row" aria-label={t('owner.eventLinks')}>
+            <Link
+              to={`/studio/events/${active.event_id}/settings`}
+              className="st-btn st-btn-ghost st-btn-small"
+            >
+              {t('owner.settings')}
+            </Link>
+            <Link
+              to={`/studio/events/${active.event_id}/status`}
+              className="st-btn st-btn-ghost st-btn-small"
+            >
+              {t('owner.status')}
+            </Link>
+            <Link
+              to={`/studio/events/${active.event_id}/claims`}
+              className="st-btn st-btn-ghost st-btn-small"
+            >
+              {t('owner.claims')}
+            </Link>
+          </nav>
           <label
             className={`st-drop ${over ? 'is-over' : ''}`}
             onDragOver={(event) => {

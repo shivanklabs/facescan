@@ -263,3 +263,87 @@ describe('return address after sign-in', () => {
     expect(afterSignInPath('/admin')).toBe('/photos');
   });
 });
+
+describe('owner pages', () => {
+  it('retries network and server errors, but not a file that is too large', async () => {
+    const { withRetry } = await import('@/pages/owner/OwnerUploadPage');
+    const { ApiError } = await import('@/lib/serverApi');
+    const noWait = () => Promise.resolve();
+    let calls = 0;
+    const flaky = () => {
+      calls += 1;
+      return calls < 3 ? Promise.reject(new ApiError(503, 'busy')) : Promise.resolve('ok');
+    };
+    await expect(withRetry(flaky, noWait)).resolves.toBe('ok');
+    expect(calls).toBe(3);
+
+    let tooLargeCalls = 0;
+    const tooLarge = () => {
+      tooLargeCalls += 1;
+      return Promise.reject(new ApiError(413, 'too large'));
+    };
+    await expect(withRetry(tooLarge, noWait)).rejects.toThrow();
+    expect(tooLargeCalls).toBe(1);
+  });
+
+  it('places the claimed face box in percent of the original photo', async () => {
+    const { boxStyle } = await import('@/pages/owner/ClaimReviewPage');
+    const style = boxStyle({
+      claim_id: 'c',
+      photo_id: 'p',
+      photo_url: '',
+      face_bbox: { x: 100, y: 50, width: 200, height: 100 },
+      photo_width: 1000,
+      photo_height: 500,
+      claimant_email: 'Guest #1',
+      reason: 'face_check_failed',
+      created_at: '2026-11-12T10:00:00Z',
+    });
+    expect(style).toEqual({ left: '10%', top: '10%', width: '20%', height: '20%' });
+  });
+
+  it('shows every settings section to an event owner', async () => {
+    signedInAs(
+      { can_create_events: true, is_admin: false },
+      {
+        '/events/ev1': { event_id: 'ev1', name: 'Sharma Wedding', search_window_ends_at: null },
+        '/invites': { invites: [] },
+        '/sections': { sections: [] },
+        '/cameras': { cameras: [] },
+      },
+    );
+    renderAt('/studio/events/ev1/settings');
+    expect(await screen.findByRole('heading', { name: 'Sharma Wedding' })).toBeInTheDocument();
+    for (const title of [
+      'Invite link and QR code',
+      'Parts of the event',
+      'Search window',
+      'Team',
+      'Camera clocks',
+    ]) {
+      expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
+    }
+  });
+
+  it('lists failed photos with a retry button on the upload status page', async () => {
+    signedInAs(
+      { can_create_events: true, is_admin: false },
+      {
+        '/processing-status': {
+          quarantined: 0,
+          approved: 1,
+          indexed: 8,
+          failed: 1,
+          near_duplicates: 2,
+          failed_photos: [
+            { id: 'p9', filename: 'IMG_0009.JPG', created_at: '2026-11-12T10:00:00Z' },
+          ],
+        },
+      },
+    );
+    renderAt('/studio/events/ev1/status');
+    expect(await screen.findByText('IMG_0009.JPG')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByText(/2 photos look almost the same/)).toBeInTheDocument();
+  });
+});
