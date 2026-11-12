@@ -44,6 +44,7 @@ def _response(view: service.EventView) -> EventResponse:
         created_at=view.created_at,
         indexed_at=view.indexed_at,
         roles=list(view.roles),
+        search_window_ends_at=view.search_window_ends_at,
     )
 
 

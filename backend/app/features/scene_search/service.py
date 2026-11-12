@@ -30,7 +30,7 @@ from app.core.errors import (
     PayloadTooLargeError,
     UnprocessableError,
 )
-from app.core.login_sessions import CurrentUser, is_anonymous_email, open_email
+from app.core.login_sessions import CurrentUser
 from app.core.request_checks import require_role
 from app.core.services_setup import AppContext, ContextConfigError
 from app.core.settings import Settings
@@ -42,7 +42,6 @@ from app.features.consent.service import (
 from app.features.events.service import data_key
 from app.features.face_matching.models import CannotLink, Match
 from app.features.gallery.models import Claim
-from app.features.login.models import User
 from app.features.photo_processing import repository as vision_repo
 from app.features.photo_processing.models import Face
 from app.features.photo_upload.models import Photo
@@ -597,16 +596,17 @@ def list_event_claims(
     """
     Purpose: list all pending claims for an event for the organiser.
     Inputs: ctx, user (must be organiser), event_id.
-    Outputs: OrganiserClaimQueueResponse with photos, bounding boxes, decrypted email, and reason.
-    Side effects: none (one joined query for claims, photos, users and faces).
+    Outputs: OrganiserClaimQueueResponse with photos, bounding boxes, a per-event label
+        ("Guest #1", "Guest #2", ...) and reason. Organisers never see a guest's email (Google
+        sign-in included), so emails are not read at all.
+    Side effects: none (one joined query for claims, photos and faces).
     """
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("organiser",))
 
         rows = session.execute(
-            select(Claim, Photo.web_object_key, User.email_encrypted, Face)
+            select(Claim, Photo.web_object_key, Face)
             .outerjoin(Photo, Claim.photo_id == Photo.id)
-            .outerjoin(User, Claim.user_id == User.id)
             .outerjoin(Face, Claim.face_id == Face.id)
             .where(Claim.event_id == event_id, Claim.status == "pending")
             .order_by(Claim.created_at.asc())
@@ -616,14 +616,10 @@ def list_event_claims(
         items: list[OrganiserClaimItem] = []
         guest_numbers: dict[UUID, int] = {}
 
-        for claim, web_object_key, email_encrypted, face in rows:
-            raw_email = open_email(ctx.keys, email_encrypted) if email_encrypted else ""
-            if raw_email and is_anonymous_email(raw_email):
-                if claim.user_id not in guest_numbers:
-                    guest_numbers[claim.user_id] = len(guest_numbers) + 1
-                claimant_email = f"Guest #{guest_numbers[claim.user_id]}"
-            else:
-                claimant_email = raw_email or "unknown"
+        for claim, web_object_key, face in rows:
+            if claim.user_id not in guest_numbers:
+                guest_numbers[claim.user_id] = len(guest_numbers) + 1
+            claimant_email = f"Guest #{guest_numbers[claim.user_id]}"
 
             if web_object_key:
                 signed = ctx.storage.create_signed_download_url(bucket, event_id, web_object_key)

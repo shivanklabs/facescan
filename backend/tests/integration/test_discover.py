@@ -1,5 +1,7 @@
 """Milestone 7: Google sign-in, one scan across all events, and all of my photos."""
 
+import base64
+
 import pytest
 from app.core.services_setup import AppContext
 from app.interfaces.capabilities import Capabilities
@@ -120,6 +122,40 @@ def test_a_new_scan_never_undoes_a_withdrawal(
     assert scan(guest, 1).json()["events_searched"] == 2
     names = {e["event_name"] for e in guest.get("/discover/photos").json()["events"]}
     assert names == {"Event A", "Event B"}
+
+
+def test_organiser_never_sees_a_google_guests_email_on_claims(
+    ctx: AppContext, organiser: TestClient, events: tuple[list[str], list[str]]
+) -> None:
+    """
+    Purpose: a Google-signed-in guest's claim shows up as "Guest #1" for the organiser; the
+        guest's email address appears nowhere in the claim queue.
+    """
+    (event_a, _), _ = events
+    email = "real.person@example.test"
+    guest = google_client(ctx, email)
+    assert scan(guest, 3).status_code == 200  # becomes a guest of every event
+    candidates = guest.post(
+        f"/events/{event_a}/scene-search", json={"query": "people at the event"}
+    ).json()["candidates"]
+    candidate = next(c for c in candidates if c["faces"])
+    wrong_face = base64.b64encode(make_png(9, 1, (40, 30))).decode()
+    claim = guest.post(
+        f"/events/{event_a}/scene-search/claims",
+        json={
+            "photo_id": candidate["photo_id"],
+            "face_id": candidate["faces"][0]["face_id"],
+            "frames": [wrong_face, wrong_face, wrong_face],
+            "front_only": False,
+        },
+    )
+    assert claim.status_code == 200, claim.text
+    assert claim.json()["status"] == "queued_for_review"
+
+    queue = organiser.get(f"/events/{event_a}/claims")
+    assert queue.status_code == 200
+    assert queue.json()["claims"][0]["claimant_email"] == "Guest #1"
+    assert email not in queue.text
 
 
 def test_person_without_photos_gets_nothing(

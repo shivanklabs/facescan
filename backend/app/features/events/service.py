@@ -62,6 +62,7 @@ class EventView:
     created_at: datetime
     indexed_at: datetime | None
     roles: tuple[str, ...] = ()
+    search_window_ends_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +79,14 @@ class InviteView:
 def _view(event: Event, roles: tuple[str, ...] = ()) -> EventView:
     """Purpose: ORM row -> view."""
     return EventView(
-        event.id, event.name, event.country, event.status, event.created_at, event.indexed_at, roles
+        event.id,
+        event.name,
+        event.country,
+        event.status,
+        event.created_at,
+        event.indexed_at,
+        roles,
+        event.search_window_ends_at,
     )
 
 

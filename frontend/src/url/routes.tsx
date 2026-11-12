@@ -7,7 +7,7 @@ import { SiteLayout } from '@/components/site/SiteLayout';
 import LoginPage from '@/pages/guest/LoginPage';
 import FaceScanPage from '@/pages/guest/FaceScanPage';
 import MyPhotosPage from '@/pages/guest/MyPhotosPage';
-import OwnerUploadPage from '@/pages/guest/OwnerUploadPage';
+import OwnerUploadPage from '@/pages/owner/OwnerUploadPage';
 import HomePage from '@/pages/HomePage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import ConsentPage from '@/pages/guest-old/ConsentPage';

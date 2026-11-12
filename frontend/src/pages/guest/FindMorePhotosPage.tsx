@@ -16,7 +16,7 @@ interface ConsentRecord {
 }
 
 interface Section {
-  section_id: string;
+  id: string;
   name: string;
 }
 
@@ -293,7 +293,7 @@ export default function FindMorePhotosPage() {
               >
                 <option value="">{t('findMore.anySection')}</option>
                 {sections.map((s) => (
-                  <option key={s.section_id} value={s.section_id}>
+                  <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
                 ))}

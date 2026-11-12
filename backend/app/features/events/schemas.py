@@ -25,6 +25,7 @@ class EventResponse(BaseModel):
     created_at: datetime
     indexed_at: datetime | None
     roles: list[str]
+    search_window_ends_at: datetime | None = None
 
 
 class EventDetailResponse(EventResponse):
