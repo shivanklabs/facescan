@@ -17,13 +17,16 @@ export class LiveBlinkUnavailableError extends Error {}
 /** No blink was seen in time. */
 export class BlinkTimeoutError extends Error {}
 
-const EYES_OPEN_MAX = 0.3; // blink blendshape score below this: eyes open
-const EYES_CLOSED_MIN = 0.5; // both eyes at or above this: eyes closed
+const EYES_OPEN_MAX = 0.3; // default "eyes open" limit (raised for people who rest higher)
+const EYES_CLOSED_MIN = 0.5; // lowest "eyes closed" limit
+const OPEN_MARGIN = 0.15; // open limit = this person's resting score + margin
+const CLOSED_MARGIN = 0.3; // closed limit = this person's resting score + margin
+const OPEN_LIMIT_CAP = 0.45; // never call eyes "open" above this
+const CLOSED_LIMIT_CAP = 0.7; // never ask for more than this to call eyes "closed"
 const STEADY_MS = 600; // one open-eyed face for this long before the first frame
 const FIND_FACE_TIMEOUT_MS = 12_000;
 const BLINK_TIMEOUT_MS = 8_000;
 const REOPEN_SETTLE_MS = 350;
-const MAX_CLOSED_FRAMES = 2;
 const LOAD_TIMEOUT_MS = 20_000;
 
 let landmarker: Promise<FaceLandmarker> | null = null;
@@ -57,27 +60,58 @@ export function loadLandmarker(): Promise<FaceLandmarker> {
   return landmarker;
 }
 
-interface EyeReading {
+export interface EyeReading {
   faces: number;
   left: number;
   right: number;
 }
 
+export interface EyeLimits {
+  open: number;
+  closed: number;
+}
+
+/** Lenient limits used before this person's resting scores are known. */
+const FIRST_LOOK_LIMITS: EyeLimits = { open: OPEN_LIMIT_CAP, closed: EYES_CLOSED_MIN };
+
 /**
- * Purpose: read face count and the two eye-blink scores for the current video frame.
- * Inputs: landmarker, playing video. Outputs: EyeReading (scores 0 open .. 1 closed).
+ * Purpose: work out this person's "open" and "closed" eye limits from their resting scores, so
+ *   people whose open eyes already score high (glasses, looking down at the phone) still pass.
+ * Inputs: blink scores (0 open .. 1 closed) read while the person looked straight, eyes open.
+ * Outputs: EyeLimits; the defaults when no scores are given.
  * Side effects: none.
  */
-function readEyes(model: FaceLandmarker, video: HTMLVideoElement): EyeReading {
-  const result = model.detectForVideo(video, performance.now());
-  const faces = result.faceBlendshapes.length;
-  const categories = result.faceBlendshapes[0]?.categories ?? [];
-  const score = (name: string) => categories.find((c) => c.categoryName === name)?.score ?? 0;
-  return { faces, left: score('eyeBlinkLeft'), right: score('eyeBlinkRight') };
+export function eyeLimits(restingScores: number[]): EyeLimits {
+  if (restingScores.length === 0) return { open: EYES_OPEN_MAX, closed: EYES_CLOSED_MIN };
+  const sorted = [...restingScores].sort((a, b) => a - b);
+  const resting = sorted[Math.floor(sorted.length / 2)] ?? 0;
+  return {
+    open: Math.min(OPEN_LIMIT_CAP, Math.max(EYES_OPEN_MAX, resting + OPEN_MARGIN)),
+    closed: Math.min(CLOSED_LIMIT_CAP, Math.max(EYES_CLOSED_MIN, resting + CLOSED_MARGIN)),
+  };
 }
 
 /**
- * Purpose: copy the current video frame into a canvas (fast; JPEG encoding happens later).
+ * Purpose: say whether both eyes are open for one reading.
+ * Inputs: EyeReading, EyeLimits. Outputs: boolean. Side effects: none.
+ */
+export function eyesOpen(eyes: EyeReading, limits: EyeLimits): boolean {
+  return eyes.left < limits.open && eyes.right < limits.open;
+}
+
+/**
+ * Purpose: say whether both eyes are closed for one reading.
+ * Inputs: EyeReading, EyeLimits. Outputs: boolean. Side effects: none.
+ */
+export function eyesClosed(eyes: EyeReading, limits: EyeLimits): boolean {
+  return eyes.left >= limits.closed && eyes.right >= limits.closed;
+}
+
+/**
+ * Purpose: copy the current video frame into a canvas. The eyes are then read from this same
+ *   canvas, so the frame sent to the server is exactly the frame that was judged. (Before, the
+ *   eyes were read from the video and a slightly later frame was sent, often with the eyes
+ *   already opening, so the server refused the blink.)
  * Inputs: playing video. Outputs: canvas. Side effects: none (memory only).
  */
 function grab(video: HTMLVideoElement): HTMLCanvasElement {
@@ -88,6 +122,19 @@ function grab(video: HTMLVideoElement): HTMLCanvasElement {
   if (!context) throw new Error('canvas not available');
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
   return canvas;
+}
+
+/**
+ * Purpose: read face count and the two eye-blink scores for one grabbed frame.
+ * Inputs: landmarker, canvas from grab(). Outputs: EyeReading (scores 0 open .. 1 closed).
+ * Side effects: none.
+ */
+function readEyes(model: FaceLandmarker, frame: HTMLCanvasElement): EyeReading {
+  const result = model.detectForVideo(frame, performance.now());
+  const faces = result.faceBlendshapes.length;
+  const categories = result.faceBlendshapes[0]?.categories ?? [];
+  const score = (name: string) => categories.find((c) => c.categoryName === name)?.score ?? 0;
+  return { faces, left: score('eyeBlinkLeft'), right: score('eyeBlinkRight') };
 }
 
 /**
@@ -107,9 +154,11 @@ function toJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
 const nextFrame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
 
 /**
- * Purpose: capture [open-eyed front, 1-2 closed-eye frames, open-eyed front] by watching the
- *   eyes live. Inputs: playing video, step callback, AbortSignal to stop when leaving the page.
- * Outputs: JPEG blobs (memory only).
+ * Purpose: capture [front, open just before the blink, most-closed blink frame, open just
+ *   after, front] by watching the eyes live. One closed frame in five keeps the same
+ *   open/closed mix as the quick burst, which the server's anti-spoofing average accepts.
+ * Inputs: playing video, step callback, AbortSignal to stop when leaving the page.
+ * Outputs: 5 JPEG blobs (memory only).
  * Raises LiveBlinkUnavailableError (no model), BlinkTimeoutError (no face or no blink in time).
  * Side effects: calls onStep; runs the on-device model on video frames.
  */
@@ -123,42 +172,58 @@ export async function captureWithLiveBlink(
     if (signal?.aborted) throw new BlinkTimeoutError('aborted');
   };
 
-  // 1. One face, eyes open, held steady -> front frame.
+  // 1. One face, eyes open, held steady -> front frame. The resting eye scores seen here set
+  //    this person's limits for the blink.
   onStep('findFace');
   let steadySince = 0;
+  let resting: number[] = [];
   let front: HTMLCanvasElement | null = null;
   const findDeadline = performance.now() + FIND_FACE_TIMEOUT_MS;
   while (!front) {
     stopIfAborted();
     if (performance.now() > findDeadline) throw new BlinkTimeoutError('no_face');
     const now = await nextFrame();
-    const eyes = readEyes(model, video);
-    const ready = eyes.faces === 1 && eyes.left < EYES_OPEN_MAX && eyes.right < EYES_OPEN_MAX;
-    if (!ready) {
+    const frame = grab(video);
+    const eyes = readEyes(model, frame);
+    if (eyes.faces !== 1 || !eyesOpen(eyes, FIRST_LOOK_LIMITS)) {
       steadySince = 0;
+      resting = [];
       onStep('findFace');
       continue;
     }
     onStep('lookStraight');
+    resting.push(eyes.left, eyes.right);
     if (steadySince === 0) steadySince = now;
-    if (now - steadySince >= STEADY_MS) front = grab(video);
+    if (now - steadySince >= STEADY_MS) front = frame;
   }
+  const limits = eyeLimits(resting);
 
-  // 2. Blink: take the frames where both eyes are closed.
+  // 2. Blink: keep the last open frame before it, the most-closed frame during it, and the
+  //    first open frame after it.
   onStep('blink');
-  const closed: HTMLCanvasElement[] = [];
+  let lastOpen: HTMLCanvasElement = front;
+  let beforeBlink: HTMLCanvasElement = front;
+  let closedFrame: HTMLCanvasElement | null = null;
+  let closedScore = 0;
+  let afterBlink: HTMLCanvasElement | null = null;
   const blinkDeadline = performance.now() + BLINK_TIMEOUT_MS;
-  let reopened = false;
-  while (!reopened) {
+  while (!closedFrame || !afterBlink) {
     stopIfAborted();
     if (performance.now() > blinkDeadline) throw new BlinkTimeoutError('no_blink');
     await nextFrame();
-    const eyes = readEyes(model, video);
+    const frame = grab(video);
+    const eyes = readEyes(model, frame);
     if (eyes.faces !== 1) continue;
-    const isClosed = eyes.left >= EYES_CLOSED_MIN && eyes.right >= EYES_CLOSED_MIN;
-    if (isClosed && closed.length < MAX_CLOSED_FRAMES) closed.push(grab(video));
-    if (closed.length > 0 && eyes.left < EYES_OPEN_MAX && eyes.right < EYES_OPEN_MAX) {
-      reopened = true;
+    if (eyesClosed(eyes, limits)) {
+      if (!closedFrame) beforeBlink = lastOpen;
+      const score = Math.min(eyes.left, eyes.right);
+      if (score > closedScore) {
+        closedScore = score;
+        closedFrame = frame;
+      }
+    } else if (eyesOpen(eyes, limits)) {
+      if (closedFrame) afterBlink = frame;
+      else lastOpen = frame;
     }
   }
 
@@ -167,5 +232,5 @@ export async function captureWithLiveBlink(
   await new Promise((resolve) => setTimeout(resolve, REOPEN_SETTLE_MS));
   stopIfAborted();
   const back = grab(video);
-  return Promise.all([front, ...closed, back].map(toJpeg));
+  return Promise.all([front, beforeBlink, closedFrame, afterBlink, back].map(toJpeg));
 }
