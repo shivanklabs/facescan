@@ -3,10 +3,12 @@
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { EditMode } from '@/components/site/EditMode';
 import { HelpChat } from '@/components/site/HelpChat';
 import { useCurrentUser, type Me } from '@/features/auth/useCurrentUser';
 import { api } from '@/lib/serverApi';
 import '@/styles/site.css';
+import '@/styles/site-edits.css';
 
 interface MenuItem {
   to: string;
@@ -170,6 +172,7 @@ export function SiteLayout() {
         <Outlet />
       </main>
       <HelpChat />
+      {import.meta.env.DEV && <EditMode />}
     </div>
   );
 }
