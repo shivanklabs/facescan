@@ -23,6 +23,7 @@ export interface NewAccount {
   name: string;
   email: string;
   account_type: AccountType;
+  accept_privacy: true;
 }
 
 /**

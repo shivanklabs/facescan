@@ -1585,6 +1585,12 @@ body:has(.st-claim-camera) .st-help-panel {
   display: none;
 }
 
+/* Small checkbox / policy line on Create account. */
+.st-check-small {
+  font-size: 0.82rem;
+  color: var(--fs-muted);
+}
+
 /* ---------------------------------------------------------------- Edit mode (dev only) */
 
 .st-edit-toggle {

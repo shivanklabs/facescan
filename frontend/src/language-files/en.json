@@ -405,7 +405,10 @@
     "navButton": "Log in",
     "pending": "Your {{role}} account is waiting for the admin's approval. You can use FaceScan as a guest meanwhile.",
     "rejected": "Your {{role}} request was not approved. You can still use FaceScan as a guest.",
-    "suspended": "This account is suspended. Please contact the FaceScan admin."
+    "suspended": "This account is suspended. Please contact the FaceScan admin.",
+    "privacyAgree": "I agree to FaceScan's privacy policy and how my data is used.",
+    "privacyRead": "Read the privacy policy",
+    "privacyText": "FaceScan keeps your name, your email (encrypted) and your passkey's public key. Your face scan is checked live and never stored; FaceScan keeps only which event photos are yours, and only you can see them. You can turn off any event or delete your account at any time on the Privacy page."
   },
   "accounts": {
     "title": "Accounts",

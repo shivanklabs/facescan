@@ -364,7 +364,12 @@ def sign_up_with_passkey(
             user_id, next_path = user.id, home_path(user)
     except IntegrityError as exc:
         raise EmailTakenError(email) from exc
-    audit_global(ctx, f"user:{user_id}", "auth.signed_up", {"method": "passkey", "role": role})
+    audit_global(
+        ctx,
+        f"user:{user_id}",
+        "auth.signed_up",
+        {"method": "passkey", "role": role, "privacy_accepted": True},
+    )
     return SignInResult(token, user_id, next_path, True)
 
 

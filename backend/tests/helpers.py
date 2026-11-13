@@ -172,7 +172,12 @@ def sign_up(
     final response; a unique email is made up when none is given.
     """
     address = email or f"person-{secrets.token_hex(6)}@example.test"
-    body = {"name": name, "email": address, "account_type": account_type}
+    body = {
+        "name": name,
+        "email": address,
+        "account_type": account_type,
+        "accept_privacy": True,
+    }
     options = client.post("/auth/register/options", json=body)
     if options.status_code != 200:
         return options

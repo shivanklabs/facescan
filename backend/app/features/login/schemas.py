@@ -32,6 +32,8 @@ class RegisterOptionsRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80, pattern=NAME_PATTERN)
     email: str = Field(min_length=3, max_length=254)
     account_type: Literal["guest", "organiser", "photographer"]
+    # The person ticked "I agree to the privacy policy and data use"; nothing else is accepted.
+    accept_privacy: Literal[True]
 
 
 class RegisterRequest(RegisterOptionsRequest):

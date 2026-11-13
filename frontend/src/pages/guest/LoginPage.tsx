@@ -88,6 +88,7 @@ export default function LoginPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [staffOpen, setStaffOpen] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const supported = passkeysSupported();
@@ -174,6 +175,7 @@ export default function LoginPage() {
                     name: name.trim(),
                     email: email.trim(),
                     account_type: accountType,
+                    accept_privacy: true,
                   }),
                 );
               }}
@@ -221,10 +223,23 @@ export default function LoginPage() {
               <p className="st-fine">
                 {accountType === 'guest' ? t('welcome.passkeyHint') : t('account.staffHint')}
               </p>
+              <label className="st-check st-check-small">
+                <input
+                  type="checkbox"
+                  required
+                  checked={agreed}
+                  onChange={(event) => setAgreed(event.target.checked)}
+                />
+                <span>{t('account.privacyAgree')}</span>
+              </label>
+              <details className="st-details st-check-small">
+                <summary>{t('account.privacyRead')}</summary>
+                <p>{t('account.privacyText')}</p>
+              </details>
               <button
                 type="submit"
                 className="st-btn st-btn-primary"
-                disabled={busy || !name.trim() || !email.trim()}
+                disabled={busy || !name.trim() || !email.trim() || !agreed}
               >
                 {t('account.create')}
               </button>
