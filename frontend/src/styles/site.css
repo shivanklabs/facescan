@@ -333,19 +333,23 @@ html::-webkit-scrollbar {
 .st-landing-card {
   position: sticky;
   top: 20px;
-  padding-top: 12px;
 }
 
+/* Rows of 64px; each tile spans 2 / 3 / 4 rows and stands in its own column (--col), and
+   every column adds up to the same height, so the wall is level at the top and bottom. */
 .st-wall {
-  columns: 3 200px;
-  column-gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 64px;
+  grid-auto-flow: dense;
+  gap: 14px;
 }
 
 .st-moment {
   position: relative;
-  break-inside: avoid;
-  margin: 0 0 14px;
-  height: 230px;
+  grid-column: var(--col);
+  grid-row: span 3;
+  margin: 0;
   border-radius: 18px;
   overflow: hidden;
   /* An out-of-focus event photo: warm light spots over the moment's colours. */
@@ -361,11 +365,11 @@ html::-webkit-scrollbar {
 }
 
 .st-moment.is-s {
-  height: 160px;
+  grid-row: span 2;
 }
 
 .st-moment.is-l {
-  height: 310px;
+  grid-row: span 4;
 }
 
 /* Board tiles in 3D: they lean towards the mouse (--rx / --ry from SiteLayout), lift and
@@ -1679,21 +1683,13 @@ body:has(.st-claim-camera) .st-help-panel {
   }
 
   .st-wall {
-    columns: 2;
-    column-gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: 52px;
+    gap: 10px;
   }
 
   .st-moment {
-    height: 170px;
-    margin-bottom: 10px;
-  }
-
-  .st-moment.is-s {
-    height: 120px;
-  }
-
-  .st-moment.is-l {
-    height: 230px;
+    grid-column: var(--pcol);
   }
 
   /* Narrow phones: four choices (admin filters) in two rows. */

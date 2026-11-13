@@ -33,20 +33,33 @@ export function afterSignInPath(next: string | null): string {
 
 const ACCOUNT_TYPES: AccountType[] = ['guest', 'organiser', 'photographer'];
 
-/** The moments wall on the front page: colour tiles until real event photos are added. */
-const MOMENTS: { key: string; size: 's' | 'm' | 'l'; a: string; b: string; found?: boolean }[] = [
-  { key: 'haldi', size: 'l', a: '#f6c445', b: '#d97a12', found: true },
-  { key: 'mehendi', size: 'm', a: '#7e9b4c', b: '#2f4a25' },
-  { key: 'sangeet', size: 's', a: '#7a3f9d', b: '#251238' },
-  { key: 'baraat', size: 'm', a: '#e4572e', b: '#7a1d14' },
-  { key: 'varmala', size: 'l', a: '#f1a7b5', b: '#b23a5b', found: true },
-  { key: 'pheras', size: 's', a: '#ff9a3c', b: '#8c2d0c' },
-  { key: 'family', size: 'm', a: '#c9a27c', b: '#5b3a24' },
-  { key: 'dance', size: 'l', a: '#3e5ba9', b: '#140f2e', found: true },
-  { key: 'cake', size: 's', a: '#f3d9c4', b: '#c0896a' },
-  { key: 'reception', size: 'm', a: '#1f6f78', b: '#0b2730' },
-  { key: 'candid', size: 'm', a: '#e8b04f', b: '#6b3b10' },
-  { key: 'bidaai', size: 's', a: '#b7414b', b: '#3d0f16' },
+/**
+ * The moments wall on the front page: colour tiles until real event photos are added.
+ * Heights are counted in grid rows (s = 2, m = 3, l = 4) and every column adds up to the same
+ * total (3 columns x 12 rows on wide screens, 2 x 18 on phones), so the columns start and end
+ * on one line. col / phoneCol say which column a tile stands in.
+ */
+const MOMENTS: {
+  key: string;
+  size: 's' | 'm' | 'l';
+  col: 1 | 2 | 3;
+  phoneCol: 1 | 2;
+  a: string;
+  b: string;
+  found?: boolean;
+}[] = [
+  { key: 'haldi', size: 'l', col: 1, phoneCol: 1, a: '#f6c445', b: '#d97a12', found: true },
+  { key: 'baraat', size: 'm', col: 2, phoneCol: 1, a: '#e4572e', b: '#7a1d14' },
+  { key: 'cake', size: 's', col: 3, phoneCol: 2, a: '#f3d9c4', b: '#c0896a' },
+  { key: 'mehendi', size: 'm', col: 1, phoneCol: 1, a: '#7e9b4c', b: '#2f4a25' },
+  { key: 'varmala', size: 'l', col: 2, phoneCol: 1, a: '#f1a7b5', b: '#b23a5b', found: true },
+  { key: 'dance', size: 'l', col: 3, phoneCol: 2, a: '#3e5ba9', b: '#140f2e', found: true },
+  { key: 'sangeet', size: 's', col: 1, phoneCol: 1, a: '#7a3f9d', b: '#251238' },
+  { key: 'pheras', size: 's', col: 2, phoneCol: 1, a: '#ff9a3c', b: '#8c2d0c' },
+  { key: 'reception', size: 'm', col: 3, phoneCol: 2, a: '#1f6f78', b: '#0b2730' },
+  { key: 'bidaai', size: 'm', col: 1, phoneCol: 2, a: '#b7414b', b: '#3d0f16' },
+  { key: 'family', size: 'm', col: 2, phoneCol: 2, a: '#c9a27c', b: '#5b3a24' },
+  { key: 'candid', size: 'm', col: 3, phoneCol: 2, a: '#e8b04f', b: '#6b3b10' },
 ];
 
 /**
@@ -255,7 +268,15 @@ export default function LoginPage() {
           <figure
             key={m.key}
             className={`st-moment is-${m.size} ${m.found ? 'is-found' : ''}`}
-            style={{ '--a': m.a, '--b': m.b, animationDelay: `${i * 50}ms` } as CSSProperties}
+            style={
+              {
+                '--a': m.a,
+                '--b': m.b,
+                '--col': m.col,
+                '--pcol': m.phoneCol,
+                animationDelay: `${i * 50}ms`,
+              } as CSSProperties
+            }
           >
             {m.found && <span className="st-moment-found">{t('welcome.found')}</span>}
             <figcaption>{t(`welcome.moment.${m.key}`)}</figcaption>
