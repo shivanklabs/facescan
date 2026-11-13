@@ -1423,9 +1423,28 @@ body:has(.studio) {
     align-content: start;
   }
 
-  /* Phone: the camera takes about half the screen so the buttons stay in view. */
+  /* Phone: before the camera opens, the empty black frame only pushed the consent and the
+     Open camera button off the screen, so it is hidden until the camera is on. */
+  .st-scan:not(.is-camera) .st-viewfinder {
+    display: none;
+  }
+
+  /* Short phones: drop the small label and tighten the tips so Open camera stays in view. */
+  @media (max-height: 700px) {
+    .st-scan .st-eyebrow {
+      display: none;
+    }
+
+    .st-scan .st-tips {
+      margin: 6px 0 10px;
+      font-size: 0.85rem;
+    }
+  }
+
+  /* Phone: the camera takes well under half the screen so Start scan stays in view even
+     when the browser bars take space (small phones ~600px of visible height). */
   .st-viewfinder {
-    height: min(46dvh, 120vw);
+    height: min(40dvh, 110vw);
     width: auto;
     max-width: 100%;
     aspect-ratio: 3 / 4;
