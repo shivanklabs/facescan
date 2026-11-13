@@ -236,7 +236,7 @@ export default function FaceScanPage() {
           `&method=${method === 'look' ? 'look' : 'blink'}`,
         { body, headers: { 'Content-Type': FRAMES_CONTENT_TYPE }, timeoutMs: 180_000 },
       );
-      const target = focusEvent ? `/photos?event=${encodeURIComponent(focusEvent)}` : '/photos';
+      const target = focusEvent ? `/photos/${encodeURIComponent(focusEvent)}` : '/photos';
       navigate(target, { replace: true, state: { scanned: true, found: result.released } });
     } catch (error) {
       setMessage(messageFor(t, error));

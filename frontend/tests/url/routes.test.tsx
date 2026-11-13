@@ -453,3 +453,63 @@ describe('photographers in Studio', () => {
     expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
   });
 });
+
+const photosResponse = {
+  events: [
+    {
+      event_id: 'ev1',
+      event_name: 'Sharma Wedding',
+      photos: [
+        { photo_id: 'p1', url: '/x/1.jpg', expires_at: '', download_path: '/d/1' },
+        { photo_id: 'p2', url: '/x/2.jpg', expires_at: '', download_path: '/d/2' },
+      ],
+    },
+    { event_id: 'ev2', event_name: 'Empty Event', photos: [] },
+  ],
+};
+
+describe('events dashboard and 3D gallery', () => {
+  it('shows one card per event I was found in, linking to its gallery', async () => {
+    signedInAs(
+      { can_create_events: false, is_admin: false },
+      { '/discover/photos': photosResponse },
+    );
+    renderAt('/photos');
+    const card = await screen.findByRole('link', { name: /Sharma Wedding/ });
+    expect(card.getAttribute('href')).toBe('/photos/ev1');
+    expect(card).toHaveTextContent('2');
+    expect(screen.queryByText('Empty Event')).toBeNull();
+  });
+
+  it('falls back to a light grid when the device cannot do 3D', async () => {
+    signedInAs(
+      { can_create_events: false, is_admin: false },
+      { '/discover/photos': photosResponse },
+    );
+    renderAt('/photos/ev1');
+    expect(await screen.findByRole('heading', { name: 'Sharma Wedding' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Open photo/ })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: '3D view' })).toBeNull(); // no WebGL here
+  });
+
+  it('sends older ?event= links to the event gallery', async () => {
+    signedInAs(
+      { can_create_events: false, is_admin: false },
+      { '/discover/photos': photosResponse },
+    );
+    renderAt('/photos?event=ev1');
+    expect(await screen.findByRole('heading', { name: 'Sharma Wedding' })).toBeInTheDocument();
+  });
+
+  it('places coverflow photos: front flat, neighbours turned and pushed back', async () => {
+    const { coverflowPose } = await import('@/pages/guest/EventGalleryPage');
+    expect(coverflowPose(0)).toEqual({ x: 0, z: -0, rotY: -0, scale: 1.15 });
+    const right = coverflowPose(1);
+    expect(right.x).toBeCloseTo(1.45);
+    expect(right.rotY).toBeCloseTo(-0.95);
+    expect(right.z).toBeCloseTo(-0.9);
+    const left = coverflowPose(-2);
+    expect(left.x).toBeCloseTo(-(1.45 + 0.62));
+    expect(left.rotY).toBeCloseTo(0.95);
+  });
+});

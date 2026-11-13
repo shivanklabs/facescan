@@ -98,7 +98,7 @@ export default function EventLinkPage() {
         {me && hasPhotos && (
           <>
             <p>{t('eventLink.foundAlready')}</p>
-            <Link className="st-btn st-btn-primary" to={`/photos?event=${eventId}`}>
+            <Link className="st-btn st-btn-primary" to={`/photos/${eventId}`}>
               {t('eventLink.seePhotos')}
             </Link>
             <Link className="st-btn st-btn-ghost" to={`/scan?event=${eventId}`}>

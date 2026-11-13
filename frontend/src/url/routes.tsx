@@ -1,5 +1,6 @@
 // Route table. Every page uses the one site frame (SiteLayout) and its role-based menu:
-// guests: / (sign in) -> /scan -> /photos, /find, /privacy, /e/:eventId (QR / invite link);
+// guests: / (sign in) -> /scan -> /photos (events) -> /photos/:eventId (3D gallery), /find,
+// /privacy, /e/:eventId (QR / invite link);
 // event owners and photographers: /studio and /studio/events/:eventId/*; admins: /admin.
 import { createBrowserRouter } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +8,7 @@ import { SiteLayout } from '@/components/site/SiteLayout';
 import LoginPage from '@/pages/guest/LoginPage';
 import FaceScanPage from '@/pages/guest/FaceScanPage';
 import MyPhotosPage from '@/pages/guest/MyPhotosPage';
+import EventGalleryPage from '@/pages/guest/EventGalleryPage';
 import PrivacyPage from '@/pages/guest/PrivacyPage';
 import FindMorePhotosPage from '@/pages/guest/FindMorePhotosPage';
 import EventLinkPage from '@/pages/guest/EventLinkPage';
@@ -38,6 +40,7 @@ export const routes = [
       { index: true, element: <LoginPage /> },
       { path: 'scan', element: <FaceScanPage /> },
       { path: 'photos', element: <MyPhotosPage /> },
+      { path: 'photos/:eventId', element: <EventGalleryPage /> },
       { path: 'find', element: <FindMorePhotosPage /> },
       { path: 'privacy', element: <PrivacyPage /> },
       { path: 'e/:eventId', element: <EventLinkPage /> },

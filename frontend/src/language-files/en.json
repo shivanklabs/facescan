@@ -321,5 +321,14 @@
       "organiser": "owner",
       "photographer": "photographer"
     }
+  },
+  "gallery3d": {
+    "noneTitle": "No photos from this event",
+    "noneText": "Your photos may still be processing, or you were not found here. Try a new scan later.",
+    "showGrid": "Grid view",
+    "show3d": "3D view",
+    "stage": "Photos as a 3D stack",
+    "open": "View photo",
+    "hint": "Drag or use the arrows. Tap the front photo to open it."
   }
 }

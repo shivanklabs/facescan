@@ -905,13 +905,14 @@ body:has(.studio) {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
-.st-menu {
+/* Photo viewer "more" dropdown (Not me). Its own name: .st-menu is the site's main menu. */
+.st-more {
   position: relative;
 }
 
-.st-menu-list {
+.st-more-list {
   position: absolute;
-  right: 0;
+  left: 0; /* the "..." button sits at the left edge: open towards the screen, not off it */
   bottom: 52px;
   background: #1a1813;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -921,7 +922,7 @@ body:has(.studio) {
   box-shadow: var(--fs-shadow);
 }
 
-.st-menu-list button {
+.st-more-list button {
   width: 100%;
   text-align: left;
   background: none;
@@ -931,7 +932,7 @@ body:has(.studio) {
   border-radius: 10px;
 }
 
-.st-menu-list button:hover {
+.st-more-list button:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -1122,6 +1123,115 @@ body:has(.studio) {
   min-width: 0;
   width: 90px;
   flex: none;
+}
+
+/* ---------------------------------------------------------------- events dashboard */
+
+.st-event-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.st-event-tile {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: var(--fs-radius);
+  border: 1px solid var(--fs-line);
+  background: var(--fs-surface);
+  text-decoration: none;
+  color: var(--fs-text);
+  animation: st-rise 0.5s ease both;
+  transition:
+    transform 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.st-event-tile:hover,
+.st-event-tile:focus-visible {
+  transform: translateY(-3px);
+  border-color: var(--fs-accent);
+  outline: none;
+}
+
+.st-event-tile strong {
+  font-family: var(--fs-serif);
+  font-size: 1.25rem;
+}
+
+/* Up to three polaroids stacked like prints on a table. */
+.st-event-cover {
+  position: relative;
+  height: 232px; /* tallest print: 140px wide, 3:4, 6px + 18px border, 8px top */
+  margin-bottom: 4px;
+}
+
+.st-event-cover img {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: min(46%, 140px);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: #2a251c;
+  border: 6px solid #f4ede1;
+  border-bottom-width: 18px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.st-event-cover img[data-layer='0'] {
+  transform: translateX(-50%) rotate(-2deg);
+  z-index: 3;
+}
+
+.st-event-cover img[data-layer='1'] {
+  transform: translateX(-88%) rotate(-9deg);
+  z-index: 2;
+}
+
+.st-event-cover img[data-layer='2'] {
+  transform: translateX(-12%) rotate(8deg);
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------- 3D coverflow */
+
+.st-stage {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+
+.st-coverflow {
+  width: 100%;
+  height: min(62dvh, 560px);
+  min-height: 320px;
+  border-radius: var(--fs-radius);
+  background: radial-gradient(70% 60% at 50% 40%, rgba(242, 163, 58, 0.12), transparent 70%);
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.st-coverflow:active {
+  cursor: grabbing;
+}
+
+.st-coverflow canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.st-stage-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.st-stage-controls .st-icon-btn[disabled] {
+  opacity: 0.4;
 }
 
 /* ---------------------------------------------------------------- admin health */

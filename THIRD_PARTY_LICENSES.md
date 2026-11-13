@@ -48,4 +48,5 @@ Notes
 | python-multipart (backend uploads) | Apache-2.0 |
 | React, React Router, Vite, vite-plugin-pwa, i18next, qrcode.react | MIT |
 | @mediapipe/tasks-vision (1.1.1; verified 2026-11-12; wasm served by FaceScan, loaded only for the live-blink scan) | Apache-2.0 |
+| three (0.186.1) and @types/three (0.186.0, dev only); verified 2026-11-13; 3D coverflow gallery, loaded only on the event gallery page | MIT |
 | PostgreSQL | PostgreSQL licence |
