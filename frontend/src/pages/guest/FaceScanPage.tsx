@@ -10,8 +10,10 @@ import {
   captureFrames as captureTimedFrames,
   framesBody,
   FRAMES_CONTENT_TYPE,
+  ovalFor,
   ScanStep,
   startSelfieCamera,
+  type OvalBox,
   stopStream,
 } from '@/lib/cameraFrames';
 import type { LiveStep } from '@/lib/liveBlink';
@@ -98,6 +100,51 @@ export default function FaceScanPage() {
   const [message, setMessage] = useState('');
   const [method, setMethod] = useState<ScanMethod>(savedMethod);
   const [usedFallback, setUsedFallback] = useState(false);
+  // The oval follows the face (size and place) while the camera is on; null = fixed oval.
+  const [oval, setOval] = useState<OvalBox | null>(null);
+
+  useEffect(() => {
+    if (phase !== 'camera') return; // during the scan the oval stays put (no extra model use)
+    let stopped = false;
+    let timer = 0;
+    liveBlinkModule()
+      .then(async (mod) => {
+        const model = await mod.loadLandmarker();
+        const tick = () => {
+          if (stopped) return;
+          const v = video.current;
+          if (v && v.readyState >= 2 && v.videoWidth > 0) {
+            const face = mod.faceBox(model, v);
+            const next = face
+              ? ovalFor(
+                  face,
+                  { width: v.videoWidth, height: v.videoHeight },
+                  { width: v.clientWidth, height: v.clientHeight },
+                )
+              : null;
+            // Ease towards the new place so the oval glides instead of jumping.
+            setOval((current) =>
+              next && current
+                ? {
+                    ...next,
+                    left: current.left + (next.left - current.left) * 0.4,
+                    top: current.top + (next.top - current.top) * 0.4,
+                    width: current.width + (next.width - current.width) * 0.4,
+                    height: current.height + (next.height - current.height) * 0.4,
+                  }
+                : (next ?? current),
+            );
+          }
+          timer = window.setTimeout(tick, 120);
+        };
+        tick();
+      })
+      .catch(() => undefined); // face model unavailable: the oval simply stays fixed
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [phase]);
 
   /**
    * Purpose: switch the scan method and remember it on this device.
@@ -279,10 +326,28 @@ export default function FaceScanPage() {
         ) : (
           <>
             <video ref={video} playsInline muted aria-label={t('scan.title')} />
-            <div className={`st-oval ${phase === 'capturing' ? 'is-live' : ''}`} />
+            <div
+              className={`st-oval ${phase === 'capturing' ? 'is-live' : ''} ${oval ? 'is-tracking' : ''}`}
+              style={
+                oval
+                  ? {
+                      left: `${oval.left}%`,
+                      top: `${oval.top}%`,
+                      width: `${oval.width}%`,
+                      height: `${oval.height}%`,
+                    }
+                  : undefined
+              }
+            />
             <div key={flash} className={`st-flash ${flash > 0 ? 'is-on' : ''}`} />
             <div className="st-prompt" role="status" aria-live="assertive">
-              {phase === 'capturing' ? stepText : t('scan.ready')}
+              {phase === 'capturing'
+                ? stepText
+                : oval?.distance === 'closer'
+                  ? t('scan.closer')
+                  : oval?.distance === 'farther'
+                    ? t('scan.farther')
+                    : t('scan.ready')}
             </div>
           </>
         )}

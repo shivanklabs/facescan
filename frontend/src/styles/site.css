@@ -620,6 +620,17 @@ body:has(.studio) {
   transition: border-color 0.3s ease;
 }
 
+/* Following the face: size comes from the face, not the fixed 3:4 shape. */
+.st-oval.is-tracking {
+  aspect-ratio: auto;
+  transition:
+    left 0.12s linear,
+    top 0.12s linear,
+    width 0.12s linear,
+    height 0.12s linear,
+    border-color 0.3s ease;
+}
+
 .st-oval.is-live {
   border: 3px solid var(--fs-accent);
   animation: st-breathe 1.4s ease-in-out infinite;

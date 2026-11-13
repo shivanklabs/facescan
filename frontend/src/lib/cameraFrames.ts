@@ -36,6 +36,57 @@ export function stopStream(stream: MediaStream | null): void {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
+/** A face in the camera picture: centre and size as fractions (0..1) of the video frame. */
+export interface FaceBox {
+  cx: number;
+  cy: number;
+  w: number;
+  h: number;
+}
+
+/** The oval drawn over the camera, in percent of the viewfinder, plus a distance hint. */
+export interface OvalBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  distance: 'closer' | 'farther' | 'ok';
+}
+
+const CLOSER_BELOW = 0.28; // face narrower than this share of the viewfinder: come closer
+const FARTHER_ABOVE = 0.62; // wider than this: move back
+
+/**
+ * Purpose: place the oval around the face as the person sees it: the video fills the
+ *   viewfinder with object-fit: cover and is mirrored, so the face box is scaled, cropped and
+ *   flipped the same way, then given a little room around the face.
+ * Inputs: face box (video fractions), video size, viewfinder size (px).
+ * Outputs: OvalBox in percent of the viewfinder (clamped) with a distance hint.
+ * Side effects: none.
+ */
+export function ovalFor(
+  face: FaceBox,
+  video: { width: number; height: number },
+  box: { width: number; height: number },
+): OvalBox {
+  const scale = Math.max(box.width / video.width, box.height / video.height);
+  const shownW = video.width * scale;
+  const shownH = video.height * scale;
+  const offsetX = (box.width - shownW) / 2;
+  const offsetY = (box.height - shownH) / 2;
+  const centreX = box.width - (face.cx * shownW + offsetX); // mirrored like the video
+  const centreY = face.cy * shownH + offsetY;
+  const faceShare = (face.w * shownW) / box.width;
+  const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+  return {
+    left: clamp((centreX / box.width) * 100, 15, 85),
+    top: clamp((centreY / box.height) * 100, 15, 85),
+    width: clamp(faceShare * 100 * 1.5, 30, 95),
+    height: clamp(((face.h * shownH) / box.height) * 100 * 1.4, 30, 95),
+    distance: faceShare < CLOSER_BELOW ? 'closer' : faceShare > FARTHER_ABOVE ? 'farther' : 'ok',
+  };
+}
+
 export interface ScanStep {
   key: 'lookStraight' | 'blink';
 }

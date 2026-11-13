@@ -8,7 +8,7 @@ import wasmBinarySimd from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?ur
 import wasmLoaderNoSimd from '@mediapipe/tasks-vision/vision_wasm_nosimd_internal.js?url';
 import wasmBinaryNoSimd from '@mediapipe/tasks-vision/vision_wasm_nosimd_internal.wasm?url';
 import modelUrl from '@/assets/models/face_landmarker.task?url';
-import { grabCanvas } from '@/lib/cameraFrames';
+import { grabCanvas, type FaceBox } from '@/lib/cameraFrames';
 
 export type LiveStep = 'findFace' | 'lookStraight' | 'blink' | 'eyesOpen';
 
@@ -119,6 +119,32 @@ function readEyes(model: FaceLandmarker, frame: HTMLCanvasElement): EyeReading {
   const categories = result.faceBlendshapes[0]?.categories ?? [];
   const score = (name: string) => categories.find((c) => c.categoryName === name)?.score ?? 0;
   return { faces, left: score('eyeBlinkLeft'), right: score('eyeBlinkRight') };
+}
+
+let lastBoxTime = 0;
+
+/**
+ * Purpose: where the face is in the camera picture right now, for the live oval.
+ * Inputs: landmarker, playing video. Outputs: centre and size as fractions of the video
+ *   frame (0..1, not mirrored), or null when no face is seen.
+ * Side effects: none (memory only; nothing is kept or sent).
+ */
+export function faceBox(model: FaceLandmarker, video: HTMLVideoElement): FaceBox | null {
+  // VIDEO mode needs strictly increasing timestamps.
+  lastBoxTime = Math.max(performance.now(), lastBoxTime + 1);
+  const points = model.detectForVideo(video, lastBoxTime).faceLandmarks[0];
+  if (!points || points.length === 0) return null;
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w: maxX - minX, h: maxY - minY };
 }
 
 /**

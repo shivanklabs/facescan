@@ -588,3 +588,22 @@ describe('log in as', () => {
     expect(loginRoleFrom(null)).toBe('guest');
   });
 });
+
+describe('live scan oval', () => {
+  it('sits on the mirrored face, grows with it and asks to come closer or move back', async () => {
+    const { ovalFor } = await import('@/lib/cameraFrames');
+    const video = { width: 1280, height: 960 }; // landscape camera
+    const box = { width: 300, height: 400 }; // portrait viewfinder (video is cropped at the sides)
+    const centred = ovalFor({ cx: 0.5, cy: 0.5, w: 0.25, h: 0.45 }, video, box);
+    expect(centred.left).toBeCloseTo(50);
+    expect(centred.top).toBeCloseTo(50);
+    expect(centred.distance).toBe('ok');
+    // A face on the camera's left shows on the person's right (mirror view).
+    expect(ovalFor({ cx: 0.4, cy: 0.5, w: 0.25, h: 0.45 }, video, box).left).toBeGreaterThan(50);
+    const far = ovalFor({ cx: 0.5, cy: 0.5, w: 0.08, h: 0.15 }, video, box);
+    const near = ovalFor({ cx: 0.5, cy: 0.5, w: 0.4, h: 0.7 }, video, box);
+    expect(far.distance).toBe('closer');
+    expect(near.distance).toBe('farther');
+    expect(near.width).toBeGreaterThan(far.width);
+  });
+});

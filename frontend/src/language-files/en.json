@@ -81,7 +81,9 @@
       "burst": "Takes 5 quick photos while you blink",
       "look": "No blink; only the fake-photo check (test only)"
     },
-    "usedFallback": "Live blink could not start on this phone, so Quick burst was used."
+    "usedFallback": "Live blink could not start on this phone, so Quick burst was used.",
+    "closer": "Come a little closer",
+    "farther": "Move back a little"
   },
   "photos": {
     "eyebrow": "Your gallery",
