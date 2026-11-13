@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from webauthn import (
     generate_authentication_options,
     generate_registration_options,
@@ -35,12 +36,17 @@ from webauthn.registration.verify_registration_response import VerifiedRegistrat
 from app.core.errors import ConflictError, ForbiddenError, UnprocessableError
 from app.core.login_sessions import (
     CurrentUser,
+    InvalidEmailError,
     admin_allowed,
     create_anonymous_user,
+    create_registered_user,
     create_session,
+    email_hash,
     find_or_create_user,
+    home_path,
     normalise_email,
     organiser_allowed,
+    photographer_allowed,
     revoke_sessions,
 )
 from app.core.request_checks import require_role
@@ -283,27 +289,40 @@ def sign_in_with_passkey(
             session, ctx.settings, passkey.user_id, "passkey", None, replaces=current_session
         )
         user_id = passkey.user_id
+        account = session.get(User, user_id)
+        next_path = home_path(account) if account is not None else "/photos"
     audit_global(ctx, f"user:{user_id}", "auth.signed_in", {"method": "passkey"})
-    return SignInResult(token, user_id, "/", True)
+    return SignInResult(token, user_id, next_path, True)
 
 
 # ---------------------------------------------------------------- guests: passkey only
 
 
-def guest_registration_options(ctx: AppContext) -> str:
+class EmailTakenError(Exception):
+    """The email is already registered (one account per email)."""
+
+
+def new_account_options(ctx: AppContext, name: str, address: str) -> str:
     """
-    Purpose: WebAuthn creation options for a new guest (no email, no account yet). The
-        account id is chosen now but the account is created only when the passkey verifies.
-    Inputs: ctx. Outputs: options JSON.
-    Side effects: stores one single-use challenge with the pending account id.
+    Purpose: WebAuthn creation options for a new account (any public type). No account is
+        created yet: it exists only after the passkey verifies.
+    Inputs: ctx, display name, email (checked early so the person is not asked for a passkey
+        for an email that cannot be used). Outputs: options JSON.
+    Raises UnprocessableError (bad email), EmailTakenError.
+    Side effects: stores a single-use 5-minute challenge with the future account id.
     """
+    email = _clean_email(address)
+    with ctx.sessions() as session:
+        if session.scalar(select(User.id).where(User.email_hash == email_hash(ctx.keys, email))):
+            raise EmailTakenError(email)
     pending = uuid.uuid4()
     challenge = secrets.token_bytes(32)
     options = generate_registration_options(
         rp_id=ctx.settings.auth_rp_id,
         rp_name=ctx.settings.auth_rp_name,
         user_id=pending.bytes,
-        user_name=f"guest-{str(pending)[:8]}",  # no personal data
+        user_name=email,  # shown in the person's own password manager only
+        user_display_name=name,
         challenge=challenge,
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.REQUIRED,
@@ -323,19 +342,34 @@ def guest_registration_options(ctx: AppContext) -> str:
     return options_to_json(options)
 
 
-def sign_up_guest_with_passkey(
+def _clean_email(address: str) -> str:
+    """Purpose: normalised email or UnprocessableError. Side effects: none."""
+    try:
+        return normalise_email(address)
+    except InvalidEmailError as exc:
+        raise UnprocessableError("enter a valid email address") from exc
+
+
+def sign_up_with_passkey(
     ctx: AppContext,
     credential: dict[str, object],
     challenge: bytes,
+    name: str,
+    address: str,
+    role: str,
     current_session: UUID | None,
 ) -> SignInResult:
     """
-    Purpose: verify a new guest's passkey, then create the account (anonymous: no email) and a
-        passkey session. Nothing is created if the passkey does not verify.
-    Inputs: ctx, the WebAuthn credential, its challenge, the session it replaces.
-    Outputs: SignInResult. Raises SignInError.
+    Purpose: the common registration: verify the new passkey, then create the account with
+        the chosen public type (guest active; organiser / photographer pending until an admin
+        approves) and a passkey session. Admin can never be chosen here (the schema refuses
+        it and create_registered_user refuses it again).
+    Inputs: ctx, the WebAuthn credential and its challenge, display name, email, role, the
+        session it replaces. Outputs: SignInResult (next = the person's dashboard).
+    Raises SignInError (expired challenge / bad passkey), UnprocessableError, EmailTakenError.
     Side effects: uses the challenge once; inserts user, passkey, session; audit row.
     """
+    email = _clean_email(address)
     now = datetime.now(UTC)
     with ctx.sessions() as session, session.begin():
         pending = session.execute(
@@ -352,15 +386,18 @@ def sign_up_guest_with_passkey(
     if pending is None:
         raise SignInError("sign-up expired; try again")
     verified = _verify_new_passkey(ctx, credential, challenge)
-    with ctx.sessions() as session, session.begin():
-        user = create_anonymous_user(session, ctx.keys, pending)
-        session.add(_passkey_row(user.id, verified))
-        token = create_session(
-            session, ctx.settings, user.id, "passkey", None, replaces=current_session
-        )
-        user_id = user.id
-    audit_global(ctx, f"user:{user_id}", "auth.signed_up", {"method": "passkey"})
-    return SignInResult(token, user_id, "/", True)
+    try:
+        with ctx.sessions() as session, session.begin():
+            user = create_registered_user(session, ctx.keys, pending, name, email, role)
+            session.add(_passkey_row(user.id, verified))
+            token = create_session(
+                session, ctx.settings, user.id, "passkey", None, replaces=current_session
+            )
+            user_id, next_path = user.id, home_path(user)
+    except IntegrityError as exc:
+        raise EmailTakenError(email) from exc
+    audit_global(ctx, f"user:{user_id}", "auth.signed_up", {"method": "passkey", "role": role})
+    return SignInResult(token, user_id, next_path, True)
 
 
 # ---------------------------------------------------------------- staff keys (no email)
@@ -507,10 +544,13 @@ def redeem_staff_key(ctx: AppContext, key: str, current: CurrentUser | None) -> 
                 raise SignInError("staff key not valid")
             user = account
         if row.role == "admin":
-            user.is_admin = True
-            user.can_create_events = True
-        elif row.role == "organiser":
-            user.can_create_events = True
+            user.role, user.status = "admin", "active"
+        elif row.role == "organiser" and user.role != "admin":
+            user.role, user.status = "organiser", "active"
+        elif row.role == "photographer" and user.role == "guest":
+            user.role, user.status = "photographer", "active"
+        user.status_changed_at = now
+        created_by = row.created_by
         row.used_at = now
         row.used_by = user_id
         role, event_id = row.role, row.event_id
@@ -524,22 +564,49 @@ def redeem_staff_key(ctx: AppContext, key: str, current: CurrentUser | None) -> 
                 )
             )
             if exists is None:
-                session.add(EventMember(event_id=event_id, user_id=user_id, role="photographer"))
+                session.add(
+                    EventMember(
+                        event_id=event_id,
+                        user_id=user_id,
+                        role="photographer",
+                        assigned_by=created_by,
+                    )
+                )
             record(session, event_id=event_id, actor=f"user:{user_id}", action="staff.joined")
     audit_global(ctx, f"user:{user_id}", "auth.staff_key_used", {"role": role})
     return result
 
 
-def issue_staff_key_from_terminal(role: str) -> str:
+class AdminExistsError(Exception):
+    """An active admin already exists (the bootstrap does not make a second one silently)."""
+
+
+def active_admin_exists(ctx: AppContext) -> bool:
+    """Purpose: whether any active admin account exists. Side effects: one read."""
+    with ctx.sessions() as session:
+        return (
+            session.scalar(
+                select(User.id).where(User.role == "admin", User.status == "active").limit(1)
+            )
+            is not None
+        )
+
+
+def issue_staff_key_from_terminal(role: str, force: bool = False) -> str:
     """
-    Purpose: bootstrap: the server owner creates the first admin (or organiser) key at the
-        terminal (uv run tasks staff-key). Inputs: role. Outputs: the key (printed once).
+    Purpose: bootstrap: the server owner creates the first admin (or an organiser) key at the
+        terminal (uv run tasks staff-key). The only way to make an admin: there is no public
+        API for it. Idempotent: refuses an admin key while an active admin exists, unless
+        force (e.g. a second admin, or the first one lost every passkey).
+    Inputs: role, force. Outputs: the key (printed once). Raises AdminExistsError.
     Side effects: builds an app context from settings; inserts one staff key.
     """
     from app.core.services_setup import build_context  # local: terminal use only
     from app.core.settings import get_settings
 
     ctx = build_context(get_settings())
+    if role == "admin" and not force and active_admin_exists(ctx):
+        raise AdminExistsError("an active admin already exists; use --force to add another")
     key, _ = create_staff_key(ctx, None, role, None)
     return key
 
@@ -559,6 +626,10 @@ class Me:
     can_create_events: bool
     is_admin: bool = False
     is_staff: bool = False  # organiser or photographer of at least one event
+    role: str = "guest"
+    status: str = "active"
+    display_name: str | None = None
+    home: str = "/photos"
 
 
 def me(ctx: AppContext, user: CurrentUser) -> Me:
@@ -580,7 +651,11 @@ def me(ctx: AppContext, user: CurrentUser) -> Me:
             is_minor=row.is_minor,
             can_create_events=organiser_allowed(row),
             is_admin=admin_allowed(row),
-            is_staff=_is_staff(ctx, user.user_id),
+            is_staff=photographer_allowed(row) or _is_staff(ctx, user.user_id),
+            role=row.role,
+            status=row.status,
+            display_name=row.display_name,
+            home=home_path(row),
         )
 
 

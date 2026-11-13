@@ -28,6 +28,25 @@ class PasskeyCredential(BaseModel):
     credential: dict[str, object]
 
 
+# A display name: 1-80 printable characters, no angle brackets (shown in admin lists).
+NAME_PATTERN = r"^[^\x00-\x1f\x7f<>]{1,80}$"
+
+
+class RegisterOptionsRequest(BaseModel):
+    """Body: start the common registration. The account type can never be admin."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=80, pattern=NAME_PATTERN)
+    email: str = Field(min_length=3, max_length=254)
+    account_type: Literal["guest", "organiser", "photographer"]
+
+
+class RegisterRequest(RegisterOptionsRequest):
+    """Body: finish the registration with the new passkey (same name/email/type again)."""
+
+    credential: dict[str, object]
+
+
 class MeResponse(BaseModel):
     """The signed-in user's flags."""
 
@@ -39,6 +58,10 @@ class MeResponse(BaseModel):
     can_create_events: bool
     is_admin: bool = False
     is_staff: bool = False
+    role: str = "guest"  # guest / organiser / photographer / admin (set by the server)
+    status: str = "active"  # active / pending / rejected / suspended
+    display_name: str | None = None
+    home: str = "/photos"
 
 
 class AgeAnswer(BaseModel):

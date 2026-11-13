@@ -15,6 +15,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     LargeBinary,
     String,
     UniqueConstraint,
@@ -25,20 +26,34 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 from app.db.columns import created_at, uuid_pk
 
+ACCOUNT_ROLES = ("guest", "organiser", "photographer", "admin")
+ACCOUNT_STATUSES = ("active", "pending", "rejected", "suspended")
+
 
 class User(Base):
-    """A person account. The email is stored only hashed (lookup) and encrypted (contact)."""
+    """
+    A person account. The email is stored only hashed (lookup) and encrypted (contact).
+    role and status are set by the server only: guests start active, organisers and
+    photographers start pending until an admin approves them; admins come only from the
+    server-side bootstrap key (uv run tasks staff-key --role admin).
+    """
 
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("role IN ('guest', 'organiser', 'photographer', 'admin')", name="role"),
+        CheckConstraint("status IN ('active', 'pending', 'rejected', 'suspended')", name="status"),
+        Index("ix_users_role_status", "role", "status"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     email_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True)
     email_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     is_minor: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     age_answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Staff rights from a redeemed staff key (no email allowlist needed).
-    can_create_events: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    display_name: Mapped[str | None] = mapped_column(String(80))
+    role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="guest")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 

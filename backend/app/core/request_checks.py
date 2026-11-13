@@ -44,18 +44,49 @@ def optional_user(request: Request, ctx: Ctx) -> CurrentUser | None:
         if row is None:
             return None
         row.last_seen_at = datetime.now(UTC)
-        return CurrentUser(row.user_id, row.id, row.auth_method, row.event_id)
+        account = session.get(UserModel, row.user_id)
+        status = account.status if account is not None else "suspended"
+        return CurrentUser(row.user_id, row.id, row.auth_method, row.event_id, status)
 
 
-def current_user(user: Annotated[CurrentUser | None, Depends(optional_user)]) -> CurrentUser:
-    """Purpose: require a signed-in user (401 otherwise)."""
+def signed_in(user: Annotated[CurrentUser | None, Depends(optional_user)]) -> CurrentUser:
+    """
+    Purpose: require a session whatever the account status, for the few routes a suspended
+        person still needs (who am I, sign out, delete my account). 401 when signed out.
+    """
     if user is None:
         raise HTTPException(status_code=401, detail="sign_in_required")
     return user
 
 
+def current_user(user: Annotated[CurrentUser, Depends(signed_in)]) -> CurrentUser:
+    """
+    Purpose: require a signed-in account that is not suspended (401 / 403 otherwise). Every
+        other route uses this, so a suspended account is locked out everywhere at once, even
+        when someone types a dashboard or API address by hand.
+    """
+    if user.account_status == "suspended":
+        raise HTTPException(status_code=403, detail="account_suspended")
+    return user
+
+
+SignedIn = Annotated[CurrentUser, Depends(signed_in)]
 User = Annotated[CurrentUser, Depends(current_user)]
 MaybeUser = Annotated[CurrentUser | None, Depends(optional_user)]
+
+
+def staff_refusal(account: UserModel | None) -> str:
+    """
+    Purpose: the reason code shown when a staff feature is refused, so the site can say
+        "waiting for approval" / "not approved" instead of a bare error.
+    Inputs: the account row. Outputs: account_pending / account_rejected / not_allowed.
+    """
+    if account is not None and account.role in ("organiser", "photographer"):
+        if account.status == "pending":
+            return "account_pending"
+        if account.status == "rejected":
+            return "account_rejected"
+    return "not_allowed"
 
 
 def passkey_user(user: User) -> CurrentUser:

@@ -4,17 +4,26 @@ import json
 import logging
 import os
 import shutil
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
+from fastapi import HTTPException
+from sqlalchemy import select
+
+from app.core.encryption import DecryptionError
+from app.core.login_sessions import CurrentUser, open_email, revoke_sessions
 from app.core.services_setup import AppContext
 from app.db.event_isolation import ADMIN_SCOPE, event_transaction, scoped_transaction
+from app.features.activity_log.service import record
 from app.features.admin.repository import get_event_health_counts, list_events_admin
 from app.features.admin.schemas import (
     AdminHealthResponse,
     EventHealthSummary,
     SystemHealthSummary,
 )
+from app.features.login.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -116,3 +125,83 @@ def get_admin_health(ctx: AppContext) -> AdminHealthResponse:
         )
 
     return AdminHealthResponse(events=event_summaries, system=system_health)
+
+
+# ---------------------------------------------------------------- accounts and approvals
+
+
+@dataclass(frozen=True, slots=True)
+class AccountView:
+    """One account as the admin sees it for approvals (email decrypted for the admin only)."""
+
+    user_id: UUID
+    display_name: str | None
+    email: str | None
+    role: str
+    status: str
+    created_at: datetime
+
+
+def list_accounts(
+    ctx: AppContext, status: str | None, role: str | None, limit: int = 200
+) -> list[AccountView]:
+    """
+    Purpose: accounts for the admin page, newest first (default: everything waiting for
+        approval). Placeholder addresses of older email-less accounts are shown as None.
+    Inputs: ctx, optional status and role filters, a row limit. Outputs: AccountView list.
+    Side effects: none (reads the global users table; the caller is an admin).
+    """
+    query = select(User).order_by(User.created_at.desc()).limit(limit)
+    if status is not None:
+        query = query.where(User.status == status)
+    if role is not None:
+        query = query.where(User.role == role)
+    views: list[AccountView] = []
+    with ctx.sessions() as session:
+        for row in session.scalars(query):
+            try:
+                email: str | None = open_email(ctx.keys, row.email_encrypted)
+            except DecryptionError:
+                email = None
+            if email is not None and email.endswith("@guest.local"):
+                email = None
+            views.append(
+                AccountView(row.id, row.display_name, email, row.role, row.status, row.created_at)
+            )
+    return views
+
+
+def set_account_status(
+    ctx: AppContext, admin: CurrentUser, user_id: UUID, status: str
+) -> AccountView:
+    """
+    Purpose: approve (active), reject or suspend an account, or lift a suspension.
+    Inputs: ctx, the admin, target user id, new status (active / rejected / suspended).
+    Outputs: the updated AccountView. Raises 404 unknown account; 403 for the admin's own
+        account or another admin (admins are managed only at the server).
+    Side effects: updates users.status; a suspension also ends all the person's sessions;
+        audit row (ids and status only, no email).
+    """
+    if user_id == admin.user_id:
+        raise HTTPException(status_code=403, detail="cannot_change_own_account")
+    with ctx.sessions() as session, session.begin():
+        row = session.get(User, user_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        if row.role == "admin":
+            raise HTTPException(status_code=403, detail="cannot_change_admin")
+        row.status = status
+        row.status_changed_at = datetime.now(UTC)
+        if status == "suspended":
+            revoke_sessions(session, user_id)
+        view = AccountView(row.id, row.display_name, None, row.role, row.status, row.created_at)
+    with scoped_transaction(ctx.sessions, ADMIN_SCOPE) as session:
+        record(
+            session,
+            event_id=None,
+            actor=admin.actor,
+            action="account.status_changed",
+            target=str(user_id),
+            details={"status": status},
+        )
+    return view

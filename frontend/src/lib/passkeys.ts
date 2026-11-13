@@ -17,18 +17,27 @@ export async function registerPasskey(): Promise<void> {
   await api('/auth/passkey/register/verify', { json: { credential } });
 }
 
+export type AccountType = 'guest' | 'organiser' | 'photographer';
+
+export interface NewAccount {
+  name: string;
+  email: string;
+  account_type: AccountType;
+}
+
 /**
- * Purpose: passkey-only sign-up for a new guest (no email). The account is created by the
- *   server only when this passkey verifies.
- * Inputs: none. Outputs: where to go next. Side effects: WebAuthn create; session cookie.
+ * Purpose: the common registration: name, email and account type, then a passkey. The server
+ *   creates the account only when the passkey verifies; organisers and photographers start
+ *   pending until an admin approves them. Admin can never be chosen here.
+ * Inputs: the new account's details. Outputs: where the server sends this person next.
+ * Side effects: WebAuthn create; session cookie.
  */
-export async function signUpWithPasskey(): Promise<{ next: string }> {
-  const optionsJSON = await api<PublicKeyCredentialCreationOptionsJSON>(
-    '/auth/guest/passkey/options',
-    { method: 'POST' },
-  );
+export async function signUpWithPasskey(account: NewAccount): Promise<{ next: string }> {
+  const optionsJSON = await api<PublicKeyCredentialCreationOptionsJSON>('/auth/register/options', {
+    json: account,
+  });
   const credential = await startRegistration({ optionsJSON });
-  return api<{ next: string }>('/auth/guest/passkey/verify', { json: { credential } });
+  return api<{ next: string }>('/auth/register', { json: { ...account, credential } });
 }
 
 /**

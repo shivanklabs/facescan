@@ -11,7 +11,6 @@ import secrets
 import struct
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
 
 from app.core.encryption import new_data_key
 from app.core.services_setup import AppContext
@@ -20,6 +19,7 @@ from app.features.events.models import Event, EventKey
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
+from httpx2 import Response
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url, encode_cbor
 
 ORIGIN = "http://localhost:5173"
@@ -159,13 +159,31 @@ def staff_client(
     return client
 
 
+def sign_up(
+    client: TestClient,
+    authenticator: SoftAuthenticator | None = None,
+    account_type: str = "guest",
+    email: str | None = None,
+    name: str = "Test Person",
+    origin: str | None = None,
+) -> Response:
+    """
+    The common registration (name + email + account type, then a passkey). Returns the
+    final response; a unique email is made up when none is given.
+    """
+    address = email or f"person-{secrets.token_hex(6)}@example.test"
+    body = {"name": name, "email": address, "account_type": account_type}
+    options = client.post("/auth/register/options", json=body)
+    if options.status_code != 200:
+        return options
+    credential = (authenticator or SoftAuthenticator()).create(options.json(), origin or ORIGIN)
+    return client.post("/auth/register", json={**body, "credential": credential})
+
+
 def passkey_guest(ctx: AppContext) -> TestClient:
-    """A new guest who signed up with a passkey only (no email)."""
+    """A new guest who registered with an email and a passkey."""
     client = new_client(ctx)
-    options = client.post("/auth/guest/passkey/options").json()
-    response = client.post(
-        "/auth/guest/passkey/verify", json={"credential": SoftAuthenticator().create(options)}
-    )
+    response = sign_up(client)
     assert response.status_code == 200, response.text
     return client
 
@@ -203,7 +221,7 @@ def frames_body(*frames: bytes) -> bytes:
 FRAMES_HEADERS = {"Content-Type": "application/x-facescan-frames"}
 
 
-def discover_search(client: TestClient, body: bytes, notice_version: str | None = None) -> Any:
+def discover_search(client: TestClient, body: bytes, notice_version: str | None = None) -> Response:
     """One live scan searched in every searchable event (the site's only face search)."""
     version = notice_version or client.get("/consent/notice").json()["version"]
     return client.post(
@@ -211,13 +229,13 @@ def discover_search(client: TestClient, body: bytes, notice_version: str | None 
     )
 
 
-def event_photos(client: TestClient, event_id: uuid.UUID | str) -> list[dict[str, Any]]:
+def event_photos(client: TestClient, event_id: uuid.UUID | str) -> list[dict[str, str]]:
     """The person's released photos in one event, as shown on the site (empty when none)."""
     response = client.get("/discover/photos")
     assert response.status_code == 200, response.text
     for group in response.json()["events"]:
         if group["event_id"] == str(event_id):
-            photos: list[dict[str, Any]] = group["photos"]
+            photos: list[dict[str, str]] = group["photos"]
             return photos
     return []
 

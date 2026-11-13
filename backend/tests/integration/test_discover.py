@@ -22,6 +22,7 @@ from tests.helpers import (
     new_client,
     passkey_guest,
     searchable_event,
+    sign_up,
     staff_client,
 )
 
@@ -239,13 +240,7 @@ def test_delete_my_account_erases_my_data_and_keeps_event_photos(
     event_ids, _ = events
     guest = new_client(ctx)
     authenticator = SoftAuthenticator()
-    options = guest.post("/auth/guest/passkey/options").json()
-    assert (
-        guest.post(
-            "/auth/guest/passkey/verify", json={"credential": authenticator.create(options)}
-        ).status_code
-        == 200
-    )
+    assert sign_up(guest, authenticator).status_code == 200
     assert scan(guest, 1).json()["released"] == 5
     user_id = UUID(guest.get("/auth/me").json()["user_id"])
     before = {e: _rows_for(ctx, e, user_id) for e in event_ids}

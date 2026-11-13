@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.login_sessions import clear_session_cookie, set_session_cookie
 from app.core.rate_limit import RateLimiter
-from app.core.request_checks import Ctx, MaybeUser, PasskeyUser, User
+from app.core.request_checks import Ctx, MaybeUser, PasskeyUser, SignedIn, User
 from app.features.login import service
 from app.features.login.schemas import (
     AgeAnswer,
@@ -19,6 +19,8 @@ from app.features.login.schemas import (
     DevSignIn,
     MeResponse,
     PasskeyCredential,
+    RegisterOptionsRequest,
+    RegisterRequest,
     SignedOutResponse,
     SignInResponse,
     StaffKeyCreate,
@@ -125,19 +127,39 @@ def passkey_login(body: PasskeyCredential, ctx: Ctx, user: MaybeUser) -> JSONRes
     return _signed_in(ctx, result)
 
 
-@router.post("/guest/passkey/options", dependencies=[Depends(sign_in_limiter)])
-def guest_passkey_options(ctx: Ctx) -> Response:
-    """Purpose: WebAuthn creation options for a new guest (passkey-only sign-up, no email)."""
-    return Response(service.guest_registration_options(ctx), media_type="application/json")
-
-
-@router.post("/guest/passkey/verify", dependencies=[Depends(sign_in_limiter)])
-def guest_passkey_sign_up(body: PasskeyCredential, ctx: Ctx, user: MaybeUser) -> JSONResponse:
-    """Purpose: verify the new guest's passkey, create the account and a passkey session."""
+@router.post("/register/options", dependencies=[Depends(sign_in_limiter)])
+def register_options(body: RegisterOptionsRequest, ctx: Ctx) -> Response:
+    """
+    Purpose: start the common registration (guest, organiser or photographer; never admin).
+    Inputs: name, email, account type. Outputs: WebAuthn creation options.
+    Side effects: stores a single-use challenge. 409 email_taken, 422 bad input.
+    """
     try:
-        result = service.sign_up_guest_with_passkey(
-            ctx, body.credential, _challenge_of(body.credential), user.session_id if user else None
+        options = service.new_account_options(ctx, body.name.strip(), body.email)
+    except service.EmailTakenError as exc:
+        raise HTTPException(status_code=409, detail="email_taken") from exc
+    return Response(options, media_type="application/json")
+
+
+@router.post("/register", dependencies=[Depends(sign_in_limiter)])
+def register(body: RegisterRequest, ctx: Ctx, user: MaybeUser) -> JSONResponse:
+    """
+    Purpose: finish the registration: verify the passkey, create the account (guests active,
+        organisers / photographers pending approval) and sign in.
+    Outputs: {next: the person's dashboard, has_passkey}. 400 bad passkey, 409 email_taken.
+    """
+    try:
+        result = service.sign_up_with_passkey(
+            ctx,
+            body.credential,
+            _challenge_of(body.credential),
+            body.name.strip(),
+            body.email,
+            body.account_type,
+            user.session_id if user else None,
         )
+    except service.EmailTakenError as exc:
+        raise HTTPException(status_code=409, detail="email_taken") from exc
     except service.SignInError as exc:
         raise HTTPException(status_code=400, detail="passkey_not_registered") from exc
     return _signed_in(ctx, result)
@@ -193,7 +215,7 @@ def revoke_staff_key(key_id: UUID, user: PasskeyUser, ctx: Ctx) -> Response:
 
 
 @router.get("/me", response_model=MeResponse)
-def get_me(user: User, ctx: Ctx) -> MeResponse:
+def get_me(user: SignedIn, ctx: Ctx) -> MeResponse:
     """Purpose: the signed-in user's flags (no email)."""
     m = service.me(ctx, user)
     return MeResponse(
@@ -205,6 +227,10 @@ def get_me(user: User, ctx: Ctx) -> MeResponse:
         can_create_events=m.can_create_events,
         is_admin=m.is_admin,
         is_staff=m.is_staff,
+        role=m.role,
+        status=m.status,
+        display_name=m.display_name,
+        home=m.home,
     )
 
 
@@ -216,7 +242,7 @@ def answer_age(body: AgeAnswer, user: User, ctx: Ctx) -> Response:
 
 
 @router.post("/logout", response_model=SignedOutResponse)
-def logout(user: User, ctx: Ctx) -> JSONResponse:
+def logout(user: SignedIn, ctx: Ctx) -> JSONResponse:
     """Purpose: end this session."""
     count = service.sign_out(ctx, user, everywhere=False)
     response = JSONResponse(SignedOutResponse(sessions_ended=count).model_dump())
@@ -225,7 +251,7 @@ def logout(user: User, ctx: Ctx) -> JSONResponse:
 
 
 @router.post("/logout-everywhere", response_model=SignedOutResponse)
-def logout_everywhere(user: User, ctx: Ctx) -> JSONResponse:
+def logout_everywhere(user: SignedIn, ctx: Ctx) -> JSONResponse:
     """Purpose: end every session of this user (all devices)."""
     count = service.sign_out(ctx, user, everywhere=True)
     response = JSONResponse(SignedOutResponse(sessions_ended=count).model_dump())
@@ -234,7 +260,7 @@ def logout_everywhere(user: User, ctx: Ctx) -> JSONResponse:
 
 
 @router.post("/delete-account", status_code=200, dependencies=[Depends(sign_in_limiter)])
-def delete_account(body: DeleteAccountRequest, user: User, ctx: Ctx) -> JSONResponse:
+def delete_account(body: DeleteAccountRequest, user: SignedIn, ctx: Ctx) -> JSONResponse:
     """
     Purpose: erase my own account and my data (typed confirmation "DELETE"). Event photos
         stay. Outputs: {"deleted": true}; the session cookie is cleared.

@@ -377,17 +377,54 @@
       "delete": "Open Privacy"
     }
   },
-  "loginAs": {
-    "title": "Log in as",
-    "guest": "Guest",
-    "organiser": "Organiser",
-    "photographer": "Photographer",
-    "admin": "Admin",
+  "account": {
+    "title": "Sign in or create an account",
+    "signInTab": "Sign in",
+    "registerTab": "Create account",
+    "signIn": "Sign in with passkey",
+    "signInHint": "One sign-in for everyone: guests, organisers, photographers and admins. FaceScan opens your own page.",
+    "name": "Your name",
+    "email": "Email",
+    "typeLabel": "I am a",
+    "type": {
+      "guest": "Guest",
+      "organiser": "Organiser",
+      "photographer": "Photographer",
+      "admin": "Admin"
+    },
+    "staffHint": "Organiser and photographer accounts are checked by the FaceScan admin first. Until then you can use FaceScan as a guest.",
+    "create": "Create account with passkey",
+    "emailTaken": "This email already has an account. Sign in with your passkey instead.",
+    "invalid": "Please check your name and email.",
+    "staffKey": "Have a staff key?",
     "navButton": "Log in",
-    "how": {
-      "organiser": "Event owners: the first time, enter the one-time key from the FaceScan admin, then add a passkey. After that, sign in with your passkey.",
-      "photographer": "Photographers: the event organiser makes your key in Event settings > Staff keys. Enter it once, then sign in with your passkey.",
-      "admin": "Admins: make a key on the server with \"uv run tasks staff-key --role admin\". Enter it once, then sign in with your passkey."
-    }
+    "pending": "Your {{role}} account is waiting for the admin's approval. You can use FaceScan as a guest meanwhile.",
+    "rejected": "Your {{role}} request was not approved. You can still use FaceScan as a guest.",
+    "suspended": "This account is suspended. Please contact the FaceScan admin."
+  },
+  "accounts": {
+    "title": "Accounts",
+    "intro": "Approve or reject organisers and photographers who registered, or suspend an account.",
+    "filter": "Show accounts",
+    "status": {
+      "pending": "Waiting",
+      "active": "Active",
+      "suspended": "Suspended",
+      "rejected": "Rejected"
+    },
+    "none": "No accounts here.",
+    "noName": "(no name)",
+    "noEmail": "no email",
+    "approve": "Approve",
+    "reject": "Reject",
+    "suspend": "Suspend",
+    "reactivate": "Reactivate"
+  },
+  "photographers": {
+    "title": "Photographers",
+    "text": "Add an approved photographer by the email they registered with. They can see and upload to this event only.",
+    "email": "Photographer's email",
+    "assign": "Add photographer",
+    "notFound": "No approved photographer has this email. Ask them to register as a photographer and wait for approval."
   }
 }

@@ -19,7 +19,7 @@ from fastapi import Response
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.core.encryption import DecryptionError, seal
+from app.core.encryption import DecryptionError, open_sealed, seal
 from app.core.settings import Settings
 from app.features.login.models import AuthSession, User
 from app.interfaces.encryption_keys import KeyManager
@@ -42,6 +42,7 @@ class CurrentUser:
     session_id: UUID
     auth_method: str
     session_event_id: UUID | None
+    account_status: str = "active"  # read from users on every request (never from the browser)
 
     @property
     def actor(self) -> str:
@@ -105,6 +106,45 @@ def create_anonymous_user(session: Session, keys: KeyManager, user_id: UUID | No
     return user
 
 
+def open_email(keys: KeyManager, sealed: bytes) -> str:
+    """Purpose: decrypt an address (admin approval list only). Raises DecryptionError."""
+    return open_sealed(keys.derive_key("email-encrypt"), sealed, _EMAIL_AAD).decode("utf-8")
+
+
+def create_registered_user(
+    session: Session,
+    keys: KeyManager,
+    user_id: UUID,
+    name: str,
+    address: str,
+    role: str,
+) -> User:
+    """
+    Purpose: a new account from the common registration: guests start active, organisers and
+        photographers start pending until an admin approves them. Never an admin.
+    Inputs: session, keys, the id the passkey was made for, display name, normalised email,
+        role (guest / organiser / photographer).
+    Outputs: the user. Raises ValueError for any other role; IntegrityError (from flush)
+        when the email is already registered.
+    Side effects: inserts the user (email only hashed + encrypted).
+    """
+    if role not in ("guest", "organiser", "photographer"):
+        raise ValueError("role not allowed for self-registration")
+    user = User(
+        id=user_id,
+        email_hash=email_hash(keys, address),
+        email_encrypted=seal_email(keys, address),
+        display_name=name,
+        role=role,
+        status="active" if role == "guest" else "pending",
+        is_minor=False,
+        age_answered_at=datetime.now(UTC),
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
 def find_or_create_user(session: Session, keys: KeyManager, address: str) -> User:
     """Purpose: the user for an address, created on first sign-in. Side effects: may insert."""
     digest = email_hash(keys, address)
@@ -117,13 +157,34 @@ def find_or_create_user(session: Session, keys: KeyManager, address: str) -> Use
 
 
 def organiser_allowed(user: User) -> bool:
-    """Purpose: True if the user may create events (set by a redeemed staff key)."""
-    return user.can_create_events
+    """
+    Purpose: True if the user may create and manage events: an approved (active) organiser,
+        or an admin. Pending, rejected and suspended accounts may not.
+    """
+    return user.role in ("organiser", "admin") and user.status == "active"
 
 
 def admin_allowed(user: User) -> bool:
-    """Purpose: True if the user is a platform admin (set by a redeemed staff key)."""
-    return user.is_admin
+    """Purpose: True if the user is an active platform admin (only from the bootstrap key)."""
+    return user.role == "admin" and user.status == "active"
+
+
+def photographer_allowed(user: User) -> bool:
+    """Purpose: True if the user is an approved (active) photographer an organiser may assign."""
+    return user.role == "photographer" and user.status == "active"
+
+
+def home_path(user: User) -> str:
+    """
+    Purpose: each person's dashboard after sign-in, from the role and status stored on the
+        server: admins -> /admin, approved organisers and photographers -> /studio, everyone
+        else (guests, and staff still waiting for approval) -> /photos.
+    """
+    if admin_allowed(user):
+        return "/admin"
+    if user.status == "active" and user.role in ("organiser", "photographer"):
+        return "/studio"
+    return "/photos"
 
 
 def create_session(
@@ -221,14 +282,18 @@ __all__ = [
     "admin_allowed",
     "clear_session_cookie",
     "create_anonymous_user",
+    "create_registered_user",
     "create_session",
     "email_hash",
     "find_or_create_user",
     "hash_token",
+    "home_path",
     "lookup_session",
     "new_token",
     "normalise_email",
+    "open_email",
     "organiser_allowed",
+    "photographer_allowed",
     "revoke_sessions",
     "seal_email",
     "set_session_cookie",

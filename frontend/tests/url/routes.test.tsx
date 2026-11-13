@@ -31,14 +31,14 @@ afterEach(() => {
 });
 
 describe('router', () => {
-  it('offers passkey sign-up and sign-in when the browser supports passkeys', async () => {
+  it('offers one passkey sign-in for everyone and account creation', async () => {
     vi.stubGlobal('PublicKeyCredential', function PublicKeyCredential() {});
     renderAt('/');
     expect(
       await screen.findByRole('heading', { name: 'Every photo of you, in one scan.', level: 1 }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Start with a passkey' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: "I've been here before" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in with passkey' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Create account' })).toBeInTheDocument();
     expect(screen.queryByText(/Google/)).toBeNull();
   });
 
@@ -300,6 +300,7 @@ describe('owner pages', () => {
         '/sections': { sections: [] },
         '/cameras': { cameras: [] },
         '/staff-keys': { keys: [] },
+        '/photographers': { photographers: [] },
       },
     );
     renderAt('/studio/events/ev1/settings');
@@ -564,29 +565,96 @@ describe('help bot', () => {
   });
 });
 
-describe('log in as', () => {
-  it('offers guest, organiser, photographer and admin on the front page', async () => {
+describe('sign in and create account', () => {
+  it('registers as guest, organiser or photographer, never admin', async () => {
     vi.stubGlobal('PublicKeyCredential', function PublicKeyCredential() {});
     renderAt('/?as=photographer');
-    const group = await screen.findByRole('radiogroup', { name: 'Log in as' });
-    for (const name of ['Guest', 'Organiser', 'Photographer', 'Admin']) {
-      expect(within(group).getByRole('radio', { name })).toBeInTheDocument();
+    const types = await screen.findByRole('radiogroup', { name: 'I am a' });
+    for (const name of ['Guest', 'Organiser', 'Photographer']) {
+      expect(within(types).getByRole('radio', { name })).toBeInTheDocument();
     }
-    expect(within(group).getByRole('radio', { name: 'Photographer' })).toHaveAttribute(
+    expect(within(types).queryByRole('radio', { name: 'Admin' })).toBeNull();
+    expect(within(types).getByRole('radio', { name: 'Photographer' })).toHaveAttribute(
       'aria-checked',
       'true',
     );
-    expect(screen.getByText(/Event settings > Staff keys/)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Staff key/)).toBeInTheDocument();
-    fireEvent.click(within(group).getByRole('radio', { name: 'Guest' }));
-    expect(screen.getByRole('button', { name: 'Start with a passkey' })).toBeInTheDocument();
+    expect(screen.getByText(/checked by the FaceScan admin first/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create account with passkey' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('tab', { name: 'Sign in' }));
+    expect(screen.getByRole('button', { name: 'Sign in with passkey' })).toBeInTheDocument();
   });
 
-  it('falls back to guest for an unknown ?as= value', async () => {
-    const { loginRoleFrom } = await import('@/pages/guest/LoginPage');
-    expect(loginRoleFrom('admin')).toBe('admin');
-    expect(loginRoleFrom('root')).toBe('guest');
-    expect(loginRoleFrom(null)).toBe('guest');
+  it('never offers admin from a link', async () => {
+    const { accountTypeFrom } = await import('@/pages/guest/LoginPage');
+    expect(accountTypeFrom('organiser')).toBe('organiser');
+    expect(accountTypeFrom('admin')).toBeNull();
+    expect(accountTypeFrom(null)).toBeNull();
+  });
+
+  it('tells a pending organiser why Studio is not open yet', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        const body = url.endsWith('/auth/me')
+          ? {
+              user_id: 'u1',
+              auth_method: 'passkey',
+              has_passkey: true,
+              age_answered: true,
+              is_minor: false,
+              can_create_events: false,
+              role: 'organiser',
+              status: 'pending',
+            }
+          : { events: [] };
+        return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+      }),
+    );
+    renderAt('/photos');
+    expect(
+      await screen.findByText(/organiser account is waiting for the admin's approval/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Main menu' })).not.toHaveTextContent('Studio');
+  });
+
+  it('lets the admin approve a waiting account', async () => {
+    const fetchMock = signedInAs(
+      { can_create_events: true, is_admin: true },
+      {
+        '/admin/health': {
+          system: {
+            disk_free_bytes: 1,
+            disk_total_bytes: 2,
+            disk_used_percent: 50,
+            last_backup_at: null,
+          },
+          events: [],
+        },
+        '/admin/accounts?status=pending': {
+          accounts: [
+            {
+              user_id: 'p1',
+              display_name: 'Ravi',
+              email: 'ravi@example.test',
+              role: 'photographer',
+              status: 'pending',
+              created_at: '2026-11-13T10:00:00Z',
+            },
+          ],
+        },
+      },
+    );
+    renderAt('/admin');
+    expect(await screen.findByText('Ravi')).toBeInTheDocument();
+    expect(screen.getByText(/ravi@example.test/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await screen.findByText('Ravi');
+    const approve = fetchMock.mock.calls.find(([input]) =>
+      String(input).endsWith('/admin/accounts/p1/status'),
+    );
+    expect(approve).toBeDefined();
   });
 });
 

@@ -1,14 +1,16 @@
-// LoginPage: the front door. "Login as" picks who is signing in: guests start or come back
-// with a passkey only (fingerprint or face unlock; no email, no password); organisers,
-// photographers and admins sign in with the one-time key FaceScan gave them, then a passkey.
+// LoginPage: the front door. One sign-in for everyone (passkey); the server reads the
+// person's role and status and opens their own dashboard. New people create an account
+// (name, email, type: guest / organiser / photographer - never admin) with a passkey;
+// organisers and photographers wait for an admin's approval. Staff keys still work.
 // Signed-in people go straight to their photos (or the invite link they came from).
 import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
-import { api } from '@/lib/serverApi';
+import { api, ApiError } from '@/lib/serverApi';
 import { StaffKeyForm } from '@/features/auth/StaffKeyForm';
 import {
+  type AccountType,
   openInBrowserUrl,
   passkeysSupported,
   signInWithPasskey,
@@ -27,15 +29,15 @@ export function afterSignInPath(next: string | null): string {
   return next && SAFE_NEXT.test(next) ? next : '/photos';
 }
 
-const ROLES = ['guest', 'organiser', 'photographer', 'admin'] as const;
-export type LoginRole = (typeof ROLES)[number];
+const ACCOUNT_TYPES: AccountType[] = ['guest', 'organiser', 'photographer'];
 
 /**
- * Purpose: the "Login as" choice from ?as= (so a link can open the right one), guest by default.
- * Inputs: the raw ?as= value. Outputs: a known role. Side effects: none.
+ * Purpose: the account type to preselect from ?as= (a link like /?as=organiser opens the
+ *   registration for that type). Admin is never offered. Inputs: raw value.
+ * Outputs: an account type, or null for plain sign-in. Side effects: none.
  */
-export function loginRoleFrom(value: string | null): LoginRole {
-  return ROLES.find((role) => role === value) ?? 'guest';
+export function accountTypeFrom(value: string | null): AccountType | null {
+  return ACCOUNT_TYPES.find((type) => type === value) ?? null;
 }
 
 /**
@@ -46,9 +48,15 @@ export function loginRoleFrom(value: string | null): LoginRole {
 export default function LoginPage() {
   const { t } = useTranslation();
   const { me, loading } = useCurrentUser();
-  const [params, setParams] = useSearchParams();
-  const role = loginRoleFrom(params.get('as'));
-  const destination = afterSignInPath(params.get('next'));
+  const [params] = useSearchParams();
+  const invite = params.get('next');
+  const preset = accountTypeFrom(params.get('as'));
+  const destination = afterSignInPath(invite);
+  const [mode, setMode] = useState<'signin' | 'register'>(preset ? 'register' : 'signin');
+  const [accountType, setAccountType] = useState<AccountType>(preset ?? 'guest');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [staffOpen, setStaffOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [devLogin, setDevLogin] = useState(false);
@@ -69,7 +77,10 @@ export default function LoginPage() {
     };
   }, [loading, me]);
 
-  if (!loading && me) return <Navigate to={destination} replace />;
+  // Signed in already: the invite link they came from, else their own dashboard.
+  if (!loading && me) {
+    return <Navigate to={invite ? destination : (me.home ?? '/photos')} replace />;
+  }
 
   /**
    * Purpose: dev-only sign-in with an email (local testing without a passkey device).
@@ -77,17 +88,26 @@ export default function LoginPage() {
    * Side effects: starts a session, then reloads into the gallery.
    */
   /**
-   * Purpose: run a passkey ceremony (new guest or returning person), then load the next page.
+   * Purpose: run a passkey ceremony (sign-in or new account), then open the page the server
+   *   chose for this person's role (or the invite link they came from).
    * Inputs: the ceremony. Outputs: none. Side effects: session cookie; full page load.
    */
-  async function withPasskey(action: () => Promise<unknown>) {
+  async function withPasskey(action: () => Promise<{ next: string }>) {
     setBusy(true);
     setError('');
     try {
-      await action();
-      window.location.assign(destination); // full load so the header sees the new session
-    } catch {
-      setError(t('welcome.passkeyFailed'));
+      const result = await action();
+      // Full load so the header sees the new session.
+      window.location.assign(invite ? destination : result.next || '/photos');
+    } catch (err) {
+      const detail = err instanceof ApiError ? err.detail : '';
+      setError(
+        detail === 'email_taken'
+          ? t('account.emailTaken')
+          : err instanceof ApiError && err.status === 422
+            ? t('account.invalid')
+            : t('welcome.passkeyFailed'),
+      );
       setBusy(false);
     }
   }
@@ -114,58 +134,24 @@ export default function LoginPage() {
         </h1>
         <p className="st-lead">{t('welcome.lead')}</p>
         <div className="st-signin" id="signin">
-          <p className="st-roles-label" id="login-as">
-            {t('loginAs.title')}
-          </p>
-          <div className="st-roles" role="radiogroup" aria-labelledby="login-as">
-            {ROLES.map((item) => (
+          <div className="st-roles st-roles-2" role="tablist" aria-label={t('account.title')}>
+            {(['signin', 'register'] as const).map((item) => (
               <button
                 key={item}
                 type="button"
-                role="radio"
-                aria-checked={role === item}
-                className={role === item ? 'st-role is-active' : 'st-role'}
-                onClick={() =>
-                  setParams(
-                    (current) => {
-                      const next = new URLSearchParams(current);
-                      if (item === 'guest') next.delete('as');
-                      else next.set('as', item);
-                      return next;
-                    },
-                    { replace: true },
-                  )
-                }
+                role="tab"
+                aria-selected={mode === item}
+                className={mode === item ? 'st-role is-active' : 'st-role'}
+                onClick={() => {
+                  setMode(item);
+                  setError('');
+                }}
               >
-                {t(`loginAs.${item}`)}
+                {t(item === 'signin' ? 'account.signInTab' : 'account.registerTab')}
               </button>
             ))}
           </div>
-          {role !== 'guest' ? (
-            <>
-              <p className="st-fine">{t(`loginAs.how.${role}`)}</p>
-              <StaffKeyForm onSignedIn={(next) => window.location.assign(next)} />
-            </>
-          ) : supported ? (
-            <div className="st-form-row">
-              <button
-                type="button"
-                className="st-btn st-btn-primary"
-                disabled={busy}
-                onClick={() => void withPasskey(signUpWithPasskey)}
-              >
-                {t('welcome.start')}
-              </button>
-              <button
-                type="button"
-                className="st-btn st-btn-ghost"
-                disabled={busy}
-                onClick={() => void withPasskey(signInWithPasskey)}
-              >
-                {t('welcome.comeBack')}
-              </button>
-            </div>
-          ) : (
+          {!supported ? (
             <div className="st-card st-claim">
               <p className="st-alert">{t('welcome.noPasskeyHere')}</p>
               <a className="st-btn st-btn-primary" href={openInBrowserUrl(window.location.href)}>
@@ -179,8 +165,84 @@ export default function LoginPage() {
                 {t('welcome.copyLink')}
               </button>
             </div>
+          ) : mode === 'signin' ? (
+            <>
+              <button
+                type="button"
+                className="st-btn st-btn-primary"
+                disabled={busy}
+                onClick={() => void withPasskey(signInWithPasskey)}
+              >
+                {t('account.signIn')}
+              </button>
+              <p className="st-fine">{t('account.signInHint')}</p>
+            </>
+          ) : (
+            <form
+              className="st-stack-gap"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void withPasskey(() =>
+                  signUpWithPasskey({
+                    name: name.trim(),
+                    email: email.trim(),
+                    account_type: accountType,
+                  }),
+                );
+              }}
+            >
+              <label className="st-field">
+                <span>{t('account.name')}</span>
+                <input
+                  className="st-input"
+                  required
+                  maxLength={80}
+                  autoComplete="name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <label className="st-field">
+                <span>{t('account.email')}</span>
+                <input
+                  className="st-input"
+                  type="email"
+                  required
+                  maxLength={254}
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </label>
+              <p className="st-roles-label" id="account-type">
+                {t('account.typeLabel')}
+              </p>
+              <div className="st-roles" role="radiogroup" aria-labelledby="account-type">
+                {ACCOUNT_TYPES.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    role="radio"
+                    aria-checked={accountType === type}
+                    className={accountType === type ? 'st-role is-active' : 'st-role'}
+                    onClick={() => setAccountType(type)}
+                  >
+                    {t(`account.type.${type}`)}
+                  </button>
+                ))}
+              </div>
+              <p className="st-fine">
+                {accountType === 'guest' ? t('welcome.passkeyHint') : t('account.staffHint')}
+              </p>
+              <button
+                type="submit"
+                className="st-btn st-btn-primary"
+                disabled={busy || !name.trim() || !email.trim()}
+              >
+                {t('account.create')}
+              </button>
+            </form>
           )}
-          {role === 'guest' && <p className="st-fine">{t('welcome.passkeyHint')}</p>}
           {devLogin && (
             <form
               className="st-card st-stack-gap"
@@ -220,6 +282,17 @@ export default function LoginPage() {
             </p>
           )}
           <p className="st-fine">{t('welcome.fine')}</p>
+          {staffOpen ? (
+            <StaffKeyForm onSignedIn={(next) => window.location.assign(next)} />
+          ) : (
+            <button
+              type="button"
+              className="st-btn st-btn-ghost st-btn-small"
+              onClick={() => setStaffOpen(true)}
+            >
+              {t('account.staffKey')}
+            </button>
+          )}
         </div>
         <ol className="st-steps">
           <li>

@@ -47,6 +47,25 @@ function SiteMenu({ me }: { me: Me }) {
 }
 
 /**
+ * Purpose: tell people why staff pages are not open yet: waiting for approval, not approved,
+ *   or suspended (the server enforces it; this only explains).
+ * Inputs: the signed-in user. Outputs: note element or null. Side effects: none.
+ */
+function AccountStatusNote({ me }: { me: Me }) {
+  const { t } = useTranslation();
+  if (!me.status || me.status === 'active') return null;
+  const staff = me.role === 'organiser' || me.role === 'photographer';
+  if (me.status !== 'suspended' && !staff) return null;
+  return (
+    <p className="st-note st-status-note" role="status">
+      {me.status === 'suspended'
+        ? t('account.suspended')
+        : t(`account.${me.status}`, { role: t(`account.type.${me.role ?? 'guest'}`) })}
+    </p>
+  );
+}
+
+/**
  * Purpose: page frame with the FaceScan brand and, when signed in, the menu and sign-out.
  * Inputs: none (reads the session). Outputs: layout element. Side effects: sign-out request.
  */
@@ -91,12 +110,13 @@ export function SiteLayout() {
           )}
           {!me && !loading && pathname !== '/' && (
             <Link to="/" className="st-btn st-btn-primary st-btn-small">
-              {t('loginAs.navButton')}
+              {t('account.navButton')}
             </Link>
           )}
         </nav>
       </header>
       {me && <SiteMenu me={me} />}
+      {me && <AccountStatusNote me={me} />}
       <main className="st-main">
         <Outlet />
       </main>

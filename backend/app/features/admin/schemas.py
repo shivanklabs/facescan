@@ -1,6 +1,7 @@
 """Pydantic API models for platform admin health monitoring."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -45,3 +46,27 @@ class AdminHealthResponse(BaseModel):
 
     events: list[EventHealthSummary]
     system: SystemHealthSummary
+
+
+class AccountItem(BaseModel):
+    """One account for the admin's approvals list (email only to the admin)."""
+
+    user_id: UUID
+    display_name: str | None
+    email: str | None
+    role: str
+    status: str
+    created_at: datetime
+
+
+class AccountList(BaseModel):
+    """Accounts for the admin page."""
+
+    accounts: list[AccountItem]
+
+
+class AccountStatusChange(BaseModel):
+    """Body: approve (active), reject or suspend an account."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    status: Literal["active", "rejected", "suspended"]

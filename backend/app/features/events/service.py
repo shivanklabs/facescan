@@ -21,11 +21,15 @@ from app.core.encryption import new_data_key
 from app.core.errors import ConflictError, NotFoundError, UnprocessableError
 from app.core.login_sessions import (
     CurrentUser,
+    InvalidEmailError,
+    email_hash,
     hash_token,
     new_token,
+    normalise_email,
+    photographer_allowed,
 )
 from app.core.login_sessions import organiser_allowed as is_organiser_allowed
-from app.core.request_checks import STAFF_ROLES, require_role
+from app.core.request_checks import STAFF_ROLES, require_role, staff_refusal
 from app.core.services_setup import AppContext
 from app.db.event_isolation import event_transaction, user_transaction
 from app.features.activity_log.service import record
@@ -95,7 +99,11 @@ def create_event(ctx: AppContext, user: CurrentUser, name: str, country: str) ->
     with ctx.sessions() as session:
         account = session.get(User, user.user_id)
         if account is None or not is_organiser_allowed(account):
-            raise HTTPException(status_code=403, detail="not_an_organiser")
+            reason = staff_refusal(account)
+            raise HTTPException(
+                status_code=403,
+                detail=reason if reason != "not_allowed" else "not_an_organiser",
+            )
     event_id = uuid.uuid4()
     with event_transaction(ctx.sessions, event_id) as session:
         event = Event(id=event_id, event_id=event_id, name=name, country=country.upper())
@@ -258,6 +266,92 @@ def join_with_invite(ctx: AppContext, user: CurrentUser, event_id: UUID, secret:
             session.add(EventMember(event_id=event_id, user_id=user.user_id, role="guest"))
             record(session, event_id=event_id, actor=user.actor, action="invite.joined")
         return _view(event, tuple(sorted(roles | {"guest"})))
+
+
+@dataclass(frozen=True, slots=True)
+class PhotographerView:
+    """A photographer assigned to an event (name only; never their email)."""
+
+    user_id: UUID
+    display_name: str | None
+    assigned_at: datetime
+
+
+def assign_photographer(
+    ctx: AppContext, organiser: CurrentUser, event_id: UUID, address: str
+) -> PhotographerView:
+    """
+    Purpose: an event's organiser assigns an approved photographer (found by the email they
+        registered with) to this event only.
+    Inputs: ctx, the organiser, event_id, the photographer's email.
+    Outputs: PhotographerView. Raises 403 unless the caller organises this event (404 when
+        they are not a member at all); 404 "no_approved_photographer" unless the email belongs
+        to an active photographer account (pending, rejected, suspended and other roles refused).
+    Side effects: inserts one event_members row (role photographer, assigned_by); audit row.
+    """
+    try:
+        digest = email_hash(ctx.keys, normalise_email(address))
+    except InvalidEmailError as exc:
+        raise HTTPException(status_code=422, detail="invalid_email") from exc
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, organiser.user_id, ("organiser",))
+    with ctx.sessions() as session:
+        account = session.scalars(select(User).where(User.email_hash == digest)).first()
+        if account is None or not photographer_allowed(account):
+            raise HTTPException(status_code=404, detail="no_approved_photographer")
+        photographer_id, name = account.id, account.display_name
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, organiser.user_id, ("organiser",))
+        member = session.scalars(
+            select(EventMember).where(
+                EventMember.event_id == event_id,
+                EventMember.user_id == photographer_id,
+                EventMember.role == "photographer",
+            )
+        ).first()
+        if member is None:
+            member = EventMember(
+                event_id=event_id,
+                user_id=photographer_id,
+                role="photographer",
+                assigned_by=organiser.user_id,
+            )
+            session.add(member)
+            session.flush()
+            record(
+                session,
+                event_id=event_id,
+                actor=organiser.actor,
+                action="photographer.assigned",
+                target=str(photographer_id),
+            )
+        return PhotographerView(photographer_id, name, member.created_at)
+
+
+def list_photographers(
+    ctx: AppContext, organiser: CurrentUser, event_id: UUID
+) -> list[PhotographerView]:
+    """
+    Purpose: the photographers assigned to an event, for its organiser only.
+    Inputs: ctx, organiser, event_id. Outputs: PhotographerView list (oldest first).
+    Side effects: none.
+    """
+    with event_transaction(ctx.sessions, event_id) as session:
+        require_role(session, event_id, organiser.user_id, ("organiser",))
+        rows = session.execute(
+            select(EventMember.user_id, EventMember.created_at)
+            .where(EventMember.event_id == event_id, EventMember.role == "photographer")
+            .order_by(EventMember.created_at)
+        ).all()
+    if not rows:
+        return []
+    with ctx.sessions() as session:
+        names = dict(
+            session.execute(
+                select(User.id, User.display_name).where(User.id.in_([r[0] for r in rows]))
+            ).all()
+        )
+    return [PhotographerView(uid, names.get(uid), at) for uid, at in rows]
 
 
 def data_key(session: Session, keys: KeyManager, event_id: UUID) -> tuple[bytes, int]:

@@ -11,6 +11,7 @@ person erasing their own account (DPDP right to erasure; owner decision 13 Nov 2
   sessions, sign-in challenges, consents, matches, "Not me" links (cannot_links),
   user_templates, claims, claim/search/scene-search records, unfinished upload sessions and
   event memberships. Staff keys they made or used keep the row with the user set to NULL.
+- Also removed: the account's email (hash + ciphertext) and display name.
 - Kept: every event photo, face and cluster (they belong to the event), and one audit row
   `auth.account_deleted` with actor `system:account-erasure` and no id or personal data.
 - The passkey may stay in the person's phone password manager; the goodbye screen tells them

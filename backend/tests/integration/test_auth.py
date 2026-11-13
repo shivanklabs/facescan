@@ -1,14 +1,17 @@
 """Sign-in and sessions: passkeys, staff keys, cookies, rotation, sign-out, CSRF guard."""
 
 import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from app.core.login_sessions import SESSION_COOKIE
 from app.core.services_setup import AppContext
 from app.features.login import service as login_service
 from app.features.login.models import AuthSession, StaffKey, User
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
+from tests.conftest import make_png
 from tests.helpers import (
     SoftAuthenticator,
     key_only_client,
@@ -16,6 +19,8 @@ from tests.helpers import (
     passkey_guest,
     passkey_sign_in,
     register_passkey,
+    sign_up,
+    staff_client,
 )
 
 
@@ -23,10 +28,7 @@ def _guest_with_authenticator(ctx: AppContext) -> tuple[TestClient, SoftAuthenti
     """Purpose: a passkey-only guest plus the authenticator that holds their passkey."""
     client = new_client(ctx)
     authenticator = SoftAuthenticator()
-    options = client.post("/auth/guest/passkey/options").json()
-    response = client.post(
-        "/auth/guest/passkey/verify", json={"credential": authenticator.create(options)}
-    )
+    response = sign_up(client, authenticator)
     assert response.status_code == 200, response.text
     return client, authenticator
 
@@ -42,10 +44,7 @@ def test_staff_keys_are_stored_only_as_a_hash(ctx: AppContext) -> None:
 
 def test_session_cookie_flags_and_hash_only_storage(ctx: AppContext) -> None:
     client = new_client(ctx)
-    options = client.post("/auth/guest/passkey/options").json()
-    response = client.post(
-        "/auth/guest/passkey/verify", json={"credential": SoftAuthenticator().create(options)}
-    )
+    response = sign_up(client)
     header = response.headers["set-cookie"].lower()
     for flag in ("httponly", "secure", "samesite=strict", "path=/"):
         assert flag in header
@@ -119,10 +118,13 @@ def test_passkey_rejects_wrong_origin_replay_and_unknown_keys(ctx: AppContext) -
 
 def test_cross_origin_state_changes_are_refused(ctx: AppContext) -> None:
     client = new_client(ctx)
-    evil = client.post("/auth/guest/passkey/options", headers={"Origin": "https://evil.example"})
+    body = {"name": "A", "email": "origin@example.test", "account_type": "guest"}
+    evil = client.post(
+        "/auth/register/options", json=body, headers={"Origin": "https://evil.example"}
+    )
     assert evil.status_code == 403
     same = client.post(
-        "/auth/guest/passkey/options", headers={"Origin": ctx.settings.auth_rp_origin}
+        "/auth/register/options", json=body, headers={"Origin": ctx.settings.auth_rp_origin}
     )
     assert same.status_code == 200
 
@@ -142,13 +144,10 @@ def _user_count(ctx: AppContext) -> int:
 
 
 def test_guest_signs_up_and_comes_back_with_only_a_passkey(ctx: AppContext) -> None:
-    """Purpose: no email: a passkey alone creates the account and signs back in."""
+    """Purpose: name + email + passkey create the account; the passkey alone signs back in."""
     client = new_client(ctx)
-    options = client.post("/auth/guest/passkey/options").json()
     authenticator = SoftAuthenticator()
-    response = client.post(
-        "/auth/guest/passkey/verify", json={"credential": authenticator.create(options)}
-    )
+    response = sign_up(client, authenticator)
     assert response.status_code == 200, response.text
     me = client.get("/auth/me").json()
     assert me["auth_method"] == "passkey"
@@ -163,9 +162,7 @@ def test_failed_guest_passkey_creates_no_account(ctx: AppContext) -> None:
     """Purpose: an account exists only after its passkey verifies (wrong origin here)."""
     before = _user_count(ctx)
     client = new_client(ctx)
-    options = client.post("/auth/guest/passkey/options").json()
-    bad = SoftAuthenticator().create(options, origin="https://evil.example")
-    response = client.post("/auth/guest/passkey/verify", json={"credential": bad})
+    response = sign_up(client, origin="https://evil.example")
     assert response.status_code == 400
     assert _user_count(ctx) == before
     assert client.get("/auth/me").status_code == 401
@@ -228,10 +225,7 @@ def test_admin_owner_photographer_keys_end_to_end(ctx: AppContext) -> None:
 def test_staff_keys_refuse_wrong_creators_revoked_and_expired(ctx: AppContext) -> None:
     """Purpose: guests cannot mint organiser keys; revoked and expired keys do not work."""
     guest = new_client(ctx)
-    options = guest.post("/auth/guest/passkey/options").json()
-    guest.post(
-        "/auth/guest/passkey/verify", json={"credential": SoftAuthenticator().create(options)}
-    )
+    assert sign_up(guest).status_code == 200
     assert guest.post("/auth/staff-keys", json={"role": "organiser"}).status_code == 403
 
     admin = new_client(ctx)
@@ -249,3 +243,256 @@ def test_staff_keys_refuse_wrong_creators_revoked_and_expired(ctx: AppContext) -
             .values(expires_at=datetime.now(UTC) - timedelta(minutes=1))
         )
     assert new_client(ctx).post("/auth/staff-key", json={"key": old_key}).status_code == 400
+
+
+# ---------------------------------------------------------------- accounts, roles and approvals
+# One common login (passkey); the server decides role and status. Organisers and
+# photographers register themselves and wait for an admin; admins come only from the
+# server-side bootstrap key.
+
+
+def _admin(ctx: AppContext) -> TestClient:
+    """Purpose: an active admin with a passkey session (bootstrap key, then a passkey)."""
+    return staff_client(ctx, "admin")
+
+
+def _registered(
+    ctx: AppContext, account_type: str
+) -> tuple[TestClient, SoftAuthenticator, str, str]:
+    """Purpose: a self-registered account. Outputs: client, authenticator, email, user id."""
+    client = new_client(ctx)
+    authenticator = SoftAuthenticator()
+    email = f"{account_type}-{secrets.token_hex(4)}@example.test"
+    response = sign_up(client, authenticator, account_type, email, f"Test {account_type}")
+    assert response.status_code == 200, response.text
+    return client, authenticator, email, client.get("/auth/me").json()["user_id"]
+
+
+def _set_status(admin: TestClient, user_id: str, status: str) -> None:
+    response = admin.post(f"/admin/accounts/{user_id}/status", json={"status": status})
+    assert response.status_code == 200, response.text
+
+
+def _approved(ctx: AppContext, admin: TestClient, account_type: str) -> tuple[TestClient, str]:
+    """Purpose: a self-registered organiser / photographer the admin approved."""
+    client, _, email, user_id = _registered(ctx, account_type)
+    _set_status(admin, user_id, "active")
+    return client, email
+
+
+def _login(client: TestClient, authenticator: SoftAuthenticator) -> str:
+    """Purpose: passkey sign-in; returns where the server sends this person."""
+    options = client.post("/auth/passkey/login/options").json()
+    response = client.post(
+        "/auth/passkey/login/verify", json={"credential": authenticator.get(options)}
+    )
+    assert response.status_code == 200, response.text
+    return str(response.json()["next"])
+
+
+def _upload(client: TestClient, event_id: str) -> int:
+    files = [("files", ("p.png", make_png(1, 1), "image/png"))]
+    return client.post(f"/events/{event_id}/photos", files=files).status_code
+
+
+def test_guest_registration_is_active_at_once(ctx: AppContext) -> None:
+    client = new_client(ctx)
+    response = sign_up(client, account_type="guest", email="guest.reg@example.test", name="Asha")
+    assert response.status_code == 200 and response.json()["next"] == "/photos"
+    me = client.get("/auth/me").json()
+    assert (me["role"], me["status"], me["display_name"]) == ("guest", "active", "Asha")
+    with ctx.sessions() as s:
+        row = s.scalars(select(User).where(User.id == me["user_id"])).one()
+        assert b"guest.reg@example.test" not in row.email_encrypted  # stored encrypted only
+    again = sign_up(new_client(ctx), account_type="guest", email="GUEST.reg@example.test")
+    assert again.status_code == 409 and again.json()["detail"] == "email_taken"
+
+
+def test_organiser_registration_waits_for_approval(ctx: AppContext) -> None:
+    client, _, _, _ = _registered(ctx, "organiser")
+    me = client.get("/auth/me").json()
+    assert (me["role"], me["status"], me["home"]) == ("organiser", "pending", "/photos")
+    assert me["can_create_events"] is False
+
+
+def test_photographer_registration_waits_for_approval(ctx: AppContext) -> None:
+    client, _, _, _ = _registered(ctx, "photographer")
+    me = client.get("/auth/me").json()
+    assert (me["role"], me["status"]) == ("photographer", "pending")
+    assert me["is_staff"] is False
+
+
+def test_admin_bootstrap_key_makes_an_active_admin(ctx: AppContext) -> None:
+    me = _admin(ctx).get("/auth/me").json()
+    assert (me["role"], me["status"], me["home"], me["is_admin"]) == (
+        "admin",
+        "active",
+        "/admin",
+        True,
+    )
+
+
+def test_admin_bootstrap_refuses_a_second_admin_unless_forced(
+    ctx: AppContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import services_setup
+
+    _admin(ctx)  # an active admin exists now
+    monkeypatch.setattr(services_setup, "build_context", lambda _settings: ctx)
+    with pytest.raises(login_service.AdminExistsError):
+        login_service.issue_staff_key_from_terminal("admin")
+    assert login_service.issue_staff_key_from_terminal("admin", force=True).startswith("FS-")
+    assert login_service.issue_staff_key_from_terminal("organiser").startswith("FS-")
+
+
+def test_public_registration_can_never_make_an_admin(ctx: AppContext) -> None:
+    client = new_client(ctx)
+    body = {"name": "Eve", "email": "eve@example.test", "account_type": "admin"}
+    assert client.post("/auth/register/options", json=body).status_code == 422
+    sneaky = {"name": "Eve", "email": "eve@example.test", "account_type": "guest", "role": "admin"}
+    assert client.post("/auth/register/options", json=sneaky).status_code == 422
+    # Even a hand-made final request is refused before any account exists.
+    assert client.post("/auth/register", json={**body, "credential": {}}).status_code == 422
+    with ctx.sessions() as s:
+        named_admins = s.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.role == "admin", User.display_name.is_not(None))
+        )
+    assert named_admins == 0  # every admin came from a bootstrap key, none from registration
+
+
+def test_one_login_sends_each_person_to_their_dashboard(ctx: AppContext) -> None:
+    admin = _admin(ctx)
+    _, authenticator, _, user_id = _registered(ctx, "organiser")
+    elsewhere = new_client(ctx)
+    assert _login(elsewhere, authenticator) == "/photos"  # still waiting for approval
+    _set_status(admin, user_id, "active")
+    assert _login(elsewhere, authenticator) == "/studio"
+    _, guest_key, _, _ = _registered(ctx, "guest")
+    assert _login(new_client(ctx), guest_key) == "/photos"
+
+
+def test_pending_organiser_cannot_create_events(ctx: AppContext) -> None:
+    client, _, _, _ = _registered(ctx, "organiser")
+    refused = client.post("/events", json={"name": "Too early", "country": "IN"})
+    assert refused.status_code == 403 and refused.json()["detail"] == "account_pending"
+
+
+def test_pending_photographer_cannot_be_assigned_or_upload(ctx: AppContext) -> None:
+    admin = _admin(ctx)
+    organiser, _ = _approved(ctx, admin, "organiser")
+    event_id = organiser.post("/events", json={"name": "Mehndi", "country": "IN"}).json()[
+        "event_id"
+    ]
+    photographer, _, email, _ = _registered(ctx, "photographer")
+    refused = organiser.post(f"/events/{event_id}/photographers", json={"email": email})
+    assert refused.status_code == 404 and refused.json()["detail"] == "no_approved_photographer"
+    assert _upload(photographer, event_id) == 404
+
+
+def test_organiser_creates_and_lists_several_events(ctx: AppContext) -> None:
+    admin = _admin(ctx)
+    organiser, _ = _approved(ctx, admin, "organiser")
+    made = {
+        organiser.post("/events", json={"name": name, "country": "IN"}).json()["event_id"]
+        for name in ("Haldi", "Sangeet", "Wedding")
+    }
+    listed = {e["event_id"] for e in organiser.get("/events").json()["events"]}
+    assert made <= listed
+
+
+def test_organiser_cannot_open_another_organisers_event(ctx: AppContext) -> None:
+    admin = _admin(ctx)
+    owner, _ = _approved(ctx, admin, "organiser")
+    other, _ = _approved(ctx, admin, "organiser")
+    event_id = owner.post("/events", json={"name": "Private", "country": "IN"}).json()["event_id"]
+    assert other.get(f"/events/{event_id}").status_code == 404  # existence not revealed
+    assert other.get(f"/events/{event_id}/invites").status_code == 404
+    assert other.get(f"/events/{event_id}/photographers").status_code == 404
+    assign = other.post(f"/events/{event_id}/photographers", json={"email": "x@example.test"})
+    assert assign.status_code == 404
+
+
+def test_photographer_cannot_reach_an_unassigned_event(ctx: AppContext) -> None:
+    admin = _admin(ctx)
+    organiser, _ = _approved(ctx, admin, "organiser")
+    photographer, _ = _approved(ctx, admin, "photographer")
+    event_id = organiser.post("/events", json={"name": "Not yours", "country": "IN"}).json()[
+        "event_id"
+    ]
+    assert _upload(photographer, event_id) == 404
+    assert photographer.get(f"/events/{event_id}/processing-status").status_code == 404
+
+
+def test_photographer_uploads_to_an_assigned_event(ctx: AppContext) -> None:
+    admin = _admin(ctx)
+    organiser, _ = _approved(ctx, admin, "organiser")
+    photographer, email = _approved(ctx, admin, "photographer")
+    event_id = organiser.post("/events", json={"name": "Assigned", "country": "IN"}).json()[
+        "event_id"
+    ]
+    assigned = organiser.post(f"/events/{event_id}/photographers", json={"email": email})
+    assert assigned.status_code == 201, assigned.text
+    assert assigned.json()["display_name"] == "Test photographer"
+    assert "email" not in assigned.json()
+    listed = organiser.get(f"/events/{event_id}/photographers").json()["photographers"]
+    assert [p["user_id"] for p in listed] == [assigned.json()["user_id"]]
+    assert _upload(photographer, event_id) in (200, 201)
+    # Assigning is the organiser's job only: a photographer cannot assign anyone.
+    again = photographer.post(f"/events/{event_id}/photographers", json={"email": email})
+    assert again.status_code == 403
+
+
+def test_guests_cannot_use_staff_or_admin_apis(ctx: AppContext) -> None:
+    guest = passkey_guest(ctx)
+    assert guest.post("/events", json={"name": "Mine", "country": "IN"}).status_code == 403
+    assert guest.get("/admin/accounts").status_code == 403
+    assert guest.get("/admin/health").status_code == 403
+    assert guest.post("/auth/staff-keys", json={"role": "organiser"}).status_code == 403
+
+
+def test_admin_dashboard_needs_an_admin(ctx: AppContext) -> None:
+    assert new_client(ctx).get("/admin/health").status_code == 401
+    assert new_client(ctx).get("/admin/accounts").status_code == 401
+    admin = _admin(ctx)
+    organiser, _ = _approved(ctx, admin, "organiser")
+    refused = organiser.get("/admin/accounts")
+    assert refused.status_code == 403 and refused.json()["detail"] == "admin_required"
+    assert admin.get("/admin/health").status_code == 200
+
+
+def test_admin_approves_rejects_and_suspends_accounts(ctx: AppContext) -> None:
+    admin = _admin(ctx)
+    organiser, _, org_email, org_id = _registered(ctx, "organiser")
+    photographer, _, _, ph_id = _registered(ctx, "photographer")
+    pending = {a["user_id"]: a for a in admin.get("/admin/accounts").json()["accounts"]}
+    assert pending[org_id]["email"] == org_email and pending[org_id]["status"] == "pending"
+    assert ph_id in pending
+
+    _set_status(admin, org_id, "active")
+    created = organiser.post("/events", json={"name": "Approved", "country": "IN"})
+    assert created.status_code in (200, 201)
+    _set_status(admin, ph_id, "rejected")
+    assert photographer.get("/auth/me").json()["status"] == "rejected"
+
+    _set_status(admin, org_id, "suspended")
+    assert organiser.get("/events").status_code in (401, 403)  # sessions ended, account locked
+    # The admin's own account and other admins cannot be changed through the API.
+    admin_id = admin.get("/auth/me").json()["user_id"]
+    own = admin.post(f"/admin/accounts/{admin_id}/status", json={"status": "suspended"})
+    assert own.status_code == 403
+    bad = admin.post(f"/admin/accounts/{org_id}/status", json={"status": "admin"})
+    assert bad.status_code == 422
+
+
+def test_suspended_people_can_still_see_why_and_delete_their_account(ctx: AppContext) -> None:
+    admin = _admin(ctx)
+    _, authenticator, _, user_id = _registered(ctx, "guest")
+    _set_status(admin, user_id, "suspended")
+    again = new_client(ctx)
+    _login(again, authenticator)
+    assert again.get("/auth/me").json()["status"] == "suspended"
+    refused = again.get("/discover/photos")
+    assert refused.status_code == 403 and refused.json()["detail"] == "account_suspended"
+    assert again.post("/auth/delete-account", json={"confirm": "DELETE"}).status_code == 200

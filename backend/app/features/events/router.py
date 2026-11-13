@@ -8,6 +8,7 @@ from app.core.rate_limit import RateLimiter
 from app.core.request_checks import Ctx, PasskeyUser, User
 from app.features.events import service
 from app.features.events.schemas import (
+    AssignPhotographerRequest,
     CameraInfo,
     CameraListResponse,
     CreateEventRequest,
@@ -19,6 +20,8 @@ from app.features.events.schemas import (
     InviteKey,
     InviteListResponse,
     InviteResponse,
+    PhotographerItem,
+    PhotographerList,
     PublicEventResponse,
     SectionListResponse,
     SectionResponse,
@@ -197,3 +200,30 @@ def set_search_window(
     """Purpose: organiser sets search window end date."""
     ends_at = service.set_search_window(ctx, user, event_id, body.search_window_ends_at)
     return SetSearchWindowResponse(event_id=event_id, search_window_ends_at=ends_at)
+
+
+@router.post("/events/{event_id}/photographers", status_code=201, response_model=PhotographerItem)
+def assign_photographer(
+    event_id: UUID, body: AssignPhotographerRequest, user: PasskeyUser, ctx: Ctx
+) -> PhotographerItem:
+    """
+    Purpose: the event's organiser assigns an approved photographer by their email.
+    Outputs: the photographer (name only). 403 not the organiser, 404 no approved photographer.
+    """
+    view = service.assign_photographer(ctx, user, event_id, body.email)
+    return PhotographerItem(
+        user_id=view.user_id, display_name=view.display_name, assigned_at=view.assigned_at
+    )
+
+
+@router.get("/events/{event_id}/photographers", response_model=PhotographerList)
+def list_photographers(event_id: UUID, user: PasskeyUser, ctx: Ctx) -> PhotographerList:
+    """Purpose: photographers assigned to the event (organiser only; names, no emails)."""
+    return PhotographerList(
+        photographers=[
+            PhotographerItem(
+                user_id=v.user_id, display_name=v.display_name, assigned_at=v.assigned_at
+            )
+            for v in service.list_photographers(ctx, user, event_id)
+        ]
+    )

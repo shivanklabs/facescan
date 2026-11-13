@@ -1061,9 +1061,13 @@ def task_staff_key(args: argparse.Namespace) -> None:
     """
     if not ENV_FILE.exists():
         raise TaskError(".env is missing. Run: uv run tasks setup")
+    force = bool(getattr(args, "force", False))
     code = (
-        "from app.features.login.service import issue_staff_key_from_terminal as issue; "
-        f"print(issue({args.role!r}))"
+        "import sys; "
+        "from app.features.login.service import AdminExistsError, "
+        "issue_staff_key_from_terminal as issue\n"
+        f"try: print(issue({args.role!r}, force={force!r}))\n"
+        "except AdminExistsError: sys.exit(3)"
     )
     result = subprocess.run(  # noqa: S603  (role is one of two argparse choices)
         [sys.executable, "-c", code],
@@ -1073,6 +1077,11 @@ def task_staff_key(args: argparse.Namespace) -> None:
         text=True,
         check=False,
     )
+    if result.returncode == 3:
+        raise TaskError(
+            "An active admin already exists, so no key was made. To add another admin (or if "
+            "the admin lost every passkey) run again with --force."
+        )
     if result.returncode != 0:
         raise TaskError("could not create the key (is PostgreSQL running and migrated?)")
     key = result.stdout.strip().splitlines()[-1]
@@ -1118,6 +1127,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         task_parser = sub.add_parser(name, help=help_text)
         if name == "staff-key":
             task_parser.add_argument("--role", choices=("admin", "organiser"), default="admin")
+            task_parser.add_argument(
+                "--force", action="store_true", help="make an admin key even if one exists"
+            )
         elif name == "lint":
             task_parser.add_argument("--only", choices=("python", "frontend"), default=None)
         elif name == "test":

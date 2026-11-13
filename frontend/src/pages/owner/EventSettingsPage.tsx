@@ -430,6 +430,83 @@ function CamerasCard({ eventId }: { eventId: string }) {
   );
 }
 
+interface Photographer {
+  user_id: string;
+  display_name: string | null;
+  assigned_at: string;
+}
+
+/**
+ * Purpose: assign approved photographers to this event by the email they registered with;
+ *   they then see and upload to this event only.
+ * Inputs: eventId. Outputs: card element.
+ * Side effects: GET / POST /events/{id}/photographers.
+ */
+function PhotographersCard({ eventId }: { eventId: string }) {
+  const { t } = useTranslation();
+  const [people, setPeople] = useState<Photographer[]>([]);
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+
+  const load = useCallback(() => {
+    api<{ photographers: Photographer[] }>(`/events/${eventId}/photographers`)
+      .then((data) => setPeople(data.photographers))
+      .catch((error: unknown) => setMessage(ownerError(t, error)));
+  }, [eventId, t]);
+
+  useEffect(load, [load]);
+
+  async function assign(e: FormEvent) {
+    e.preventDefault();
+    setMessage('');
+    try {
+      await api(`/events/${eventId}/photographers`, { json: { email: email.trim() } });
+      setEmail('');
+      load();
+    } catch (error) {
+      setMessage(
+        error instanceof ApiError && error.detail === 'no_approved_photographer'
+          ? t('photographers.notFound')
+          : ownerError(t, error),
+      );
+    }
+  }
+
+  return (
+    <div className="st-card st-claim">
+      <h2>{t('photographers.title')}</h2>
+      <p className="st-lead-small">{t('photographers.text')}</p>
+      {people.length > 0 && (
+        <ul className="st-list">
+          {people.map((p) => (
+            <li key={p.user_id} className="st-list-row">
+              <strong>{p.display_name ?? t('accounts.noName')}</strong>
+              <span className="st-count">{new Date(p.assigned_at).toLocaleDateString()}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="st-form-row" onSubmit={(e) => void assign(e)}>
+        <label className="st-field st-field-grow">
+          <span>{t('photographers.email')}</span>
+          <input
+            className="st-input"
+            type="email"
+            required
+            maxLength={254}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </label>
+        <button type="submit" className="st-btn st-btn-primary" disabled={!email.trim()}>
+          {t('photographers.assign')}
+        </button>
+      </form>
+      {message && <p className="st-alert">{message}</p>}
+    </div>
+  );
+}
+
 /**
  * Purpose: the event settings page for owners.
  * Inputs: eventId (route). Outputs: page element.
@@ -473,6 +550,7 @@ export default function EventSettingsPage() {
             event={event}
             onSaved={load}
           />
+          <PhotographersCard eventId={eventId} />
           <StaffKeysCard roles={['photographer']} eventId={eventId} />
           <CamerasCard eventId={eventId} />
         </>

@@ -22,6 +22,11 @@ export interface Me {
   can_create_events: boolean;
   is_admin?: boolean;
   is_staff?: boolean; // organiser or photographer of an event
+  // Set by the server only (never chosen in the browser).
+  role?: 'guest' | 'organiser' | 'photographer' | 'admin';
+  status?: 'active' | 'pending' | 'rejected' | 'suspended';
+  display_name?: string | null;
+  home?: string; // this person's dashboard
 }
 
 export interface CurrentUser {

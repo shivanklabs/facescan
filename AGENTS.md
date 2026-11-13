@@ -58,8 +58,10 @@ photos from an event. Proprietary code. First market: India (DPDP Act 2023).
    scrape faces from the internet.
 10. No paid service calls; every external dependency goes through `backend/app/interfaces`.
 
-The face is a search query, never a password. No emails are collected: guests sign in with a
-passkey (WebAuthn) only; staff redeem a one-time staff key, then use a passkey.
+The face is a search query, never a password. One sign-in for everyone: a passkey (WebAuthn);
+there are no passwords. Accounts are created with a name, an email (stored only as an HMAC for
+lookup and AES-GCM ciphertext; shown only to admins for approvals) and a passkey (owner
+decision 13 Nov 2026). The server decides role and status; the browser never does.
 
 ## Working rules
 - **Ask before every technology, tool, library or service choice.** Give 2-3 options with a
@@ -74,11 +76,18 @@ passkey (WebAuthn) only; staff redeem a one-time staff key, then use a passkey.
 - Validate every request payload with Pydantic schemas; never return stack traces.
 - Strict typing: no `Any`, no `# type: ignore`, no `@ts-ignore`.
 - The Phase 3 AI agent (`ai/agent/`) may only call public API tools, never face search or vectors.
-- Sign-in: passkeys (guests sign up with a passkey only; no account exists before it
-  verifies); staff keys (`uv run tasks staff-key`, single use, 7 days, only a SHA-256 stored)
-  then a passkey. Server-side sessions in PostgreSQL (HttpOnly, Secure, SameSite=Strict
-  cookies). Staff pages need a passkey session. Event roles come from event_members and are
-  checked on every request.
+- Sign-in: one passkey sign-in for all roles; the server sends each person to their
+  dashboard from users.role + users.status. Registration (POST /auth/register): name, email,
+  type guest / organiser / photographer (admin is refused); no account exists before the
+  passkey verifies; guests start active, organisers and photographers pending until an admin
+  approves them (/admin/accounts). Admins only from the server bootstrap
+  (`uv run tasks staff-key --role admin`, refused while an active admin exists unless
+  `--force`). Staff keys (single use, 7 days, only a SHA-256 stored) stay as a pre-approved
+  invite. Suspended accounts are refused on every route except /auth/me, sign-out and delete.
+  Server-side sessions in PostgreSQL (HttpOnly, Secure, SameSite=Strict cookies). Staff pages
+  need a passkey session. Event ownership and photographer assignment come from
+  event_members (role organiser / photographer, assigned_by) and are checked on every
+  request, with row-level security underneath.
 - Folders are lowercase. Python packages and modules use snake_case; multi-word non-Python
   folders use kebab-case.
 - Name by responsibility, not technology: `interfaces/face_analyzer.py`, not `interfaces/onnx.py`.

@@ -148,3 +148,24 @@ class SetSearchWindowResponse(BaseModel):
 
     event_id: UUID
     search_window_ends_at: datetime | None
+
+
+class AssignPhotographerRequest(BaseModel):
+    """Body: the email an approved photographer registered with."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    email: str = Field(min_length=3, max_length=254)
+
+
+class PhotographerItem(BaseModel):
+    """A photographer assigned to an event (name only)."""
+
+    user_id: UUID
+    display_name: str | None
+    assigned_at: datetime
+
+
+class PhotographerList(BaseModel):
+    """Photographers of one event."""
+
+    photographers: list[PhotographerItem]

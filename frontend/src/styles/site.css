@@ -157,7 +157,7 @@ body:has(.studio) {
   border-bottom: 1px solid var(--fs-line);
 }
 
-/* "Log in as" choice on the front page. */
+/* Small segmented choices: sign in / create account, account type, admin filters. */
 .st-roles-label {
   margin: 0 0 8px;
   font-size: 0.85rem;
@@ -168,7 +168,8 @@ body:has(.studio) {
 
 .st-roles {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 6px;
   padding: 4px;
   margin-bottom: 14px;
@@ -1600,9 +1601,10 @@ body:has(.st-claim-camera) .st-help-panel {
     display: none;
   }
 
-  /* Narrow phones: the four "Log in as" choices in two rows. */
+  /* Narrow phones: four choices (admin filters) in two rows. */
   @media (max-width: 420px) {
-    .st-roles {
+    .st-roles:has(> :nth-child(4)) {
+      grid-auto-flow: row;
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }

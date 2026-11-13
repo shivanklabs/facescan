@@ -58,6 +58,10 @@ class EventMember(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     role: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Who assigned a photographer (an organiser); NULL for older rows and self-joins.
+    assigned_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = created_at()
 
 

@@ -57,6 +57,117 @@ export function backupIsStale(lastBackupAt: string | null, now: number = Date.no
   return now - new Date(lastBackupAt).getTime() > BACKUP_WARN_HOURS * 3600 * 1000;
 }
 
+interface Account {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
+  role: string;
+  status: string;
+  created_at: string;
+}
+
+type AccountStatus = 'pending' | 'active' | 'suspended' | 'rejected';
+const ACCOUNT_FILTERS: AccountStatus[] = ['pending', 'active', 'suspended', 'rejected'];
+
+/** What the admin can do with an account in each status (the server checks it again). */
+const ACTIONS: Record<AccountStatus, { to: 'active' | 'rejected' | 'suspended'; key: string }[]> = {
+  pending: [
+    { to: 'active', key: 'approve' },
+    { to: 'rejected', key: 'reject' },
+  ],
+  active: [{ to: 'suspended', key: 'suspend' }],
+  suspended: [{ to: 'active', key: 'reactivate' }],
+  rejected: [{ to: 'active', key: 'approve' }],
+};
+
+/**
+ * Purpose: approvals: accounts by status (pending first) with approve / reject / suspend.
+ * Inputs: none. Outputs: card element.
+ * Side effects: GET /admin/accounts; POST /admin/accounts/{id}/status.
+ */
+function AccountsCard() {
+  const { t } = useTranslation();
+  const [filter, setFilter] = useState<AccountStatus>('pending');
+  const [accounts, setAccounts] = useState<Account[] | null>(null);
+  const [message, setMessage] = useState('');
+
+  const load = useCallback(() => {
+    api<{ accounts: Account[] }>(`/admin/accounts?status=${filter}`)
+      .then((data) => setAccounts(data.accounts))
+      .catch(() => setMessage(t('common.error')));
+  }, [filter, t]);
+
+  useEffect(load, [load]);
+
+  async function change(userId: string, status: 'active' | 'rejected' | 'suspended') {
+    setMessage('');
+    try {
+      await api(`/admin/accounts/${userId}/status`, { json: { status } });
+      load();
+    } catch {
+      setMessage(t('common.error'));
+    }
+  }
+
+  return (
+    <div className="st-card st-claim">
+      <h2>{t('accounts.title')}</h2>
+      <p className="st-lead-small">{t('accounts.intro')}</p>
+      <div className="st-roles" role="radiogroup" aria-label={t('accounts.filter')}>
+        {ACCOUNT_FILTERS.map((item) => (
+          <button
+            key={item}
+            type="button"
+            role="radio"
+            aria-checked={filter === item}
+            className={filter === item ? 'st-role is-active' : 'st-role'}
+            onClick={() => setFilter(item)}
+          >
+            {t(`accounts.status.${item}`)}
+          </button>
+        ))}
+      </div>
+      {accounts?.length === 0 && <p className="st-note">{t('accounts.none')}</p>}
+      {accounts && accounts.length > 0 && (
+        <ul className="st-list">
+          {accounts.map((a) => (
+            <li key={a.user_id} className="st-list-row">
+              <span>
+                <strong>{a.display_name ?? t('accounts.noName')}</strong>
+                <span className="st-pill">
+                  {t(`account.type.${a.role}`, { defaultValue: a.role })}
+                </span>
+                <br />
+                <span className="st-count">
+                  {a.email ?? t('accounts.noEmail')} · {new Date(a.created_at).toLocaleDateString()}
+                </span>
+              </span>
+              <span className="st-form-row">
+                {a.role !== 'admin' &&
+                  ACTIONS[filter].map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      className={
+                        action.to === 'active'
+                          ? 'st-btn st-btn-primary st-btn-small'
+                          : 'st-btn st-btn-ghost st-btn-small'
+                      }
+                      onClick={() => void change(a.user_id, action.to)}
+                    >
+                      {t(`accounts.${action.key}`)}
+                    </button>
+                  ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {message && <p className="st-alert">{message}</p>}
+    </div>
+  );
+}
+
 /**
  * Purpose: admin health page.
  * Inputs: none (reads the session). Outputs: page element.
@@ -130,6 +241,7 @@ export default function AdminHealthPage() {
           </div>
         </div>
       )}
+      {health && <AccountsCard />}
       {health && <StaffKeysCard roles={['organiser', 'admin']} />}
       {health?.events.length === 0 && <p className="st-note">{t('health.noEvents')}</p>}
       {health && health.events.length > 0 && (
