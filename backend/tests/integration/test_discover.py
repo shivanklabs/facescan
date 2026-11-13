@@ -1,13 +1,23 @@
 """One scan across all events and all of my photos (guests sign in with a passkey only)."""
 
 import base64
+from uuid import UUID
 
 import pytest
 from app.core.services_setup import AppContext
+from app.db.event_isolation import ADMIN_SCOPE, event_transaction, scoped_transaction
+from app.features.activity_log.models import AuditLog
+from app.features.consent.models import Consent
+from app.features.events.models import EventMember
+from app.features.face_matching.models import Match, UserTemplate
+from app.features.login.models import Passkey, User
+from app.features.photo_upload.models import Photo
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from tests.conftest import make_png
 from tests.helpers import (
     FRAMES_HEADERS,
+    SoftAuthenticator,
     frames_body,
     new_client,
     passkey_guest,
@@ -218,3 +228,89 @@ def test_look_scan_works_only_in_dev(ctx: AppContext, events: tuple[list[str], l
         assert refused.status_code == 403
     finally:
         ctx.settings = original
+
+
+# ---------------------------------------------------------------- delete my account (DPDP)
+
+
+def _rows_for(ctx: AppContext, event_id: str, user_id: UUID) -> dict[str, int]:
+    """Purpose: count the person's rows in one event's tables (inside that event's scope)."""
+    counts: dict[str, int] = {}
+    with event_transaction(ctx.sessions, UUID(event_id)) as s:
+        for name, model in (
+            ("matches", Match),
+            ("consents", Consent),
+            ("members", EventMember),
+            ("templates", UserTemplate),
+        ):
+            counts[name] = int(
+                s.scalar(select(func.count()).select_from(model).where(model.user_id == user_id))
+                or 0
+            )
+        counts["photos"] = int(s.scalar(select(func.count()).select_from(Photo)) or 0)
+    return counts
+
+
+def test_delete_my_account_erases_my_data_and_keeps_event_photos(
+    ctx: AppContext, events: tuple[list[str], list[str]]
+) -> None:
+    """Purpose: erasure removes everything that is mine; every event photo stays."""
+    event_ids, _ = events
+    guest = new_client(ctx)
+    authenticator = SoftAuthenticator()
+    options = guest.post("/auth/guest/passkey/options").json()
+    assert (
+        guest.post(
+            "/auth/guest/passkey/verify", json={"credential": authenticator.create(options)}
+        ).status_code
+        == 200
+    )
+    assert scan(guest, 1).json()["released"] == 5
+    user_id = UUID(guest.get("/auth/me").json()["user_id"])
+    before = {e: _rows_for(ctx, e, user_id) for e in event_ids}
+    assert all(c["matches"] > 0 and c["consents"] > 0 for c in before.values())
+
+    assert guest.post("/auth/delete-account", json={"confirm": "delete"}).status_code == 422
+    response = guest.post("/auth/delete-account", json={"confirm": "DELETE"})
+    assert response.status_code == 200, response.text
+    assert guest.get("/auth/me").status_code == 401
+
+    for e in event_ids:
+        after = _rows_for(ctx, e, user_id)
+        assert after["matches"] == after["consents"] == after["members"] == 0
+        assert after["templates"] == 0
+        assert after["photos"] == before[e]["photos"]  # event photos are never deleted
+    with ctx.sessions() as s:
+        assert s.get(User, user_id) is None
+        assert (
+            s.scalar(select(func.count()).select_from(Passkey).where(Passkey.user_id == user_id))
+            == 0
+        )
+
+    # The old passkey no longer signs anyone in.
+    other = new_client(ctx)
+    login = other.post("/auth/passkey/login/options").json()
+    assert (
+        other.post(
+            "/auth/passkey/login/verify", json={"credential": authenticator.get(login)}
+        ).status_code
+        == 400
+    )
+
+    # One audit line, without the person's id or any personal data.
+    with scoped_transaction(ctx.sessions, ADMIN_SCOPE) as s:
+        rows = s.scalars(select(AuditLog).where(AuditLog.action == "auth.account_deleted")).all()
+    assert len(rows) == 1
+    assert str(user_id) not in rows[0].actor and str(user_id) not in str(rows[0].details)
+
+
+def test_owners_cannot_delete_their_account_and_signed_out_people_cannot_either(
+    ctx: AppContext, organiser: TestClient, events: tuple[list[str], list[str]]
+) -> None:
+    """Purpose: an owner of events is refused (hand the events over first); no session, 401."""
+    refused = organiser.post("/auth/delete-account", json={"confirm": "DELETE"})
+    assert refused.status_code == 409
+    assert organiser.get("/auth/me").status_code == 200
+    assert (
+        new_client(ctx).post("/auth/delete-account", json={"confirm": "DELETE"}).status_code == 401
+    )

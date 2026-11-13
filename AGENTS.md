@@ -28,6 +28,10 @@
 
 ## 7. Data Integrity & No Data Loss
 - The app NEVER deletes or modifies uploaded photos, events or user data.
+- One exception (owner decision, 13 Nov 2026, DPDP right to erasure): a person may erase their
+  OWN account and their own data (Privacy > Delete my account, typed confirmation). Event photos
+  are never deleted; owners of events cannot self-delete; one audit line without personal data
+  is kept. Nothing is ever deleted automatically or by anyone else.
 - The only automatic cleanups allowed are temporary upload spool files and the 7-day attempt and candidate records already approved.
 - A photo not reaching a user is a bug; losing data is never acceptable.
 

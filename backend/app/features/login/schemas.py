@@ -97,3 +97,10 @@ class AuthConfigResponse(BaseModel):
     """What the sign-in page may show."""
 
     dev_login: bool
+
+
+class DeleteAccountRequest(BaseModel):
+    """Body: the typed confirmation that the person wants their account erased."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    confirm: Literal["DELETE"]

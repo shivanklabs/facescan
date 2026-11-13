@@ -330,5 +330,16 @@
     "stage": "Photos as a 3D stack",
     "open": "View photo",
     "hint": "Drag or use the arrows. Tap the front photo to open it."
+  },
+  "deleteAccount": {
+    "title": "Delete my account",
+    "what": "This erases your account and everything that is yours: your passkey sign-in, your photo matches in every event, consents, \"Not me\" marks, claims and scan records. Event photos themselves stay with the event. This cannot be undone.",
+    "typeToConfirm": "Type DELETE to confirm",
+    "button": "Delete my account forever",
+    "ownerBlocked": "You own events. Hand them over to another owner first, then you can delete your account.",
+    "doneTitle": "Your account is deleted",
+    "doneText": "Your data has been erased from FaceScan. You can start again any time with a new face scan.",
+    "passkeyNote": "Your phone may still keep the FaceScan passkey. Remove it in your phone's password manager (Google Password Manager or iCloud Keychain).",
+    "home": "Go to start"
   }
 }

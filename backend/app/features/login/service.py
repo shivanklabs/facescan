@@ -31,7 +31,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from app.core.errors import ForbiddenError, UnprocessableError
+from app.core.errors import ConflictError, ForbiddenError, UnprocessableError
 from app.core.login_sessions import (
     CurrentUser,
     admin_allowed,
@@ -614,6 +614,36 @@ def answer_age(ctx: AppContext, user: CurrentUser, is_adult: bool) -> None:
         row.is_minor = not is_adult
         row.age_answered_at = datetime.now(UTC)
     audit_global(ctx, user.actor, "auth.age_answered", {"adult": is_adult})
+
+
+def delete_my_account(ctx: AppContext, user: CurrentUser) -> None:
+    """
+    Purpose: erase the signed-in person's own account and everything that is theirs (DPDP
+        right to erasure; the only deletion the app does, and only on that person's request).
+        Gone: the account, passkeys, sessions, sign-in challenges, consents, photo matches,
+        "Not me" links, claims, scan and search records, unfinished uploads, event
+        memberships. Kept: every event photo (it belongs to the event) and one audit line
+        with no id or personal data.
+    Inputs: ctx, the signed-in user.
+    Outputs: None. Raises ConflictError while the person organises an event (hand it over
+        first, or the event would lose its owner).
+    Side effects: one transaction deletes the users row; the database's ON DELETE CASCADE
+        rules remove the rest atomically; one anonymous audit row.
+    """
+    with user_transaction(ctx.sessions, user.user_id) as session:
+        organises = session.scalar(
+            select(EventMember.event_id)
+            .where(EventMember.user_id == user.user_id, EventMember.role == "organiser")
+            .limit(1)
+        )
+    if organises is not None:
+        raise ConflictError("organisers cannot delete their account while they own events")
+    with ctx.sessions() as session, session.begin():
+        row = session.get(User, user.user_id)
+        if row is None:
+            raise SignInError("account not found")
+        session.delete(row)
+    audit_global(ctx, "system:account-erasure", "auth.account_deleted")
 
 
 def sign_out(ctx: AppContext, user: CurrentUser, everywhere: bool) -> int:

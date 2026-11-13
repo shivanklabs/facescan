@@ -16,6 +16,7 @@ from app.features.login import service
 from app.features.login.schemas import (
     AgeAnswer,
     AuthConfigResponse,
+    DeleteAccountRequest,
     DevSignIn,
     MeResponse,
     PasskeyCredential,
@@ -230,5 +231,18 @@ def logout_everywhere(user: User, ctx: Ctx) -> JSONResponse:
     """Purpose: end every session of this user (all devices)."""
     count = service.sign_out(ctx, user, everywhere=True)
     response = JSONResponse(SignedOutResponse(sessions_ended=count).model_dump())
+    clear_session_cookie(response, ctx.settings)
+    return response
+
+
+@router.post("/delete-account", status_code=200, dependencies=[Depends(sign_in_limiter)])
+def delete_account(body: DeleteAccountRequest, user: User, ctx: Ctx) -> JSONResponse:
+    """
+    Purpose: erase my own account and my data (typed confirmation "DELETE"). Event photos
+        stay. Outputs: {"deleted": true}; the session cookie is cleared.
+    Side effects: see service.delete_my_account.
+    """
+    service.delete_my_account(ctx, user)
+    response = JSONResponse({"deleted": True})
     clear_session_cookie(response, ctx.settings)
     return response

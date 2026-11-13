@@ -1080,6 +1080,23 @@ body:has(.studio) {
   aspect-ratio: 3 / 4;
 }
 
+/* Account deletion: clearly separate and red, never the default action. */
+.st-danger-zone {
+  border-color: rgba(255, 122, 102, 0.45);
+}
+
+.st-danger-zone h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  color: var(--fs-danger);
+}
+
+.st-btn-danger {
+  background: var(--fs-danger);
+  color: #1b0806;
+  border-color: transparent;
+}
+
 /* ---------------------------------------------------------------- owner pages */
 
 .st-back {
