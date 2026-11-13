@@ -46,6 +46,15 @@ body:has(.studio) {
   background: var(--fs-bg);
 }
 
+/* Owner request: no scrollbar on the right. The page still scrolls (wheel, touch, keys). */
+html {
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
+}
+
 .studio {
   min-height: 100dvh;
   color: var(--fs-text);
