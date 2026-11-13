@@ -344,10 +344,6 @@ body:has(.studio) {
   align-items: flex-start;
 }
 
-.st-google-slot {
-  min-height: 44px;
-}
-
 .st-fine {
   font-size: 0.82rem;
   color: var(--fs-muted);

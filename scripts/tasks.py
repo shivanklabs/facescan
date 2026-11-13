@@ -270,8 +270,6 @@ def create_env_file() -> None:
         key, sep, value = line.partition("=")
         if not sep or line.lstrip().startswith("#") or "CHANGE_ME" not in value:
             lines.append(line)
-        elif key == "FACESCAN_EMAIL_SMTP_HOST":
-            lines.append(f"{key}=localhost")
         elif key == "FACESCAN_DB_PASSWORD":
             lines.append(f"{key}={db_password}")
         elif key == "FACESCAN_DB_URL":
@@ -647,7 +645,7 @@ def task_public(_args: argparse.Namespace) -> None:
       2. Starts cloudflared Quick Tunnel (http://127.0.0.1:8000).
       3. Reads the https://*.trycloudflare.com URL.
       4. Configures public URL, WebAuthn RP ID and origin, and allowed CORS/hosts.
-      5. Runs the API and worker on 127.0.0.1 with Silent-Face liveness and Gmail SMTP.
+      5. Runs the API and worker on 127.0.0.1 with Silent-Face liveness.
       6. Prints the public URL clearly.
     Inputs: _args (argparse.Namespace, unused).
     Outputs: None.
@@ -660,15 +658,6 @@ def task_public(_args: argparse.Namespace) -> None:
         raise TaskError(".env is missing. Run: uv run tasks setup")
 
     env = child_env()
-    check_required_env_vars(
-        env,
-        [
-            "FACESCAN_AUTH_ORGANISER_EMAILS",
-            "FACESCAN_AUTH_ADMIN_EMAILS",
-            "FACESCAN_EMAIL_ADAPTER",
-        ],
-        "public",
-    )
 
     cloudflared_bin = find_cloudflared()
     if not cloudflared_bin:
@@ -723,8 +712,7 @@ def task_public(_args: argparse.Namespace) -> None:
     print("  2. The tunnel URL changes on every restart.", flush=True)
     print("     The organiser must register a new passkey after each restart.", flush=True)
     print(
-        "  3. Staff magic links print to this terminal (console adapter); "
-        "guests join without email.",
+        "  3. Staff sign in with a key from: uv run tasks staff-key --role admin",
         flush=True,
     )
     print("  4. Press Ctrl+C to stop the API, worker, and tunnel.", flush=True)
@@ -738,7 +726,6 @@ def task_public(_args: argparse.Namespace) -> None:
     # In public mode the API (and its signed download route) is served only under /api.
     env["FACESCAN_STORAGE_PUBLIC_BASE_URL"] = f"{tunnel_url}/api"
     env["FACESCAN_LIVENESS_ADAPTER"] = "silent_face"
-    env["FACESCAN_EMAIL_ADAPTER"] = "console"
 
     processes = [
         DevProcess(

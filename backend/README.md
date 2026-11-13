@@ -12,19 +12,18 @@ biometrics or personal data. See security invariants in `/CLAUDE.md`.
 Every transaction sets its RLS scope (`app/db/event_isolation.py`); see `database/tables_guide.md`.
 
 ## Sign-in and roles
-- Email magic links (single use, 15 minutes, stored as a hash). In dev the console email adapter
-  prints them in the API terminal; it refuses to run outside dev.
-- Passkeys (py_webauthn): offered to guests after the first sign-in; required for organisers
-  and photographers. Server-side sessions in PostgreSQL; the cookie `fs_session` is HttpOnly,
+- Guests: passkey-only sign-up and sign-in (no email). Staff: one-time staff keys, then a
+  passkey.
+- Passkeys (py_webauthn): the only sign-in for guests; required for organisers,
+  photographers and admins. Server-side sessions in PostgreSQL; the cookie `fs_session` is HttpOnly,
   Secure and SameSite=Strict, rotated at every sign-in; sign out and sign out everywhere.
-- Only emails in `FACESCAN_AUTH_ORGANISER_EMAILS` can create events. Organisers add
-  photographers by email. Roles come from `event_members` and are checked on every request.
+- Event creation and admin rights come from redeemed staff keys (users flags).
 - State-changing requests from another origin are refused (on top of SameSite=Strict).
 
 ## Main routes
 | Route | Who |
 |---|---|
-| `POST /auth/magic-link`, `/auth/magic-link/verify`, `/auth/passkey/*`, `/auth/me`, `/auth/age`, `/auth/logout`, `/auth/logout-everywhere` | everyone |
+| `/auth/guest/passkey/*`, `/auth/staff-key`, `/auth/staff-keys`, `/auth/passkey/*`, `/auth/me`, `/auth/age`, `/auth/logout`, `/auth/logout-everywhere` | everyone |
 | `POST /events`, `GET /events`, `GET /events/{id}` | organisers (create), members (read) |
 | `POST /events/{id}/members`, `/invites`, `/invites/{iid}/revoke`, `/collections/{cid}/approve`, `GET /collections` | organisers |
 | `POST /events/{id}/photos` | photographers, organisers |

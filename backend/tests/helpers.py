@@ -1,4 +1,4 @@
-"""Test helpers: captured email, a software passkey authenticator, sign-in shortcuts.
+"""Test helpers: a software passkey authenticator and sign-in shortcuts (staff keys, passkeys).
 
 The SoftAuthenticator produces real WebAuthn responses (P-256 keys, "none" attestation,
 signed assertions) so the server-side passkey code is exercised end to end by py_webauthn.
@@ -7,7 +7,6 @@ Uses webauthn.helpers for CBOR encoding and base64url conversions.
 
 import hashlib
 import json
-import re
 import secrets
 import struct
 import uuid
@@ -17,7 +16,6 @@ from app.core.encryption import new_data_key
 from app.core.services_setup import AppContext
 from app.db.event_isolation import event_transaction
 from app.features.events.models import Event, EventKey
-from app.interfaces.capabilities import Capabilities
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
@@ -25,29 +23,6 @@ from webauthn.helpers import base64url_to_bytes, bytes_to_base64url, encode_cbor
 
 ORIGIN = "http://localhost:5173"
 RP_ID = "localhost"
-ORGANISER_EMAIL = "organiser@example.test"
-
-
-class MemoryEmailSender:
-    """EmailSender that keeps links in memory (tests read them back)."""
-
-    def __init__(self) -> None:
-        self.sent: list[tuple[str, str]] = []
-
-    @property
-    def capabilities(self) -> Capabilities:
-        return Capabilities(adapter_name="memory")
-
-    def send_sign_in_link(self, to_address: str, link: str, expires_minutes: int) -> None:
-        self.sent.append((to_address, link))
-
-    def token_for(self, address: str) -> str:
-        for to, link in reversed(self.sent):
-            if to == address:
-                match = re.search(r"#token=([A-Za-z0-9_\-]+)$", link)
-                assert match, "no token in link"
-                return match.group(1)
-        raise AssertionError(f"no link sent to {address}")
 
 
 # ---------------------------------------------------------------- WebAuthn Authenticator
@@ -139,20 +114,6 @@ def new_client(ctx: AppContext) -> TestClient:
     return TestClient(create_app(ctx.settings, ctx=ctx), base_url="https://testserver")
 
 
-def magic_sign_in(
-    client: TestClient, ctx: AppContext, address: str, next_path: str | None = None
-) -> dict[str, object]:
-    assert (
-        client.post("/auth/magic-link", json={"email": address, "next": next_path}).status_code
-        == 202
-    )
-    email = ctx.email
-    assert isinstance(email, MemoryEmailSender)
-    response = client.post("/auth/magic-link/verify", json={"token": email.token_for(address)})
-    assert response.status_code == 200, response.text
-    return dict(response.json())
-
-
 def register_passkey(client: TestClient) -> SoftAuthenticator:
     authenticator = SoftAuthenticator()
     options = client.post("/auth/passkey/register/options").json()
@@ -171,11 +132,40 @@ def passkey_sign_in(client: TestClient, authenticator: SoftAuthenticator) -> Non
     assert response.status_code == 200, response.text
 
 
-def staff_client(ctx: AppContext, address: str) -> TestClient:
-    """A signed-in staff member with a passkey session."""
+def key_only_client(
+    ctx: AppContext, role: str = "organiser", event_id: uuid.UUID | str | None = None
+) -> TestClient:
+    """
+    A new staff member who has used a one-time staff key but has no passkey yet (an
+    email-link-strength session: staff pages refuse it until a passkey is added).
+    """
+    from app.features.login import service as login_service
+
+    event = uuid.UUID(str(event_id)) if event_id is not None else None
+    key, _ = login_service.create_staff_key(ctx, None, role, event)
     client = new_client(ctx)
-    magic_sign_in(client, ctx, address)
+    response = client.post("/auth/staff-key", json={"key": key})
+    assert response.status_code == 200, response.text
+    return client
+
+
+def staff_client(
+    ctx: AppContext, role: str = "organiser", event_id: uuid.UUID | str | None = None
+) -> TestClient:
+    """A signed-in staff member (staff key, then a passkey session). No email anywhere."""
+    client = key_only_client(ctx, role, event_id)
     register_passkey(client)
+    return client
+
+
+def passkey_guest(ctx: AppContext) -> TestClient:
+    """A new guest who signed up with a passkey only (no email)."""
+    client = new_client(ctx)
+    options = client.post("/auth/guest/passkey/options").json()
+    response = client.post(
+        "/auth/guest/passkey/verify", json={"credential": SoftAuthenticator().create(options)}
+    )
+    assert response.status_code == 200, response.text
     return client
 
 

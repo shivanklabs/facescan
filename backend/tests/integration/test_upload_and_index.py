@@ -168,14 +168,13 @@ def test_openapi_schema_exposes_no_vector_fields(api: TestClient) -> None:
 
 
 def test_staff_routes_need_sign_in_and_a_passkey(api: TestClient, ctx: AppContext) -> None:
-    from tests.helpers import magic_sign_in, new_client
+    from tests.helpers import key_only_client, new_client
 
     event_id = new_event(api)
     anonymous = new_client(ctx)
     assert anonymous.get("/events").status_code == 401
     assert anonymous.post("/events", json={"name": "x", "country": "IN"}).status_code == 401
-    magic_only = new_client(ctx)
-    magic_sign_in(magic_only, ctx, "organiser@example.test")
+    magic_only = key_only_client(ctx, "organiser")  # staff key, no passkey yet
     assert magic_only.post("/events", json={"name": "x", "country": "IN"}).status_code == 403
     assert upload(magic_only, event_id, [make_png(1, 1)]).status_code == 403
 

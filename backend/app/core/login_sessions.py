@@ -1,6 +1,6 @@
 """Sign-in primitives: token hashing, email protection and server-side sessions.
 
-- Tokens (sessions, magic links, invite secrets) are random; only their SHA-256 is stored.
+- Tokens (sessions, staff keys, invite secrets) are random; only their SHA-256 is stored.
 - Email addresses are stored as an HMAC (for lookup) and AES-GCM ciphertext (for contact),
   each under a key derived from the master key through the KeyManager port.
 - Sessions live in PostgreSQL (sessions table). The cookie is HttpOnly, Secure and
@@ -134,37 +134,14 @@ def find_or_create_user(session: Session, keys: KeyManager, address: str) -> Use
     return user
 
 
-def organiser_allowed(settings: Settings, keys: KeyManager, user: User) -> bool:
-    """
-    Purpose: True if the user may create events: set by a redeemed staff key, or (older
-        setups) the email is on FACESCAN_AUTH_ORGANISER_EMAILS.
-    """
-    if user.can_create_events:
-        return True
-    allowed = {
-        email_hash(keys, normalise_email(a))
-        for a in settings.auth_organiser_emails.split(",")
-        if a.strip() and EMAIL_RE.fullmatch(a.strip().lower())
-    }
-    return any(hmac.compare_digest(user.email_hash, h) for h in allowed)
+def organiser_allowed(user: User) -> bool:
+    """Purpose: True if the user may create events (set by a redeemed staff key)."""
+    return user.can_create_events
 
 
-def admin_allowed(settings: Settings, keys: KeyManager, user: User) -> bool:
-    """
-    Purpose: True if the user is a platform admin: set by a redeemed staff key, or (older
-        setups) the email is on FACESCAN_AUTH_ADMIN_EMAILS.
-    Inputs: settings, keys, user.
-    Outputs: bool.
-    Side effects: none.
-    """
-    if user.is_admin:
-        return True
-    allowed = {
-        email_hash(keys, normalise_email(a))
-        for a in settings.auth_admin_emails.split(",")
-        if a.strip() and EMAIL_RE.fullmatch(a.strip().lower())
-    }
-    return any(hmac.compare_digest(user.email_hash, h) for h in allowed)
+def admin_allowed(user: User) -> bool:
+    """Purpose: True if the user is a platform admin (set by a redeemed staff key)."""
+    return user.is_admin
 
 
 def create_session(

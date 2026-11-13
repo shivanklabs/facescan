@@ -7,36 +7,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class MagicLinkRequest(BaseModel):
-    """Body: send a sign-in link."""
-
-    model_config = ConfigDict(extra="forbid")
-    email: str = Field(min_length=3, max_length=254)
-    next: str | None = Field(default=None, max_length=200)
-
-
-class MagicLinkVerify(BaseModel):
-    """Body: the token from the link's fragment."""
-
-    model_config = ConfigDict(extra="forbid")
-    token: str = Field(min_length=20, max_length=100)
-
-
-class GoogleSignIn(BaseModel):
-    """Body: the ID token (JWT) Google Identity Services returned to the browser."""
-
-    model_config = ConfigDict(extra="forbid")
-    credential: str = Field(min_length=20, max_length=4096)
-
-
-class GoogleConfigResponse(BaseModel):
-    """The public OAuth client id for the Google button ("" when Google sign-in is off) and
-    whether the dev-only email sign-in is available (FACESCAN_ENV=dev)."""
-
-    client_id: str
-    dev_login: bool = False
-
-
 class DevSignIn(BaseModel):
     """Body: email for the dev-only sign-in."""
 
@@ -121,3 +91,9 @@ class StaffKeyList(BaseModel):
     """The staff keys the caller created."""
 
     keys: list[StaffKeyItem]
+
+
+class AuthConfigResponse(BaseModel):
+    """What the sign-in page may show."""
+
+    dev_login: bool

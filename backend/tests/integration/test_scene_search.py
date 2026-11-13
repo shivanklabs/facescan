@@ -26,10 +26,9 @@ from sqlalchemy import func, select, update
 from tests.conftest import make_png
 from tests.helpers import (
     FRAMES_HEADERS,
-    ORGANISER_EMAIL,
     frames_body,
     guest_client,
-    magic_sign_in,
+    key_only_client,
     new_client,
     searchable_event,
 )
@@ -729,9 +728,8 @@ def test_claim_review_without_passkey_is_refused(organiser: TestClient, ctx: App
     )
     assert claim_resp.status_code == 200
 
-    # Organiser signed in with magic link only (auth_method == "magic_link", not "passkey")
-    magic_client = new_client(ctx)
-    magic_sign_in(magic_client, ctx, ORGANISER_EMAIL)
+    # A staff member who used a staff key but has no passkey yet (not a passkey session)
+    magic_client = key_only_client(ctx, "organiser")
 
     # 1. Listing claims without passkey returns 403 passkey_required
     list_resp = magic_client.get(f"/events/{event_id}/claims")

@@ -15,7 +15,7 @@ import { api, ApiError } from '@/lib/serverApi';
 
 export interface Me {
   user_id: string;
-  auth_method: 'magic_link' | 'passkey' | 'google';
+  auth_method: 'magic_link' | 'passkey' | 'dev'; // magic_link: staff key, no passkey yet
   has_passkey: boolean;
   age_answered: boolean;
   is_minor: boolean;

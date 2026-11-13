@@ -7,14 +7,7 @@
     "language": "हिन्दी"
   },
   "signIn": {
-    "title": "Sign in",
-    "email": "Email address",
-    "sendLink": "Email me a sign-in link",
-    "linkSent": "If this address can sign in, a link is on its way. It works once and expires in 15 minutes.",
-    "devHint": "Development: the link is printed in the API terminal.",
-    "passkey": "Sign in with passkey",
-    "checking": "Signing you in…",
-    "linkInvalid": "This sign-in link is invalid or has expired. Please request a new one."
+    "passkey": "Sign in with passkey"
   },
   "passkey": {
     "add": "Add a passkey",
@@ -251,14 +244,7 @@
     "save": "Save",
     "noEnd": "No end date",
     "saved": "Saved.",
-    "teamTitle": "Team",
-    "teamText": "Add photographers (upload) or co-organisers (settings and claims) by their email.",
-    "email": "Email",
     "role": "Role",
-    "rolePhotographer": "Photographer",
-    "roleOrganiser": "Co-organiser",
-    "addMember": "Add",
-    "memberAdded": "Added.",
     "camerasTitle": "Camera clocks",
     "camerasText": "If a camera's clock was wrong, shift its photos by some minutes so all cameras line up.",
     "noCameras": "No camera information yet. It appears after photos are uploaded.",

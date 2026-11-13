@@ -1,5 +1,6 @@
-"""Unit tests for phone test mode (public), CF-Connecting-IP resolution,
-and Gmail SMTP email adapter.
+"""Unit tests for phone test mode (public) and CF-Connecting-IP resolution.
+
+(The Gmail SMTP adapter and its test were removed with email sign-in.)
 """
 
 import re
@@ -7,7 +8,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from app.connectors.email.gmail_email import SmtpGmailEmailSender
 from app.core.rate_limit import extract_client_ip
 from app.core.settings import Settings
 from app.main import create_app
@@ -50,45 +50,6 @@ def test_extract_client_ip_from_tunnel() -> None:
     # 4. Local request without CF header -> uses local IP
     req4 = _mock_request("127.0.0.1", {})
     assert extract_client_ip(req4) == "127.0.0.1"
-
-
-def test_smtp_gmail_email_sender_flow() -> None:
-    """
-    Purpose: verify SmtpGmailEmailSender delivers message via TLS without leaking secrets.
-    """
-    settings = Settings(
-        email_adapter="smtp_gmail",
-        email_smtp_user="test_organiser@gmail.com",
-        email_smtp_password=SecretStr("supersecretapppassword"),
-        email_smtp_host="localhost",
-        email_smtp_port=2525,
-        email_smtp_use_tls=True,
-    )
-    sender = SmtpGmailEmailSender(settings)
-    assert sender.capabilities.adapter_name == "smtp_gmail"
-
-    with patch("smtplib.SMTP") as mock_smtp_cls:
-        mock_instance = MagicMock()
-        mock_smtp_cls.return_value.__enter__.return_value = mock_instance
-
-        sender.send_sign_in_link(
-            to_address="guest@example.test",
-            link="https://abc.trycloudflare.com/auth/callback?t=test_token_123",
-            expires_minutes=15,
-        )
-
-        # Verified TLS and login called
-        mock_instance.starttls.assert_called_once()
-        mock_instance.login.assert_called_once_with(
-            "test_organiser@gmail.com", "supersecretapppassword"
-        )
-
-        # Verified message sent with correct recipient and subject
-        mock_instance.send_message.assert_called_once()
-        sent_msg = mock_instance.send_message.call_args[0][0]
-        assert sent_msg["To"] == "guest@example.test"
-        assert sent_msg["Subject"] == "Your FaceScan sign-in link"
-        assert "test_token_123" in sent_msg.get_content()
 
 
 def test_public_mode_disables_docs_and_openapi() -> None:
@@ -244,16 +205,15 @@ def test_public_mode_every_frontend_route_returns_index(
 ) -> None:
     """
     Purpose: in public mode every browser route of the SPA (also those that start like a
-        backend route: /auth/callback, /events/..., /admin) returns index.html with 200.
+        backend route: /events/..., /admin) returns index.html with 200.
     Inputs: tmp_path, monkeypatch. Outputs: None. Side effects: creates a temporary dist.
     """
     _fake_dist(tmp_path, monkeypatch)
     client = TestClient(create_app(settings=Settings(env="public"), ctx=MagicMock()))
     paths = _frontend_paths()
-    assert "/auth/callback" in paths
     assert "/admin" in paths  # starts like the backend's /admin/health
     assert f"/e/{SAMPLE_ID}" in paths
-    assert len(paths) >= 13
+    assert len(paths) >= 12
     # Old backend root paths are browser pages now too.
     for path in [*paths, "/health", "/auth/me", f"/events/{SAMPLE_ID}", "/storage/x"]:
         res = client.get(path)

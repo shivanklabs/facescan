@@ -1,50 +1,24 @@
-"""Milestone 7: Google sign-in, one scan across all events, and all of my photos."""
+"""One scan across all events and all of my photos (guests sign in with a passkey only)."""
 
 import base64
 
 import pytest
 from app.core.services_setup import AppContext
-from app.interfaces.capabilities import Capabilities
-from app.interfaces.identity_provider import IdTokenRejectedError, VerifiedIdentity
 from fastapi.testclient import TestClient
 from tests.conftest import make_png
 from tests.helpers import (
     FRAMES_HEADERS,
-    ORGANISER_EMAIL,
     frames_body,
     new_client,
+    passkey_guest,
     searchable_event,
+    staff_client,
 )
 
 PERSON_1_A = [make_png(1, 2, (64 + i, 48)) for i in range(3)]
 PERSON_2_A = [make_png(2, 2, (90 + i, 48)) for i in range(3)]
 PERSON_1_B = [make_png(1, 2, (120 + i, 48)) for i in range(2)]
 PERSON_3_B = [make_png(3, 2, (150 + i, 48)) for i in range(3)]
-
-
-class FakeGoogle:
-    """Accepts tokens of the form 'google-ok:<email>' (no network, no crypto)."""
-
-    @property
-    def capabilities(self) -> Capabilities:
-        return Capabilities(adapter_name="fake-google")
-
-    @property
-    def enabled(self) -> bool:
-        return True
-
-    def verify(self, id_token: str) -> VerifiedIdentity:
-        if not id_token.startswith("google-ok:"):
-            raise IdTokenRejectedError("bad token")
-        email = id_token.split(":", 1)[1]
-        return VerifiedIdentity(subject=f"sub-{email}", email=email)
-
-
-def google_client(ctx: AppContext, email: str) -> TestClient:
-    client = new_client(ctx)
-    response = client.post("/auth/google", json={"credential": f"google-ok:{email}"})
-    assert response.status_code == 200, response.text
-    return client
 
 
 def selfie(person: int) -> bytes:
@@ -64,25 +38,16 @@ def scan(client: TestClient, person: int, version: str | None = None) -> object:
 
 @pytest.fixture
 def events(organiser: TestClient, ctx: AppContext) -> tuple[list[str], list[str]]:
-    ctx.identity = FakeGoogle()
     a_id, _, a_photos = searchable_event(ctx, organiser, PERSON_1_A + PERSON_2_A, name="Event A")
     b_id, _, b_photos = searchable_event(ctx, organiser, PERSON_1_B + PERSON_3_B, name="Event B")
     return [a_id, b_id], a_photos[:3] + b_photos[:2]
-
-
-def test_google_sign_in_rejects_bad_tokens(ctx: AppContext) -> None:
-    ctx.identity = FakeGoogle()
-    client = new_client(ctx)
-    response = client.post("/auth/google", json={"credential": "forged-token-" + "x" * 20})
-    assert response.status_code == 401
-    assert client.get("/auth/me").status_code == 401
 
 
 def test_one_scan_finds_my_photos_in_every_event(
     ctx: AppContext, events: tuple[list[str], list[str]]
 ) -> None:
     event_ids, person_1_photos = events
-    guest = google_client(ctx, "person1@example.test")
+    guest = passkey_guest(ctx)
     response = scan(guest, 1)
     assert response.status_code == 200, response.text
     body = response.json()
@@ -107,7 +72,7 @@ def test_a_new_scan_never_undoes_a_withdrawal(
         other events and shows nothing from the withdrawn one, until they turn it back on.
     """
     (event_a, _event_b), _ = events
-    guest = google_client(ctx, "person1@example.test")
+    guest = passkey_guest(ctx)
     assert scan(guest, 1).json()["events_searched"] == 2
 
     assert guest.post(f"/events/{event_a}/consent/withdraw").status_code == 200
@@ -124,16 +89,14 @@ def test_a_new_scan_never_undoes_a_withdrawal(
     assert names == {"Event A", "Event B"}
 
 
-def test_organiser_never_sees_a_google_guests_email_on_claims(
+def test_organiser_sees_only_guest_numbers_on_claims(
     ctx: AppContext, organiser: TestClient, events: tuple[list[str], list[str]]
 ) -> None:
     """
-    Purpose: a Google-signed-in guest's claim shows up as "Guest #1" for the organiser; the
-        guest's email address appears nowhere in the claim queue.
+    Purpose: a guest's claim shows up as "Guest #1" for the organiser (no names, no emails).
     """
     (event_a, _), _ = events
-    email = "real.person@example.test"
-    guest = google_client(ctx, email)
+    guest = passkey_guest(ctx)
     assert scan(guest, 3).status_code == 200  # becomes a guest of every event
     candidates = guest.post(
         f"/events/{event_a}/scene-search", json={"query": "people at the event"}
@@ -155,7 +118,7 @@ def test_organiser_never_sees_a_google_guests_email_on_claims(
     queue = organiser.get(f"/events/{event_a}/claims")
     assert queue.status_code == 200
     assert queue.json()["claims"][0]["claimant_email"] == "Guest #1"
-    assert email not in queue.text
+    assert "@" not in queue.text
 
 
 def test_me_says_who_is_staff(
@@ -166,16 +129,11 @@ def test_me_says_who_is_staff(
         event are staff; a guest is not.
     """
     (event_a, _), _ = events
-    guest = google_client(ctx, "just.a.guest@example.test")
+    guest = passkey_guest(ctx)
     assert guest.get("/auth/me").json()["is_staff"] is False
     assert organiser.get("/auth/me").json()["is_staff"] is True
 
-    email = "camera.person@example.test"
-    added = organiser.post(
-        f"/events/{event_a}/members", json={"email": email, "role": "photographer"}
-    )
-    assert added.status_code == 204, added.text
-    photographer = google_client(ctx, email)
+    photographer = staff_client(ctx, "photographer", event_a)
     me = photographer.get("/auth/me").json()
     assert me["is_staff"] is True
     assert me["can_create_events"] is False
@@ -184,16 +142,16 @@ def test_me_says_who_is_staff(
 def test_person_without_photos_gets_nothing(
     ctx: AppContext, events: tuple[list[str], list[str]]
 ) -> None:
-    guest = google_client(ctx, "stranger@example.test")
+    guest = passkey_guest(ctx)
     body = scan(guest, 9).json()
     assert body["released"] == 0
     assert guest.get("/discover/photos").json() == {"events": []}
 
 
 def test_staff_are_never_searched_in_their_own_events(
-    ctx: AppContext, events: tuple[list[str], list[str]]
+    ctx: AppContext, organiser: TestClient, events: tuple[list[str], list[str]]
 ) -> None:
-    organiser = google_client(ctx, ORGANISER_EMAIL)
+    """Purpose: the organiser of events A and B is never searched in them."""
     body = scan(organiser, 1).json()
     assert body == {"released": 0, "events_with_photos": 0, "events_searched": 0}
 
@@ -201,33 +159,26 @@ def test_staff_are_never_searched_in_their_own_events(
 def test_scan_needs_the_current_notice_and_a_sign_in(
     ctx: AppContext, events: tuple[list[str], list[str]]
 ) -> None:
-    guest = google_client(ctx, "person1@example.test")
+    guest = passkey_guest(ctx)
     assert scan(guest, 1, version="old-version").status_code == 409
     anonymous = new_client(ctx)
     assert scan(anonymous, 1, version="v1").status_code == 401
 
 
-def test_google_session_counts_as_strong_sign_in_for_organisers(ctx: AppContext) -> None:
-    ctx.identity = FakeGoogle()
-    organiser = google_client(ctx, ORGANISER_EMAIL)
-    created = organiser.post("/events", json={"name": "Google event", "country": "IN"})
-    assert created.status_code == 201, created.text
-
-
 def test_dev_login_works_only_in_dev(ctx: AppContext) -> None:
     client = new_client(ctx)
-    assert client.get("/auth/google/config").json()["dev_login"] is True
-    response = client.post("/auth/dev-login", json={"email": ORGANISER_EMAIL})
+    assert client.get("/auth/config").json()["dev_login"] is True
+    response = client.post("/auth/dev-login", json={"email": "dev.person@example.test"})
     assert response.status_code == 200, response.text
-    assert client.get("/auth/me").json()["auth_method"] == "dev"
-    created = client.post("/events", json={"name": "Dev event", "country": "IN"})
-    assert created.status_code == 201, created.text
+    me = client.get("/auth/me").json()
+    assert me["auth_method"] == "dev"
+    assert me["can_create_events"] is False  # staff rights come only from staff keys
 
     original = ctx.settings
     try:
         ctx.settings = original.model_copy(update={"env": "test"})
         other = new_client(ctx)
-        assert other.get("/auth/google/config").json()["dev_login"] is False
+        assert other.get("/auth/config").json()["dev_login"] is False
         refused = other.post("/auth/dev-login", json={"email": "someone@example.test"})
         assert refused.status_code == 403
     finally:
@@ -237,7 +188,7 @@ def test_dev_login_works_only_in_dev(ctx: AppContext) -> None:
 def test_blink_burst_of_seven_frames_is_accepted_and_eight_refused(
     ctx: AppContext, events: tuple[list[str], list[str]]
 ) -> None:
-    guest = google_client(ctx, "burst@example.test")
+    guest = passkey_guest(ctx)
     v = notice_version(guest)
     seven = frames_body(*[make_png(1, 1, (40 + i, 30)) for i in range(7)])
     ok = guest.post(f"/discover/search?notice_version={v}", content=seven, headers=FRAMES_HEADERS)
@@ -251,7 +202,7 @@ def test_blink_burst_of_seven_frames_is_accepted_and_eight_refused(
 
 
 def test_look_scan_works_only_in_dev(ctx: AppContext, events: tuple[list[str], list[str]]) -> None:
-    guest = google_client(ctx, "look@example.test")
+    guest = passkey_guest(ctx)
     v = notice_version(guest)
     url = f"/discover/search?notice_version={v}&method=look"
     ok = guest.post(url, content=selfie(1), headers=FRAMES_HEADERS)

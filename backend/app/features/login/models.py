@@ -2,7 +2,8 @@
 event-scoped).
 
 These tables hold only hashes and encrypted values: email addresses are stored as an HMAC
-(lookup) and AES-GCM ciphertext; session and magic-link tokens only as SHA-256 hashes.
+(lookup) and AES-GCM ciphertext; session tokens and staff keys only as SHA-256 hashes.
+magic_links is no longer written (email sign-in was removed); its old rows are kept.
 """
 
 import uuid

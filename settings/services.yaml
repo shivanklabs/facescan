@@ -9,8 +9,7 @@ defaults:
   liveness: silent_face
   vector_search: in_memory
   object_storage: local_filesystem
-  login: [google, passkey, email_link]
-  identity_provider: google  # milestone 7: Google ID tokens verified locally
+  login: [passkey, staff_key]  # no emails: guests use passkeys, staff use one-time keys
   key_manager: env_master_key
   job_queue: postgres
 

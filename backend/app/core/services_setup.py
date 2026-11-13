@@ -14,10 +14,8 @@ from app.connectors.job_queue.postgres_job_queue import PostgresJobQueue
 from app.connectors.photo_storage.local_filesystem_download import build_local_storage
 from app.core.settings import Settings
 from app.db.session import make_engine, make_session_factory
-from app.interfaces.email_sender import EmailSender
 from app.interfaces.encryption_keys import KeyManager
 from app.interfaces.face_analyzer import FaceAnalyzer
-from app.interfaces.identity_provider import IdentityProvider
 from app.interfaces.job_queue import JobQueue
 from app.interfaces.live_face_check import Liveness
 from app.interfaces.photo_storage import ObjectStorage
@@ -39,26 +37,21 @@ class AppContext:
     keys: KeyManager
     queue: JobQueue
     analyzer: FaceAnalyzer
-    email: EmailSender
     liveness: Liveness | None = None
     rewriter: QueryRewriter | None = None
-    identity: IdentityProvider | None = None
 
 
 def build_context(
     settings: Settings,
     analyzer: FaceAnalyzer | None = None,
     search_path: str | None = None,
-    email: EmailSender | None = None,
     liveness: Liveness | None = None,
     rewriter: QueryRewriter | None = None,
-    identity: IdentityProvider | None = None,
 ) -> AppContext:
     """
     Purpose: build the adapters from settings (services.yaml defaults: local storage,
         env master key, Postgres queue, facescan_ai).
-    Inputs: settings; optional analyzer, schema search path, email sender and identity
-        provider (tests).
+    Inputs: settings; optional analyzer, schema search path, liveness and rewriter (tests).
     Outputs: AppContext. Side effects: creates a DB engine (no connection yet).
     Raises ContextConfigError naming the missing setting.
     """
@@ -68,23 +61,6 @@ def build_context(
         raise ContextConfigError("FACESCAN_KEYS_MASTER_KEY is not set")
     if settings.storage_signing_key is None:
         raise ContextConfigError("FACESCAN_STORAGE_SIGNING_KEY is not set")
-    if email is None:
-        if settings.email_adapter == "smtp_gmail":
-            from app.connectors.email.gmail_email import SmtpGmailEmailSender
-
-            email = SmtpGmailEmailSender(settings)
-        elif settings.email_adapter == "console":
-            if settings.env == "prod":
-                raise ContextConfigError(
-                    "the console email adapter only runs in dev and public mode; "
-                    "configure an email service"
-                )
-            from app.connectors.email.terminal_email import ConsoleEmailSender
-
-            email = ConsoleEmailSender()
-        else:
-            raise ContextConfigError(f"unknown email adapter: {settings.email_adapter}")
-
     if settings.env in ("prod", "public") and settings.liveness_adapter != "silent_face":
         raise ContextConfigError("the silent_face liveness adapter is required in public/prod mode")
     try:
@@ -109,12 +85,6 @@ def build_context(
             model=settings.gemini_model,
             timeout_seconds=settings.gemini_timeout_seconds,
         )
-    if identity is None:
-        from app.connectors.login.google_login import GoogleIdentityProvider
-
-        identity = GoogleIdentityProvider(
-            settings.google_client_id, timeout_seconds=settings.google_timeout_seconds
-        )
     return AppContext(
         settings=settings,
         engine=engine,
@@ -128,10 +98,8 @@ def build_context(
             lock_timeout_seconds=settings.job_lock_timeout_seconds,
         ),
         analyzer=analyzer,
-        email=email,
         liveness=liveness,
         rewriter=rewriter,
-        identity=identity,
     )
 
 

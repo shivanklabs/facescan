@@ -60,12 +60,12 @@ MaybeUser = Annotated[CurrentUser | None, Depends(optional_user)]
 
 def passkey_user(user: User) -> CurrentUser:
     """
-    Purpose: require a strong sign-in for staff pages: a passkey, Google sign-in (milestone 7;
-        Google verifies the account) or the dev-only email sign-in (exists only when
-        FACESCAN_ENV=dev). Magic-link sessions are refused.
+    Purpose: require a strong sign-in for staff pages: a passkey, or the dev-only sign-in
+        (exists only when FACESCAN_ENV=dev). A staff-key session without a passkey is
+        refused until the person adds one.
     Inputs: the signed-in user. Outputs: the same user. Side effects: none.
     """
-    if user.auth_method not in ("passkey", "google", "dev"):
+    if user.auth_method not in ("passkey", "dev"):
         raise HTTPException(status_code=403, detail="passkey_required")
     return user
 
@@ -75,14 +75,14 @@ PasskeyUser = Annotated[CurrentUser, Depends(passkey_user)]
 
 def admin_user(user: PasskeyUser, ctx: Ctx) -> CurrentUser:
     """
-    Purpose: require a staff member whose email is in FACESCAN_AUTH_ADMIN_EMAILS.
+    Purpose: require a platform admin (set by a redeemed admin staff key).
     Inputs: user (PasskeyUser), ctx (AppContext).
     Outputs: CurrentUser.
     Side effects: raises HTTPException(403) if not authorized.
     """
     with user_transaction(ctx.sessions, user.user_id) as session:
         account = session.get(UserModel, user.user_id)
-        if account is None or not admin_allowed(ctx.settings, ctx.keys, account):
+        if account is None or not admin_allowed(account):
             raise HTTPException(status_code=403, detail="admin_required")
     return user
 

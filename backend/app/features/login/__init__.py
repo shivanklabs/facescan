@@ -1,1 +1,1 @@
-"""Module: users, passkeys, magic links, sessions and roles."""
+"""Module: users, passkeys, staff keys, sessions and roles."""

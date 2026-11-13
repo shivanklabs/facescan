@@ -51,29 +51,13 @@ class Settings(BaseSettings):
     upload_spool_dir: str = "var/tmp/uploads"
     upload_spool_max_age_seconds: int = Field(default=3600, ge=60)
 
-    # Sign-in: email magic links + passkeys (WebAuthn); server-side sessions in PostgreSQL.
+    # Sign-in: passkeys (WebAuthn) for guests; staff keys + passkeys for staff; no emails.
+    # Server-side sessions in PostgreSQL.
     auth_rp_id: str = "localhost"
     auth_rp_name: str = "FaceScan"
     auth_rp_origin: str = "http://localhost:5173"  # the web app's origin (also the CSRF check)
     auth_session_hours: int = Field(default=12, ge=1, le=24 * 30)
-    auth_magic_link_minutes: int = Field(default=15, ge=1, le=60)
-    auth_magic_links_per_hour: int = Field(default=5, ge=1, le=50)
     auth_cookie_secure: bool = True
-    # Who may create events (comma-separated emails). Organisers must use a passkey.
-    auth_organiser_emails: str = ""
-    # Who may view the platform admin health page (comma-separated emails).
-    # Admins must use a passkey.
-    auth_admin_emails: str = ""
-    # Google sign-in (milestone 7): the OAuth web client id; empty disables Google sign-in.
-    google_client_id: str = Field(default="", max_length=200)
-    google_timeout_seconds: float = Field(default=5.0, gt=0, le=15)
-    # Magic-link delivery: "console" (dev only) or "smtp_gmail" (production / public testing).
-    email_adapter: Literal["console", "smtp_gmail"] = "console"
-    email_smtp_user: str | None = None
-    email_smtp_password: SecretStr | None = None
-    email_smtp_host: str = "smtp.gmail.com"
-    email_smtp_port: int = Field(default=587, ge=1, le=65535)
-    email_smtp_use_tls: bool = True
 
     # Gemini scene query rewriting (optional; falls back to local query on failure/missing key).
     gemini_api_key: SecretStr | None = None

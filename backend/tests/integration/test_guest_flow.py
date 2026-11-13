@@ -41,15 +41,11 @@ def event(organiser: TestClient, ctx: AppContext) -> tuple[str, str, list[str]]:
 
 
 def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
-    # Organiser adds a photographer, who uploads with a passkey session.
+    # Organiser's photographer (staff key for this event) uploads with a passkey session.
     event_id = organiser.post("/events", json={"name": "Wedding", "country": "IN"}).json()[
         "event_id"
     ]
-    added = organiser.post(
-        f"/events/{event_id}/members", json={"email": "photo@example.test", "role": "photographer"}
-    )
-    assert added.status_code == 204
-    photographer = staff_client(ctx, "photo@example.test")
+    photographer = staff_client(ctx, "photographer", event_id)
     files = [("files", (f"p{i}.png", d, "image/png")) for i, d in enumerate(PERSON_1 + PERSON_2)]
     body = photographer.post(f"/events/{event_id}/photos", files=files).json()
     assert (

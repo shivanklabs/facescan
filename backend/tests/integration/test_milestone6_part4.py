@@ -19,7 +19,7 @@ from app.features.photo_upload.models import Photo
 from fastapi.testclient import TestClient
 from sqlalchemy import insert
 from tests.conftest import make_png
-from tests.helpers import magic_sign_in, new_client, searchable_event, staff_client
+from tests.helpers import key_only_client, new_client, searchable_event, staff_client
 
 
 def test_admin_auth_and_permissions(ctx: AppContext, monkeypatch) -> None:
@@ -38,27 +38,19 @@ def test_admin_auth_and_permissions(ctx: AppContext, monkeypatch) -> None:
     resp = client.get("/admin/health")
     assert resp.status_code == 401, f"Expected 401 unauthenticated, got {resp.status_code}"
 
-    # 2. Magic-link session without passkey -> 403 passkey_required
-    staff_email = "staff_no_passkey@example.test"
-    monkeypatch.setattr(
-        ctx.settings,
-        "auth_organiser_emails",
-        f"{ctx.settings.auth_organiser_emails},{staff_email},regular_organiser@example.test",
-    )
-    magic_sign_in(client, ctx, staff_email)
+    # 2. Staff-key session without a passkey -> 403 passkey_required
+    client = key_only_client(ctx, "admin")
     resp = client.get("/admin/health")
     assert resp.status_code == 403, f"Expected 403 passkey_required, got {resp.status_code}"
 
-    # 3. Staff with passkey, but NOT on admin list -> 403 admin_required
-    organiser_client = staff_client(ctx, "regular_organiser@example.test")
+    # 3. Staff with a passkey but no admin key -> 403 admin_required
+    organiser_client = staff_client(ctx, "organiser")
     resp = organiser_client.get("/admin/health")
     assert resp.status_code == 403, f"Expected 403 admin_required, got {resp.status_code}"
     assert resp.json().get("detail") == "admin_required"
 
-    # 4. Staff with passkey AND on admin list -> 200 OK
-    admin_email = "superadmin@example.test"
-    monkeypatch.setattr(ctx.settings, "auth_admin_emails", f"{admin_email},other@example.test")
-    admin = staff_client(ctx, admin_email)
+    # 4. Staff with a passkey AND an admin key -> 200 OK
+    admin = staff_client(ctx, "admin")
     resp = admin.get("/admin/health")
     assert resp.status_code == 200, f"Expected 200 OK for admin, got {resp.text}"
     data = resp.json()
@@ -75,9 +67,7 @@ def test_admin_health_metrics_and_counts(
     Outputs: None.
     Side effects: creates mock backup, inserts event data and queries /admin/health.
     """
-    admin_email = "admin_metrics@example.test"
-    monkeypatch.setattr(ctx.settings, "auth_admin_emails", admin_email)
-    admin = staff_client(ctx, admin_email)
+    admin = staff_client(ctx, "admin")
 
     # Setup mock backup directory
     backup_root = tmp_path / "backups"
@@ -167,9 +157,7 @@ def test_admin_privacy_counts_only_invariant(ctx: AppContext, monkeypatch) -> No
     Outputs: None.
     Side effects: inspects response payload keys.
     """
-    admin_email = "admin_privacy@example.test"
-    monkeypatch.setattr(ctx.settings, "auth_admin_emails", admin_email)
-    admin = staff_client(ctx, admin_email)
+    admin = staff_client(ctx, "admin")
 
     resp = admin.get("/admin/health")
     assert resp.status_code == 200

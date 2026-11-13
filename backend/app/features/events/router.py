@@ -9,7 +9,6 @@ from app.core.rate_limit import RateLimiter
 from app.core.request_checks import Ctx, MaybeUser, PasskeyUser, User
 from app.features.events import service
 from app.features.events.schemas import (
-    AddStaffRequest,
     CameraInfo,
     CameraListResponse,
     CreateEventRequest,
@@ -76,13 +75,6 @@ def get_event(event_id: UUID, user: User, ctx: Ctx) -> EventDetailResponse:
     """Purpose: one event (members only); counts for staff."""
     view, counts = service.get_event(ctx, user, event_id)
     return EventDetailResponse(**_response(view).model_dump(), counts=counts)
-
-
-@router.post("/events/{event_id}/members", status_code=204)
-def add_staff(event_id: UUID, body: AddStaffRequest, user: PasskeyUser, ctx: Ctx) -> Response:
-    """Purpose: organiser adds a photographer or co-organiser by email."""
-    service.add_staff(ctx, user, event_id, body.email, body.role)
-    return Response(status_code=204)
 
 
 @router.post("/events/{event_id}/invites", status_code=201, response_model=InviteResponse)

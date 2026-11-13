@@ -23,10 +23,8 @@ from app.core.login_sessions import (
     CurrentUser,
     create_anonymous_user,
     create_session,
-    find_or_create_user,
     hash_token,
     new_token,
-    normalise_email,
 )
 from app.core.login_sessions import organiser_allowed as is_organiser_allowed
 from app.core.request_checks import STAFF_ROLES, require_role
@@ -98,7 +96,7 @@ def create_event(ctx: AppContext, user: CurrentUser, name: str, country: str) ->
     """
     with ctx.sessions() as session:
         account = session.get(User, user.user_id)
-        if account is None or not is_organiser_allowed(ctx.settings, ctx.keys, account):
+        if account is None or not is_organiser_allowed(account):
             raise HTTPException(status_code=403, detail="not_an_organiser")
     event_id = uuid.uuid4()
     with event_transaction(ctx.sessions, event_id) as session:
@@ -146,40 +144,6 @@ def get_event(
             raise NotFoundError("event not found")
         counts = repository.counts(session, event_id) if roles & set(STAFF_ROLES) else None
         return _view(event, tuple(sorted(roles))), counts
-
-
-def add_staff(ctx: AppContext, user: CurrentUser, event_id: UUID, email: str, role: str) -> None:
-    """
-    Purpose: organiser adds a photographer or co-organiser by email (account created if new;
-        they sign in with a magic link and must then register a passkey).
-    Side effects: may insert users; inserts event_members and audit rows.
-    """
-    if role not in STAFF_ROLES:
-        raise UnprocessableError("role must be organiser or photographer")
-    try:
-        address = normalise_email(email)
-    except ValueError as exc:
-        raise UnprocessableError("enter a valid email address") from exc
-    with event_transaction(ctx.sessions, event_id) as session:
-        require_role(session, event_id, user.user_id, ("organiser",))
-        member = find_or_create_user(session, ctx.keys, address)
-        exists = session.scalars(
-            select(EventMember).where(
-                EventMember.event_id == event_id,
-                EventMember.user_id == member.id,
-                EventMember.role == role,
-            )
-        ).first()
-        if exists is None:
-            session.add(EventMember(event_id=event_id, user_id=member.id, role=role))
-        record(
-            session,
-            event_id=event_id,
-            actor=user.actor,
-            action="member.added",
-            target=f"user:{member.id}",
-            details={"role": role},
-        )
 
 
 def create_invite(

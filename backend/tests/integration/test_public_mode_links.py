@@ -12,8 +12,6 @@ from fastapi.testclient import TestClient
 from tests.conftest import make_png
 from tests.helpers import (
     FRAMES_HEADERS,
-    ORGANISER_EMAIL,
-    MemoryEmailSender,
     frames_body,
     guest_client,
     searchable_event,
@@ -27,7 +25,7 @@ def test_backend_links_work_in_public_mode(
     organiser: TestClient, ctx: AppContext, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
-    Purpose: magic link and invite link open the SPA; signed photo URLs, the download path
+    Purpose: the invite link opens the SPA; signed photo URLs, the download path
         and the scene preview URL are served under /api (and only there) in public mode.
     Inputs: organiser client, ctx, tmp_path, monkeypatch.
     Outputs: None.
@@ -59,12 +57,7 @@ def test_backend_links_work_in_public_mode(
         res = public.get(path)
         return res.status_code == 200 and res.text == SPA_INDEX
 
-    # Magic link and invite link (also the QR code value) are browser pages.
-    email = ctx.email
-    assert isinstance(email, MemoryEmailSender)
-    magic_link = next(link for to, link in email.sent if to == ORGANISER_EMAIL)
-    assert urlsplit(magic_link).path == "/auth/callback"
-    assert is_spa(urlsplit(magic_link).path)
+    # The invite link (also the QR code value) is a browser page.
     invite = urlsplit(invite_url)
     assert invite.path == f"/e/{event_id}"
     assert is_spa(f"{invite.path}?{invite.query}")

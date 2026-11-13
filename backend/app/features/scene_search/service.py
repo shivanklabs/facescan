@@ -597,8 +597,8 @@ def list_event_claims(
     Purpose: list all pending claims for an event for the organiser.
     Inputs: ctx, user (must be organiser), event_id.
     Outputs: OrganiserClaimQueueResponse with photos, bounding boxes, a per-event label
-        ("Guest #1", "Guest #2", ...) and reason. Organisers never see a guest's email (Google
-        sign-in included), so emails are not read at all.
+        ("Guest #1", "Guest #2", ...) and reason. Organisers never see a guest's email, so emails
+        are not read at all.
     Side effects: none (one joined query for claims, photos and faces).
     """
     with event_transaction(ctx.sessions, event_id) as session:

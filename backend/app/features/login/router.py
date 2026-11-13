@@ -1,4 +1,4 @@
-"""HTTP routes for sign-in (magic links, passkeys), the account and sign-out."""
+"""HTTP routes for sign-in (passkeys, staff keys, dev sign-in), the account and sign-out."""
 
 import base64
 import binascii
@@ -15,11 +15,8 @@ from app.core.request_checks import Ctx, PasskeyUser, User, optional_user
 from app.features.login import service
 from app.features.login.schemas import (
     AgeAnswer,
+    AuthConfigResponse,
     DevSignIn,
-    GoogleConfigResponse,
-    GoogleSignIn,
-    MagicLinkRequest,
-    MagicLinkVerify,
     MeResponse,
     PasskeyCredential,
     SignedOutResponse,
@@ -69,50 +66,13 @@ def _signed_in(ctx: Ctx, result: service.SignInResult) -> JSONResponse:
     return response
 
 
-@router.post("/magic-link", status_code=202, dependencies=[Depends(sign_in_limiter)])
-def request_link(body: MagicLinkRequest, ctx: Ctx) -> dict[str, str]:
-    """Purpose: email a sign-in link. Same answer whether or not the account exists."""
-    service.request_magic_link(ctx, body.email, body.next)
-    return {"status": "sent_if_allowed"}
-
-
-@router.post("/magic-link/verify", dependencies=[Depends(sign_in_limiter)])
-def verify_link(body: MagicLinkVerify, ctx: Ctx, user: MaybeUser) -> JSONResponse:
-    """Purpose: consume a magic link and sign in (new session)."""
-    try:
-        result = service.verify_magic_link(ctx, body.token, user.session_id if user else None)
-    except service.SignInError as exc:
-        raise HTTPException(status_code=400, detail="link_invalid_or_expired") from exc
-    return _signed_in(ctx, result)
-
-
-@router.get("/google/config", response_model=GoogleConfigResponse)
-def google_config(ctx: Ctx) -> GoogleConfigResponse:
+@router.get("/config", response_model=AuthConfigResponse)
+def auth_config(ctx: Ctx) -> AuthConfigResponse:
     """
-    Purpose: the public Google OAuth client id the sign-in button needs ("" when disabled)
-        and whether the dev-only email sign-in is available.
-    Inputs: ctx. Outputs: GoogleConfigResponse. Side effects: none.
+    Purpose: what the sign-in page may show (the dev-only email sign-in exists only when
+        FACESCAN_ENV=dev). Inputs: ctx. Outputs: AuthConfigResponse. Side effects: none.
     """
-    return GoogleConfigResponse(
-        client_id=ctx.settings.google_client_id.strip(),
-        dev_login=service.dev_login_allowed(ctx),
-    )
-
-
-@router.post("/google", dependencies=[Depends(sign_in_limiter)])
-def google_sign_in(body: GoogleSignIn, ctx: Ctx, user: MaybeUser) -> JSONResponse:
-    """
-    Purpose: sign in with a Google ID token. Inputs: body.credential, current session.
-    Outputs: SignInResponse with the new session cookie; 401 when the token is rejected.
-    Side effects: see service.sign_in_with_google.
-    """
-    try:
-        result = service.sign_in_with_google(
-            ctx, body.credential, user.session_id if user else None
-        )
-    except service.SignInError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
-    return _signed_in(ctx, result)
+    return AuthConfigResponse(dev_login=service.dev_login_allowed(ctx))
 
 
 @router.post("/dev-login", dependencies=[Depends(sign_in_limiter)])

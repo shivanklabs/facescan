@@ -13,7 +13,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 def get_health(_admin: AdminUser, ctx: Ctx) -> AdminHealthResponse:
     """
     Purpose: Retrieve operational health metrics across all events and host system.
-    Inputs: _admin (AdminUser: validated passkey staff on FACESCAN_AUTH_ADMIN_EMAILS),
+    Inputs: _admin (AdminUser: platform admin with a passkey session),
         ctx (AppContext).
     Outputs: AdminHealthResponse containing event summaries and system stats.
     Side effects: none.

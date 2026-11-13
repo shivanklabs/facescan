@@ -1,7 +1,6 @@
 """API models for events, staff and invites (no personal data, no vectors)."""
 
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -38,14 +37,6 @@ class EventListResponse(BaseModel):
     """The caller's events."""
 
     events: list[EventResponse]
-
-
-class AddStaffRequest(BaseModel):
-    """Body: add a photographer or co-organiser by email."""
-
-    model_config = ConfigDict(extra="forbid")
-    email: str = Field(min_length=3, max_length=254)
-    role: Literal["organiser", "photographer"]
 
 
 class CreateInviteRequest(BaseModel):

@@ -54,8 +54,8 @@ photos from an event. Proprietary code. First market: India (DPDP Act 2023).
    scrape faces from the internet.
 10. No paid service calls; every external dependency goes through `backend/app/interfaces`.
 
-The face is a search query, never a password. Login is Google sign-in (milestone 7); passkeys
-(WebAuthn) + email magic link stay in the code.
+The face is a search query, never a password. No emails are collected: guests sign in with a
+passkey (WebAuthn) only; staff redeem a one-time staff key, then use a passkey.
 
 ## Working rules
 - **Ask before every technology, tool, library or service choice.** Give 2-3 options with a
@@ -70,54 +70,11 @@ The face is a search query, never a password. Login is Google sign-in (milestone
 - Validate every request payload with Pydantic schemas; never return stack traces.
 - Strict typing: no `Any`, no `# type: ignore`, no `@ts-ignore`.
 - The Phase 3 AI agent (`ai/agent/`) may only call public API tools, never face search or vectors.
-- Sign-in: Google sign-in (ID token verified on the server), plus email magic links + passkeys;
-  server-side sessions in PostgreSQL (HttpOnly, Secure, SameSite=Strict cookies). Organisers and
-  photographers need a passkey or Google session. Event roles
-  come from event_members and are checked on every request. Guest face search runs only in
-  dev until a liveness adapter exists.
-
-## Dev commands
-Requirements: Git, [uv](https://docs.astral.sh/uv/) (installs Python 3.12), Node.js LTS, a native
-PostgreSQL 15+ server. Commands are the same in PowerShell and on Linux (`scripts/tasks.py`).
-
-| Command | What it does |
-|---|---|
-| `uv run tasks setup` | first-time setup: `.env` with random local secrets, `npm ci`, pre-commit, `var/storage` |
-| `uv run tasks db-init` | create the `facescan` role and database (`database/setup/create_dev_database.sql`); asks for the PostgreSQL superuser password |
-| `uv run tasks db-migrate` | apply database migrations (`alembic upgrade head`) as the `facescan` role |
-| `uv run tasks dev` | run api (uvicorn --reload), worker and Vite together; Ctrl+C stops all three |
-| `uv run tasks lint` | ruff + mypy (backend, ai, scripts), eslint + tsc (frontend), then `pre-commit run --all-files` (gitleaks secret scan, licence check, `.env` block); `--only python\|frontend`. Run before every commit |
-| `uv run tasks format` | ruff format + prettier |
-| `uv run tasks test` | pytest (backend, ai) + vitest (frontend); `--only python\|frontend` |
-| `uv run tasks models` | download model weights listed in `ai/models/models.lock.json` and verify SHA-256 |
-| `uv run tasks licences` | `scripts/check_licences.py`: fails on forbidden models, files or packages |
-| `uv run --env-file .env facescan-ai <index\|match\|search\|label\|bench\|blur\|clean>` | face pipeline, matching engine, labeler and benchmark (see `ai/README.md`) |
-
-Open the app at http://localhost:5173 (passkeys need the `localhost` host; the API is reached
-through Vite's `/api` proxy). API health: http://127.0.0.1:8000/health. Magic links are printed
-in the API terminal in dev. Put your email in `FACESCAN_AUTH_ORGANISER_EMAILS` to create events.
-Never commit `.env` or the PostgreSQL superuser password.
-
-## Folder map
-```
-settings/    services.yaml (port -> adapter per default/region/plan), country-rules/<country>.yaml, consent/
-frontend/    React + TS + Vite PWA (url/, pages/{guest,owner,admin}/, features/, components/site/, lib/, language-files/)
-backend/     FastAPI modular monolith; two processes: api (app.main) and worker (app.worker)
-  app/core/             config, logging (redaction), security, errors, rate limiting
-  app/db/               session, declarative base, event scope (RLS)
-  app/interfaces/       one Protocol per external dependency (a "port")
-  app/connectors/       free implementations of the interfaces (adapters) + service_picker.py
-  app/features/         login, all_events_search, face_matching, photo_upload, photo_processing,
-                        gallery, scene_search, consent, events, activity_log, admin
-  app/background_jobs/  job type -> handler registry
-ai/          facescan_ai: pure Python face library (no web, no database)
-database/    migrations/ (alembic), security_rules/ (RLS template), setup/ (dev role + database), tables_guide.md
-docs/        architecture + ADRs, security, legal, product, runbooks
-scripts/     tasks.py (`uv run tasks`), check_licences.py
-var/         local runtime data, git-ignored (storage/<bucket>/<event_id>/)
-```
-
-## Naming rules
+- Sign-in: passkeys (guests sign up with a passkey only; no account exists before it
+  verifies); staff keys (`uv run tasks staff-key`, single use, 7 days, only a SHA-256 stored)
+  then a passkey. Server-side sessions in PostgreSQL (HttpOnly, Secure, SameSite=Strict
+  cookies). Staff pages need a passkey session. Event roles come from event_members and are
+  checked on every request.
 - Folders are lowercase. Python packages and modules use snake_case; multi-word non-Python
   folders use kebab-case.
 - Name by responsibility, not technology: `interfaces/face_analyzer.py`, not `interfaces/onnx.py`.

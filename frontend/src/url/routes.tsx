@@ -15,7 +15,6 @@ import EventSettingsPage from '@/pages/owner/EventSettingsPage';
 import UploadStatusPage from '@/pages/owner/UploadStatusPage';
 import ClaimReviewPage from '@/pages/owner/ClaimReviewPage';
 import AdminHealthPage from '@/pages/admin/AdminHealthPage';
-import AuthCallbackPage from '@/pages/AuthCallbackPage';
 
 /**
  * Purpose: the page for unknown addresses, in the site design.
@@ -47,7 +46,6 @@ export const routes = [
       { path: 'studio/events/:eventId/status', element: <UploadStatusPage /> },
       { path: 'studio/events/:eventId/claims', element: <ClaimReviewPage /> },
       { path: 'admin', element: <AdminHealthPage /> },
-      { path: 'auth/callback', element: <AuthCallbackPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

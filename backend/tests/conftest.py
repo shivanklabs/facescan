@@ -271,12 +271,12 @@ def db_schema(request: pytest.FixtureRequest) -> Iterator[str]:
 def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
     """
     Purpose: application context on the test schema with local storage under tmp_path,
-        captured email, one allow-listed organiser, and freshly generated random keys.
+        and freshly generated random keys (no email anywhere).
     Inputs: db_schema, tmp_path.
     Outputs: Iterator yielding AppContext.
     Side effects: creates database tables; disposes engine on teardown.
     """
-    from tests.helpers import ORGANISER_EMAIL, ORIGIN, MemoryEmailSender
+    from tests.helpers import ORIGIN
 
     signing_key = secrets.token_hex(32)
     master_key = base64.b64encode(secrets.token_bytes(32)).decode()
@@ -284,7 +284,6 @@ def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
         env="dev",
         auth_rp_id="localhost",
         auth_rp_origin=ORIGIN,
-        auth_organiser_emails=ORGANISER_EMAIL,
         storage_root=str(tmp_path / "storage"),
         upload_spool_dir=str(tmp_path / "spool"),
         storage_signing_key=SecretStr(signing_key),
@@ -293,16 +292,14 @@ def ctx(db_schema: str, tmp_path: Path) -> Iterator[AppContext]:
         worker_poll_interval_seconds=0.01,
         liveness_adapter="",
     )
-    context = build_context(
-        settings, analyzer=FakeFaceAnalyzer(), search_path=db_schema, email=MemoryEmailSender()
-    )
+    context = build_context(settings, analyzer=FakeFaceAnalyzer(), search_path=db_schema)
     yield context
     context.engine.dispose()
 
 
 @pytest.fixture
 def organiser(ctx: AppContext) -> TestClient:
-    """The allow-listed organiser, signed in with a passkey."""
-    from tests.helpers import ORGANISER_EMAIL, staff_client
+    """An organiser (redeemed an organiser staff key), signed in with a passkey."""
+    from tests.helpers import staff_client
 
-    return staff_client(ctx, ORGANISER_EMAIL)
+    return staff_client(ctx, "organiser")

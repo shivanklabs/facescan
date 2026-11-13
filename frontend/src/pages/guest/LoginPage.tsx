@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
-import { devSignIn, signInConfig } from '@/features/auth/googleSignIn';
+import { api } from '@/lib/serverApi';
 import { StaffKeyForm } from '@/features/auth/StaffKeyForm';
 import {
   openInBrowserUrl,
@@ -48,7 +48,7 @@ export default function LoginPage() {
   useEffect(() => {
     if (loading || me) return;
     let active = true;
-    signInConfig()
+    api<{ dev_login: boolean }>('/auth/config')
       .then((config) => {
         if (active) setDevLogin(config.dev_login);
       })
@@ -86,7 +86,7 @@ export default function LoginPage() {
     setDevBusy(true);
     setError('');
     try {
-      await devSignIn(devEmail.trim());
+      await api('/auth/dev-login', { json: { email: devEmail.trim() } });
       window.location.assign(destination);
     } catch {
       setError(t('welcome.devFailed'));

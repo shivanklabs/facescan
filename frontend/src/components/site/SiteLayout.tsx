@@ -3,7 +3,6 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser, type Me } from '@/features/auth/useCurrentUser';
-import { forgetGoogleSelection } from '@/features/auth/googleSignIn';
 import { api } from '@/lib/serverApi';
 import '@/styles/site.css';
 
@@ -59,7 +58,6 @@ export function SiteLayout() {
     try {
       await api('/auth/logout', { method: 'POST' });
     } finally {
-      forgetGoogleSelection();
       navigate('/', { replace: true });
       window.location.reload();
     }
