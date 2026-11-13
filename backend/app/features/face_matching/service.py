@@ -16,14 +16,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import HTTPException
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.country_rules import load_country_policy as load_country_policy
 from app.core.errors import ConflictError, TooManyRequestsError, UnprocessableError
 from app.core.login_sessions import CurrentUser
-from app.core.services_setup import AppContext, guest_search_allowed
+from app.core.services_setup import AppContext
 from app.db.event_isolation import event_transaction
 from app.features.activity_log.service import record
 from app.features.consent.service import (
@@ -244,28 +243,3 @@ def release_in_event(
         release=clean_release,
         some_photos_missing=result.some_photos_missing,
     )
-
-
-def guest_search(
-    ctx: AppContext,
-    user: CurrentUser,
-    event_id: UUID,
-    frames: list[bytes],
-    front_only: bool = False,
-) -> SearchResult:
-    """
-    Purpose: search one event with the guest's live selfie frames.
-    Inputs: 3-5 encoded frames (memory only), front_only flag. Outputs: SearchResult.
-    Side effects: inserts search_attempts; replaces the guest's matches; audit row.
-    """
-    if not guest_search_allowed(ctx.settings):
-        raise HTTPException(status_code=403, detail="search_disabled_without_liveness")
-    settings = ctx.settings
-    if not settings.search_min_frames <= len(frames) <= settings.search_max_frames:
-        raise UnprocessableError(
-            f"send {settings.search_min_frames} to {settings.search_max_frames} selfie frames"
-        )
-    _check_and_count(ctx, user, event_id)
-    queries = embed_selfie_frames(ctx, frames, front_only)
-    with event_transaction(ctx.sessions, event_id) as session:
-        return release_in_event(session, ctx, user, event_id, queries, front_only)

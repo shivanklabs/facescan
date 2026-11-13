@@ -11,6 +11,7 @@ import secrets
 import struct
 import uuid
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.core.encryption import new_data_key
 from app.core.services_setup import AppContext
@@ -200,6 +201,30 @@ def frames_body(*frames: bytes) -> bytes:
 
 
 FRAMES_HEADERS = {"Content-Type": "application/x-facescan-frames"}
+
+
+def discover_search(client: TestClient, body: bytes, notice_version: str | None = None) -> Any:
+    """One live scan searched in every searchable event (the site's only face search)."""
+    version = notice_version or client.get("/consent/notice").json()["version"]
+    return client.post(
+        f"/discover/search?notice_version={version}", content=body, headers=FRAMES_HEADERS
+    )
+
+
+def event_photos(client: TestClient, event_id: uuid.UUID | str) -> list[dict[str, Any]]:
+    """The person's released photos in one event, as shown on the site (empty when none)."""
+    response = client.get("/discover/photos")
+    assert response.status_code == 200, response.text
+    for group in response.json()["events"]:
+        if group["event_id"] == str(event_id):
+            photos: list[dict[str, Any]] = group["photos"]
+            return photos
+    return []
+
+
+def released_ids(client: TestClient, event_id: uuid.UUID | str) -> set[str]:
+    """Ids of the person's released photos in one event."""
+    return {p["photo_id"] for p in event_photos(client, event_id)}
 
 
 def quick_event(ctx: AppContext, name: str = "Test event") -> uuid.UUID:

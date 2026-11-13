@@ -108,7 +108,6 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     from app.features.all_events_search.router import router as discover_router
     from app.features.consent.router import router as consent_router
     from app.features.events.router import router as events_router
-    from app.features.face_matching.router import router as matching_router
     from app.features.gallery.router import router as gallery_router
     from app.features.login.router import router as identity_router
     from app.features.photo_upload.router import router as ingest_router
@@ -124,7 +123,6 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         events_router,
         ingest_router,
         consent_router,
-        matching_router,
         discover_router,
         gallery_router,
         scene_search_router,

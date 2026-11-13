@@ -14,11 +14,13 @@ from PIL import Image
 from sqlalchemy import text
 from tests.conftest import make_png
 from tests.helpers import (
-    FRAMES_HEADERS,
+    discover_search,
+    event_photos,
     frames_body,
     guest_client,
     new_client,
     passkey_guest,
+    released_ids,
     searchable_event,
     staff_client,
 )
@@ -30,10 +32,6 @@ PERSON_2 = [make_png(2, 2, (90 + i, 48)) for i in range(3)]
 
 def selfie_frames(person: int, count: int = 3) -> bytes:
     return frames_body(*[make_png(person, 1, (40 + i, 30)) for i in range(count)])
-
-
-def search(client: TestClient, event_id: str, body: bytes) -> object:
-    return client.post(f"/events/{event_id}/search", content=body, headers=FRAMES_HEADERS)
 
 
 @pytest.fixture
@@ -80,7 +78,6 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
     guest = passkey_guest(ctx)
     assert guest.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 200
     assert guest.get("/me/consents").json()["consents"] == []  # joined, no consent yet
-    assert search(guest, event_id, selfie_frames(1)).status_code == 403  # no consent yet
     notice = guest.get("/consent/notice").json()
     assert notice["draft"] is True and set(notice["texts"]) == {"en", "hi"}
     consent = guest.post(
@@ -88,17 +85,14 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
         json={"notice_version": notice["version"], "language": "hi", "face_search": True},
     )
     assert consent.status_code == 204
-    result = search(guest, event_id, selfie_frames(1))
+    result = discover_search(guest, selfie_frames(1))
     assert result.status_code == 200, result.text
     found = result.json()
     assert_no_biometrics(found)
-    assert set(found) == {"release", "some_photos_missing"}
-    assert set(found["release"]) == set(body["photo_ids"][:4])  # only person 1's photos
-
-    gallery = guest.get(f"/events/{event_id}/gallery").json()
-    assert_no_biometrics(gallery)
-    assert {p["photo_id"] for p in gallery["photos"]} == set(found["release"])
-    photo = gallery["photos"][0]
+    assert set(found) == {"released", "events_with_photos", "events_searched"}  # counts only
+    assert_no_biometrics(guest.get("/discover/photos").json())
+    assert released_ids(guest, event_id) == set(body["photo_ids"][:4])  # only person 1's photos
+    photo = event_photos(guest, event_id)[0]
     served = guest.get(urlsplit(photo["url"]).path + "?" + urlsplit(photo["url"]).query)
     assert served.status_code == 200 and served.headers["content-type"] == "image/jpeg"
     download = guest.get(photo["download_path"])
@@ -118,11 +112,13 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
     withdrawn = guest.post(f"/events/{event_id}/consent/withdraw")
     assert withdrawn.status_code == 200
     assert withdrawn.json()["matches"] == 4
-    assert guest.get(f"/events/{event_id}/gallery").status_code == 403  # no consent any more
+    assert event_photos(guest, event_id) == []  # no consent any more
     again = new_client(ctx)
     passkey_sign_in(again, authenticator)
-    assert again.get(f"/events/{event_id}/gallery").status_code == 403  # no consent any more
-    assert search(again, event_id, selfie_frames(1)).status_code == 403
+    assert event_photos(again, event_id) == []
+    # A new scan skips the withdrawn event (it never silently undoes a withdrawal).
+    assert discover_search(again, selfie_frames(1)).status_code == 200
+    assert event_photos(again, event_id) == []
     with event_transaction(ctx.sessions, uuid.UUID(event_id)) as s:
         assert (
             s.execute(text("SELECT count(*) FROM matches WHERE score_band = 'withdrawn'")).scalar()
@@ -155,9 +151,7 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
             s.execute(text("SELECT count(*) FROM matches WHERE score_band = 'release'")).scalar()
             == 4
         )
-    restored_gallery = again.get(f"/events/{event_id}/gallery")
-    assert restored_gallery.status_code == 200
-    assert len(restored_gallery.json()["photos"]) == 4
+    assert len(event_photos(again, event_id)) == 4
 
 
 def test_guests_never_see_each_others_matches(
@@ -166,10 +160,10 @@ def test_guests_never_see_each_others_matches(
     event_id, invite, photo_ids = event
     one = guest_client(ctx, "one@example.test", event_id, invite)
     two = guest_client(ctx, "two@example.test", event_id, invite)
-    assert set(search(one, event_id, selfie_frames(1)).json()["release"]) == set(photo_ids[:4])
-    assert set(search(two, event_id, selfie_frames(2)).json()["release"]) == set(photo_ids[4:])
-    gallery_two = {p["photo_id"] for p in two.get(f"/events/{event_id}/gallery").json()["photos"]}
-    assert gallery_two == set(photo_ids[4:])
+    assert discover_search(one, selfie_frames(1)).status_code == 200
+    assert discover_search(two, selfie_frames(2)).status_code == 200
+    assert released_ids(one, event_id) == set(photo_ids[:4])
+    assert released_ids(two, event_id) == set(photo_ids[4:])
     assert two.get(f"/events/{event_id}/gallery/{photo_ids[0]}/download").status_code == 404
 
 
@@ -177,13 +171,26 @@ def test_organisers_and_photographers_cannot_search(
     event: tuple[str, str, list[str]], organiser: TestClient, ctx: AppContext
 ) -> None:
     event_id, invite, _ = event
-    assert search(organiser, event_id, selfie_frames(1)).status_code == 403
+    organiser_id = organiser.get("/auth/me").json()["user_id"]
+
+    def organiser_matches() -> int:
+        with event_transaction(ctx.sessions, uuid.UUID(event_id)) as s:
+            return int(
+                s.execute(
+                    text("SELECT count(*) FROM matches WHERE user_id = :u"), {"u": organiser_id}
+                ).scalar()
+                or 0
+            )
+
+    # A scan skips every event where the person is staff: nothing is searched or released.
+    assert discover_search(organiser, selfie_frames(1)).status_code == 200
+    assert organiser_matches() == 0
     key = invite.split("?k=")[1]
     assert organiser.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 200
     organiser.post("/auth/age", json={"is_adult": True})
-    refused = search(organiser, event_id, selfie_frames(1))
-    assert refused.status_code == 403  # staff stay staff even with a guest role
-    assert organiser.get(f"/events/{event_id}/gallery").status_code in (403, 404)
+    assert discover_search(organiser, selfie_frames(1)).status_code == 200
+    assert organiser_matches() == 0  # staff stay staff even with a guest role
+    assert event_photos(organiser, event_id) == []
 
 
 def test_search_needs_consent_and_policy_governs_minors(
@@ -191,12 +198,21 @@ def test_search_needs_consent_and_policy_governs_minors(
 ) -> None:
     event_id, invite, _ = event
     no_consent = guest_client(ctx, "noconsent@example.test", event_id, invite, consent=False)
-    response = search(no_consent, event_id, selfie_frames(1))
-    assert response.status_code == 403 and response.json()["detail"] == "consent_required"
+    # A scan is only accepted for the notice the person just read ...
+    stale = discover_search(no_consent, selfie_frames(1), notice_version="old-notice")
+    assert stale.status_code == 409
+    assert no_consent.get("/me/consents").json()["consents"] == []
+    # ... and then records their face-search consent for the event before searching it.
+    assert discover_search(no_consent, selfie_frames(1)).status_code == 200
+    consents = no_consent.get("/me/consents").json()["consents"]
+    assert any(
+        c["event_id"] == event_id and c["purpose"] == "face_search" and c["withdrawn_at"] is None
+        for c in consents
+    )
 
     # With default policy (minors_self_search: allowed), minor can search successfully
     minor = guest_client(ctx, "minor@example.test", event_id, invite, adult=False)
-    response = search(minor, event_id, selfie_frames(1))
+    response = discover_search(minor, selfie_frames(1))
     assert response.status_code == 200
 
     # When policy is restricted, minors are blocked
@@ -224,7 +240,7 @@ def test_search_needs_consent_and_policy_governs_minors(
     restricted_minor = guest_client(
         ctx, "restricted_minor@example.test", event_id, invite, adult=False, consent=False
     )
-    resp = search(restricted_minor, event_id, selfie_frames(1))
+    resp = discover_search(restricted_minor, selfie_frames(1))
     assert resp.status_code == 403 and resp.json()["detail"] == "minor_guardian_consent_required"
 
 
@@ -232,33 +248,37 @@ def test_search_limits_are_enforced_per_user_and_per_event(
     event: tuple[str, str, list[str]], ctx: AppContext
 ) -> None:
     event_id, invite, _ = event
-    ctx.settings.search_per_user_per_hour = 2
+    ctx.settings.search_per_user_per_hour = 2  # counted per event (row-level security)
     guest = guest_client(ctx, "limited@example.test", event_id, invite)
-    assert search(guest, event_id, selfie_frames(1)).status_code == 200
-    assert search(guest, event_id, selfie_frames(1)).status_code == 200
-    assert search(guest, event_id, selfie_frames(1)).status_code == 429
-    ctx.settings.search_per_user_per_hour = 100
+    assert discover_search(guest, selfie_frames(1)).status_code == 200
+    assert discover_search(guest, selfie_frames(1)).status_code == 200
+    assert discover_search(guest, selfie_frames(1)).status_code == 429
+    ctx.settings.search_per_user_per_hour = 1000
     ctx.settings.search_per_event_per_hour = 2  # 2 attempts recorded (refused ones do not count)
     other = guest_client(ctx, "other@example.test", event_id, invite)
-    assert search(other, event_id, selfie_frames(2)).status_code == 429
+    assert discover_search(other, selfie_frames(2)).status_code == 429
 
 
 def test_frames_rules(event: tuple[str, str, list[str]], ctx: AppContext) -> None:
     event_id, invite, _ = event
     guest = guest_client(ctx, "frames@example.test", event_id, invite)
-    assert search(guest, event_id, selfie_frames(1, count=2)).status_code == 422
-    assert search(guest, event_id, selfie_frames(1, count=6)).status_code == 422
-    two_faces = frames_body(make_png(1, 1), make_png(1, 2), make_png(1, 1))
-    response = search(guest, event_id, two_faces)
-    assert response.status_code == 422 and "frame 2" in response.json()["detail"]
+    too_many = ctx.settings.discover_max_frames + 1
+    assert discover_search(guest, selfie_frames(1, count=2)).status_code == 422
+    assert discover_search(guest, selfie_frames(1, count=too_many)).status_code == 422
+    two_faces = frames_body(make_png(1, 1), make_png(1, 1), make_png(1, 2))
+    response = discover_search(guest, two_faces)
+    assert response.status_code == 422 and "frame 3" in response.json()["detail"]
     assert "found 2" in response.json()["detail"]
+    version = guest.get("/consent/notice").json()["version"]
     wrong_type = guest.post(
-        f"/events/{event_id}/search", content=b"x", headers={"Content-Type": "image/png"}
+        f"/discover/search?notice_version={version}",
+        content=b"x",
+        headers={"Content-Type": "image/png"},
     )
     assert wrong_type.status_code == 422
-    disagree = frames_body(make_png(1, 1), make_png(2, 1, (41, 30)), make_png(1, 1, (42, 30)))
-    result = search(guest, event_id, disagree).json()
-    assert result == {"release": [], "some_photos_missing": True}
+    disagree = frames_body(make_png(1, 1), make_png(1, 1, (41, 30)), make_png(2, 1, (42, 30)))
+    assert discover_search(guest, disagree).status_code == 200
+    assert event_photos(guest, event_id) == []  # first and last frame disagree: nothing released
 
 
 def test_signed_gallery_urls_reject_tampering_and_expiry(
@@ -266,8 +286,8 @@ def test_signed_gallery_urls_reject_tampering_and_expiry(
 ) -> None:
     event_id, invite, _ = event
     guest = guest_client(ctx, "urls@example.test", event_id, invite)
-    search(guest, event_id, selfie_frames(1))
-    url = guest.get(f"/events/{event_id}/gallery").json()["photos"][0]["url"]
+    assert discover_search(guest, selfie_frames(1)).status_code == 200
+    url = event_photos(guest, event_id)[0]["url"]
     parts = urlsplit(url)
     path = f"{parts.path}?{parts.query}"
     assert new_client(ctx).get(path).status_code == 200  # the URL itself is the capability
@@ -285,7 +305,7 @@ def test_guest_search_is_disabled_outside_dev_without_liveness(
     guest = guest_client(ctx, "prod@example.test", event_id, invite)
     ctx.settings.env = "test"
     try:
-        response = search(guest, event_id, selfie_frames(1))
+        response = discover_search(guest, selfie_frames(1))
         assert response.status_code == 403
         assert response.json()["detail"] == "search_disabled_without_liveness"
     finally:
@@ -326,13 +346,12 @@ def test_return_visit_with_cookie(event: tuple[str, str, list[str]], ctx: AppCon
     guest = guest_client(ctx, "guest1@example.test", event_id, invite)
 
     # Return visit with cookie to gallery succeeds immediately
-    gallery_resp = guest.get(f"/events/{event_id}/gallery")
-    assert gallery_resp.status_code == 200
+    assert guest.get("/discover/photos").status_code == 200
 
     # Calling join again with the same cookie succeeds without creating a duplicate user
     rejoin_resp = guest.post(f"/invites/{event_id}/join", json={"key": key})
     assert rejoin_resp.status_code == 200
-    assert guest.get(f"/events/{event_id}/gallery").status_code == 200
+    assert guest.get("/discover/photos").status_code == 200
 
 
 def test_signed_out_visitors_cannot_create_an_account_with_an_invite_link(
@@ -419,12 +438,8 @@ def test_second_search_keeps_released_photos(
     """
     event_id, invite_url, _ = event
     guest = guest_client(ctx, "twice@example.test", event_id, invite_url)
-    first = search(guest, event_id, selfie_frames(1))
-    assert first.status_code == 200
-    released = sorted(first.json()["release"])
+    assert discover_search(guest, selfie_frames(1)).status_code == 200
+    released = released_ids(guest, event_id)
     assert released
-    second = search(guest, event_id, selfie_frames(1))
-    assert second.status_code == 200
-    assert sorted(second.json()["release"]) == released
-    gallery = guest.get(f"/events/{event_id}/gallery").json()
-    assert sorted(p["photo_id"] for p in gallery["photos"]) == released
+    assert discover_search(guest, selfie_frames(1)).status_code == 200
+    assert released_ids(guest, event_id) == released

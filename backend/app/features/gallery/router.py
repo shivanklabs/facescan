@@ -1,4 +1,5 @@
-"""HTTP routes for the guest gallery and downloads (the guest's own matches only)."""
+"""HTTP routes for a guest's own photos: "Not me" and full-size downloads (the list itself
+comes from GET /discover/photos)."""
 
 from uuid import UUID
 
@@ -6,27 +7,8 @@ from fastapi import APIRouter, Response
 
 from app.core.request_checks import Ctx, User
 from app.features.gallery import service
-from app.features.gallery.schemas import GalleryPhoto, GalleryResponse
 
 router = APIRouter(prefix="/events/{event_id}/gallery", tags=["gallery"])
-
-
-@router.get("", response_model=GalleryResponse)
-def gallery(event_id: UUID, user: User, ctx: Ctx) -> GalleryResponse:
-    """Purpose: the guest's released photos and claim rejection notices."""
-    content = service.get_gallery_content(ctx, user, event_id)
-    return GalleryResponse(
-        photos=[
-            GalleryPhoto(
-                photo_id=item.photo_id,
-                url=item.url,
-                expires_at=item.expires_at,
-                download_path=f"/events/{event_id}/gallery/{item.photo_id}/download",
-            )
-            for item in content.photos
-        ],
-        rejections=content.rejections,
-    )
 
 
 @router.post("/{photo_id}/not-me")

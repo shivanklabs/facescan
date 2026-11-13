@@ -62,7 +62,13 @@ def test_sealed_data_is_bound_to_event_table_and_row() -> None:
 def test_destroying_the_key_makes_faces_prototypes_and_calibration_unreadable(
     organiser: TestClient, ctx: AppContext
 ) -> None:
-    from tests.helpers import FRAMES_HEADERS, frames_body, guest_client, searchable_event
+    from tests.helpers import (
+        discover_search,
+        event_photos,
+        frames_body,
+        guest_client,
+        searchable_event,
+    )
 
     event_id_text, invite, _ = searchable_event(
         ctx, organiser, [make_png(1, 2, (64 + i, 48)) for i in range(3)]
@@ -89,5 +95,6 @@ def test_destroying_the_key_makes_faces_prototypes_and_calibration_unreadable(
         with pytest.raises(DecryptionError):
             repository.load_faces(s, event_id, secrets.token_bytes(32))
     frames = frames_body(*[make_png(1, 1, (60 + i, 40)) for i in range(3)])
-    response = guest.post(f"/events/{event_id}/search", content=frames, headers=FRAMES_HEADERS)
-    assert response.status_code == 409  # event closed: nothing can be searched
+    response = discover_search(guest, frames)
+    assert response.status_code == 200
+    assert event_photos(guest, event_id) == []  # event closed: nothing searched or shown

@@ -406,7 +406,7 @@ def submit_claim(
     Side effects: inserts Match or Claim row, records ClaimAttempt, logs audit event.
     """
     # 1. Authorization, age, consent, search window, advisory lock and daily limit
-    # must all happen before frame decoding, liveness or embeddings (same order as guest_search).
+    # must all happen before frame decoding, liveness or embeddings (same order as the face scan).
     with event_transaction(ctx.sessions, event_id) as session:
         check_guest_search_access(session, ctx, event_id, user)
 

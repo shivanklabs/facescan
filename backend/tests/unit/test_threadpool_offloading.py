@@ -7,8 +7,8 @@ import pytest
 from app.core.login_sessions import CurrentUser
 from app.core.services_setup import ContextConfigError
 from app.core.settings import Settings
-from app.features.face_matching import router as matching_router
-from app.features.face_matching.service import SearchResult
+from app.features.all_events_search import router as discover_router
+from app.features.all_events_search.service import DiscoverResult
 from app.features.photo_upload import router as ingest_router
 from app.features.photo_upload.service import UploadResult
 from app.features.scene_search import service as scene_search_service
@@ -90,33 +90,32 @@ async def test_upload_chunk_part_offloads_to_threadpool() -> None:
 @pytest.mark.asyncio
 async def test_search_offloads_to_threadpool() -> None:
     """
-    Purpose: verify that matching search calls service.guest_search via run_in_threadpool.
+    Purpose: verify that the face scan calls service.search_all_events via run_in_threadpool.
     Inputs: mocked Request, User, Ctx.
     Outputs: None.
     Side effects: verifies run_in_threadpool invocation.
     """
-    event_id = uuid4()
     req = MagicMock(spec=Request)
     user = MagicMock(spec=CurrentUser)
     ctx = MagicMock()
-    ctx.settings.search_max_frames = 3
+    ctx.settings.discover_max_frames = 7
     ctx.settings.selfie_max_bytes = 1024
 
-    dummy_result = SearchResult(release=[], some_photos_missing=False)
+    dummy_result = DiscoverResult(released=0, events_with_photos=0, events_searched=0)
 
     with (
-        patch.object(matching_router, "read_frames", new_callable=AsyncMock) as mock_read,
+        patch.object(discover_router, "read_frames", new_callable=AsyncMock) as mock_read,
         patch(
-            "app.features.face_matching.router.run_in_threadpool", new_callable=AsyncMock
+            "app.features.all_events_search.router.run_in_threadpool", new_callable=AsyncMock
         ) as mock_pool,
     ):
-        mock_read.return_value = [b"frame1", b"frame2"]
+        mock_read.return_value = [b"frame1", b"frame2", b"frame3"]
         mock_pool.return_value = dummy_result
 
-        res = await matching_router.search(event_id, req, user, ctx)
+        res = await discover_router.search(req, user, ctx, "v1", "blink")
         assert mock_pool.called
-        assert mock_pool.call_args[0][0] == matching_router.service.guest_search
-        assert res.release == []
+        assert mock_pool.call_args[0][0] == discover_router.service.search_all_events
+        assert res.released == 0
 
 
 @pytest.mark.asyncio

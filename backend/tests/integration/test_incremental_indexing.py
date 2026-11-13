@@ -16,8 +16,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from tests.conftest import make_png
 from tests.helpers import (
-    FRAMES_HEADERS,
+    discover_search,
     guest_client,
+    released_ids,
     searchable_event,
 )
 from tests.integration.test_guest_flow import PERSON_1, PERSON_2, selfie_frames
@@ -62,13 +63,9 @@ def test_incremental_indexing_preserves_existing_face_ids(
         assert ev.status == "searchable"
 
     # And a guest search succeeds at that point
-    search_resp = guest.post(
-        f"/events/{event_id}/search",
-        content=selfie_frames(1),
-        headers=FRAMES_HEADERS,
-    )
+    search_resp = discover_search(guest, selfie_frames(1))
     assert search_resp.status_code == 200
-    assert any(p in pids1 for p in search_resp.json()["release"])
+    assert any(p in pids1 for p in released_ids(guest, event_id))
 
     # 3. Now run the worker indexing job
     while run_one(ctx, "test-worker"):
@@ -128,13 +125,9 @@ def test_search_with_unclustered_new_faces_returns_only_old_cluster_photos(
         repository.add_faces(session, UUID(event_id), new_photo_id, faces2, key, key_ver)
 
     # Guest searches using Person 1 frames
-    search_resp = guest.post(
-        f"/events/{event_id}/search",
-        content=selfie_frames(1),
-        headers=FRAMES_HEADERS,
-    )
+    search_resp = discover_search(guest, selfie_frames(1))
     assert search_resp.status_code == 200
-    release_pids = search_resp.json()["release"]
+    release_pids = released_ids(guest, event_id)
     # Only photos from old clusters are returned; the unclustered photo is never released
     assert str(new_photo_id) not in release_pids
     assert any(p in pids for p in release_pids)

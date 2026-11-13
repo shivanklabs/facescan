@@ -11,7 +11,8 @@ from app.main import create_app
 from fastapi.testclient import TestClient
 from tests.conftest import make_png
 from tests.helpers import (
-    FRAMES_HEADERS,
+    discover_search,
+    event_photos,
     frames_body,
     guest_client,
     searchable_event,
@@ -36,9 +37,9 @@ def test_backend_links_work_in_public_mode(
     event_id, invite_url, _ = searchable_event(ctx, organiser, [make_png(1, 1), make_png(2, 1)])
     guest = guest_client(ctx, "public_links@example.test", event_id, invite_url)
     frames = frames_body(*[make_png(1, 1, (40 + i, 30)) for i in range(3)])
-    searched = guest.post(f"/events/{event_id}/search", content=frames, headers=FRAMES_HEADERS)
-    assert searched.json()["release"]
-    photo = guest.get(f"/events/{event_id}/gallery").json()["photos"][0]
+    searched = discover_search(guest, frames)
+    assert searched.status_code == 200
+    photo = event_photos(guest, event_id)[0]
     scene = guest.post(f"/events/{event_id}/scene-search", json={"query": "person"})
 
     dist = tmp_path / "frontend" / "dist"

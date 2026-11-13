@@ -1,24 +1,16 @@
-"""Guest face search.
+"""Reading live selfie frames from a request (used by POST /discover/search).
 
-POST /events/{event_id}/search takes 3-5 live selfie frames as one raw body
-(Content-Type application/x-facescan-frames): each frame is a 4-byte big-endian length
-followed by that many bytes of JPEG/PNG/WebP. The body is read straight into memory with size
-caps, so frames are never spooled to a temporary file (invariant 3).
+The frames come as one raw body (Content-Type application/x-facescan-frames): each frame is a
+4-byte big-endian length followed by that many bytes of JPEG/PNG/WebP. The body is read
+straight into memory with size caps, so frames are never spooled to a temporary file
+(invariant 3).
 """
 
-from typing import Literal
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, Query, Request
-from starlette.concurrency import run_in_threadpool
+from starlette.requests import Request
 
 from app.core.errors import PayloadTooLargeError, UnprocessableError
 from app.core.rate_limit import RateLimiter
-from app.core.request_checks import Ctx, User
-from app.features.face_matching import service
-from app.features.face_matching.schemas import SearchResponse
 
-router = APIRouter(prefix="/events/{event_id}", tags=["guest search"])
 search_limiter = RateLimiter("search", limit=30, window_seconds=60)
 FRAMES_CONTENT_TYPE = "application/x-facescan-frames"
 LENGTH_BYTES = 4
@@ -64,26 +56,3 @@ async def read_frames(request: Request, max_frames: int, max_frame_bytes: int) -
             raise PayloadTooLargeError("selfie frames are larger than allowed")
         chunks.append(chunk)
     return split_frames(b"".join(chunks), max_frames, max_frame_bytes)
-
-
-@router.post("/search", response_model=SearchResponse, dependencies=[Depends(search_limiter)])
-async def search(
-    event_id: UUID,
-    request: Request,
-    user: User,
-    ctx: Ctx,
-    mode: Literal["guided", "front-only"] = Query(default="guided"),
-) -> SearchResponse:
-    """
-    Purpose: the guest's photos in this event (release band only) offloaded to threadpool.
-    Inputs: event_id, request with selfie frames, user, ctx, mode.
-    Outputs: SearchResponse with release photos and missing photos flag.
-    Side effects: updates guest matches and search attempt record.
-    """
-    frames = await read_frames(
-        request, ctx.settings.search_max_frames, ctx.settings.selfie_max_bytes
-    )
-    result = await run_in_threadpool(
-        service.guest_search, ctx, user, event_id, frames, front_only=(mode == "front-only")
-    )
-    return SearchResponse(release=result.release, some_photos_missing=result.some_photos_missing)

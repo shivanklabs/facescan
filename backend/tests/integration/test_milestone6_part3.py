@@ -15,9 +15,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from tests.conftest import make_png
 from tests.helpers import (
-    FRAMES_HEADERS,
+    discover_search,
+    event_photos,
     guest_client,
     new_client,
+    released_ids,
     searchable_event,
 )
 from tests.integration.test_guest_flow import PERSON_1, PERSON_2, selfie_frames
@@ -50,9 +52,7 @@ def test_age_policy_allows_minors_and_blocks_when_restricted(
     # 1. Under default config (minors_self_search: allowed)
     event_id, invite, _ = searchable_event(ctx, organiser, [make_png(1, 1)])
     minor = guest_client(ctx, "minor_allowed@example.test", event_id, invite, adult=False)
-    resp = minor.post(
-        f"/events/{event_id}/search", content=selfie_frames(1), headers=FRAMES_HEADERS
-    )
+    resp = discover_search(minor, selfie_frames(1))
     assert resp.status_code == 200, f"Expected 200 with minors allowed, got {resp.text}"
 
     # 2. Switch policy to restricted
@@ -80,9 +80,7 @@ def test_age_policy_allows_minors_and_blocks_when_restricted(
     restricted_minor = guest_client(
         ctx, "minor_blocked@example.test", event_id, invite, adult=False, consent=False
     )
-    resp2 = restricted_minor.post(
-        f"/events/{event_id}/search", content=selfie_frames(1), headers=FRAMES_HEADERS
-    )
+    resp2 = discover_search(restricted_minor, selfie_frames(1))
     assert resp2.status_code == 403
     assert resp2.json()["detail"] == "minor_guardian_consent_required"
 
@@ -99,11 +97,9 @@ def test_non_destructive_withdrawal_and_restoration(organiser: TestClient, ctx: 
     guest = guest_client(ctx, "withdraw_test@example.test", event_id, invite)
 
     # Search to populate matches
-    resp = guest.post(
-        f"/events/{event_id}/search", content=selfie_frames(1), headers=FRAMES_HEADERS
-    )
+    resp = discover_search(guest, selfie_frames(1))
     assert resp.status_code == 200
-    assert len(resp.json()["release"]) == 4
+    assert len(released_ids(guest, event_id)) == 4
 
     # Verify matches in DB have score_band 'release'
     event_uuid = uuid.UUID(event_id)
@@ -137,18 +133,15 @@ def test_non_destructive_withdrawal_and_restoration(organiser: TestClient, ctx: 
         assert release_count_now == 0
 
     # The event's photos are hidden at once
-    assert guest.get(f"/events/{event_id}/gallery").status_code == 403
+    assert event_photos(guest, event_id) == []
 
     # New sign-in without active consent is blocked
     new_sess = new_client(ctx)
     passkey_sign_in(new_sess, authenticator)
-    assert new_sess.get(f"/events/{event_id}/gallery").status_code == 403
-    assert (
-        new_sess.post(
-            f"/events/{event_id}/search", content=selfie_frames(1), headers=FRAMES_HEADERS
-        ).status_code
-        == 403
-    )
+    assert event_photos(new_sess, event_id) == []
+    # A new scan skips the withdrawn event; it never silently undoes the withdrawal
+    assert discover_search(new_sess, selfie_frames(1)).status_code == 200
+    assert event_photos(new_sess, event_id) == []
 
     # Re-granting consent restores matches to 'release'
     notice = new_sess.get("/consent/notice").json()
@@ -166,6 +159,4 @@ def test_non_destructive_withdrawal_and_restoration(organiser: TestClient, ctx: 
         assert restored_count == 4
 
     # Gallery is restored
-    gal = new_sess.get(f"/events/{event_id}/gallery")
-    assert gal.status_code == 200
-    assert len(gal.json()["photos"]) == 4
+    assert len(event_photos(new_sess, event_id)) == 4

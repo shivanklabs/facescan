@@ -25,11 +25,12 @@ from sqlalchemy import event as sa_event
 from sqlalchemy import func, select, update
 from tests.conftest import make_png
 from tests.helpers import (
-    FRAMES_HEADERS,
+    discover_search,
     frames_body,
     guest_client,
     key_only_client,
     passkey_guest,
+    released_ids,
     searchable_event,
 )
 
@@ -361,10 +362,7 @@ def test_organiser_claim_queue_and_approve_flow(organiser: TestClient, ctx: AppC
     assert approve_resp.json()["status"] == "approved"
 
     # Photo is now released in guest's gallery with source = 'claim'
-    gallery_resp = guest.get(f"/events/{event_id}/gallery")
-    assert gallery_resp.status_code == 200
-    released_photo_ids = [p["photo_id"] for p in gallery_resp.json()["photos"]]
-    assert photo_id_2 in released_photo_ids
+    assert photo_id_2 in released_ids(guest, event_id)
 
     with event_transaction(ctx.sessions, UUID(event_id)) as s:
         match_row = s.scalar(
@@ -445,11 +443,10 @@ def test_organiser_claim_queue_reject_flow(organiser: TestClient, ctx: AppContex
     assert reject_resp.json()["status"] == "rejected"
 
     # 3. Guest gallery now shows rejection notice in rejections array
-    gallery_resp = guest.get(f"/events/{event_id}/gallery")
-    assert gallery_resp.status_code == 200
-    rejections = gallery_resp.json()["rejections"]
-    assert len(rejections) >= 1
-    assert any(r["claim_id"] == claim_id for r in rejections)
+    with event_transaction(ctx.sessions, uuid.UUID(event_id)) as s:
+        claim = s.get(Claim, uuid.UUID(claim_id))
+        assert claim is not None and claim.status == "rejected"
+    assert photo_id_2 not in released_ids(guest, event_id)
 
     with event_transaction(ctx.sessions, UUID(event_id)) as s:
         from app.features.activity_log.models import AuditLog
@@ -659,8 +656,7 @@ def test_face_search_preserves_claimed_photos(organiser: TestClient, ctx: AppCon
     assert claim_resp.json()["status"] == "released"
 
     # Verify photo 1 is in gallery
-    gallery_before = guest.get(f"/events/{event_id}/gallery").json()
-    assert any(p["photo_id"] == photo_id_1 for p in gallery_before["photos"])
+    assert photo_id_1 in released_ids(guest, event_id)
 
     # 2. Run face search with person 2's selfie frames
     search_body = frames_body(
@@ -668,17 +664,11 @@ def test_face_search_preserves_claimed_photos(organiser: TestClient, ctx: AppCon
         make_png(2, 1, (41, 30)),
         make_png(2, 1, (42, 30)),
     )
-    face_search_resp = guest.post(
-        f"/events/{event_id}/search",
-        content=search_body,
-        headers=FRAMES_HEADERS,
-    )
+    face_search_resp = discover_search(guest, search_body)
     assert face_search_resp.status_code == 200
 
     # 3. Check gallery: photo 1 (claimed) MUST still be present
-    gallery_after = guest.get(f"/events/{event_id}/gallery").json()
-    claimed_present = any(p["photo_id"] == photo_id_1 for p in gallery_after["photos"])
-    assert claimed_present is True
+    assert photo_id_1 in released_ids(guest, event_id)
 
     # And in database, match row has source == 'claim'
     with event_transaction(ctx.sessions, UUID(event_id)) as s:

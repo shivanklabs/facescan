@@ -16,7 +16,12 @@ import pytest
 from app.core.services_setup import AppContext
 from fastapi.testclient import TestClient
 from tests.conftest import REPO, make_png, person_vector
-from tests.helpers import FRAMES_HEADERS, frames_body, guest_client, searchable_event
+from tests.helpers import (
+    discover_search,
+    frames_body,
+    guest_client,
+    searchable_event,
+)
 
 FLOAT_RUN = re.compile(r"(-?\d+\.\d{3,}[,\s]+){8,}")
 
@@ -74,12 +79,12 @@ def test_search_keeps_selfie_frames_in_memory_only(
     monkeypatch.setattr(io, "open", guarded_open)
     monkeypatch.setattr(cv2, "imwrite", no_imwrite)
     caplog.set_level(logging.DEBUG)
-    response = guest.post(f"/events/{event_id}/search", content=body, headers=FRAMES_HEADERS)
+    response = discover_search(guest, body)
     monkeypatch.undo()
     after = snapshot(roots)
 
     assert response.status_code == 200, response.text
-    assert set(response.json()) == {"release", "some_photos_missing"}
+    assert set(response.json()) == {"released", "events_with_photos", "events_searched"}
     assert writes == []
     assert after == before
     text = caplog.text + response.text

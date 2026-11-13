@@ -75,8 +75,6 @@ class Settings(BaseSettings):
     invite_default_days: int = Field(default=14, ge=1, le=90)
     search_per_user_per_hour: int = Field(default=10, ge=1, le=1000)
     search_per_event_per_hour: int = Field(default=500, ge=1, le=100_000)
-    search_min_frames: int = Field(default=3, ge=1, le=10)
-    search_max_frames: int = Field(default=5, ge=1, le=10)
     # Simple-site scan (milestone 7): front frame, a burst while blinking, front frame.
     discover_max_frames: int = Field(default=7, ge=3, le=10)
     # Liveness adapter: silent_face (default) or empty (dev only).

@@ -14,15 +14,18 @@ from uuid import UUID
 from app.core.services_setup import AppContext
 from app.db.event_isolation import event_transaction
 from app.features.events.models import Event
+from app.features.face_matching.models import SearchAttempt
 from app.features.photo_upload.models import Photo
 from fastapi.testclient import TestClient
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import func, select
 from tests.conftest import make_png
 from tests.helpers import (
-    FRAMES_HEADERS,
+    discover_search,
+    event_photos,
     frames_body,
     guest_client,
+    released_ids,
     searchable_event,
 )
 
@@ -250,7 +253,7 @@ def test_camera_clock_sync_and_serial_privacy(organiser: TestClient, ctx: AppCon
         assert photo.corrected_time.astimezone(UTC).hour == 16
 
     # Privacy Invariant: verify guest gallery NEVER exposes camera_serial
-    gal_resp = guest.get(f"/events/{event_id}/gallery")
+    gal_resp = guest.get("/discover/photos")
     assert gal_resp.status_code == 200
     gal_text = gal_resp.text
     assert "SECRET_SERIAL_9999" not in gal_text
@@ -323,13 +326,9 @@ def test_search_window_enforcement_and_no_data_loss(organiser: TestClient, ctx: 
     guest = guest_client(ctx, "guest_window@example.test", event_id, invite_url)
 
     # Guest performs initial face search before window closes
-    res = guest.post(
-        f"/events/{event_id}/search",
-        content=selfie_frames(1),
-        headers=FRAMES_HEADERS,
-    )
+    res = discover_search(guest, selfie_frames(1))
     assert res.status_code == 200
-    initial_matches = res.json()["release"]
+    initial_matches = sorted(released_ids(guest, event_id))
     assert len(initial_matches) > 0
 
     # Organiser closes the search window by setting end date to 1 hour ago
@@ -340,14 +339,14 @@ def test_search_window_enforcement_and_no_data_loss(organiser: TestClient, ctx: 
     )
     assert sw_resp.status_code == 200
 
-    # 1. New face searches must be blocked (HTTP 403)
-    search_blocked = guest.post(
-        f"/events/{event_id}/search",
-        content=selfie_frames(1),
-        headers=FRAMES_HEADERS,
-    )
-    assert search_blocked.status_code == 403
-    assert "Search window for this event has closed" in search_blocked.text
+    # 1. New scans skip the event: no new search attempt is recorded in it
+    def attempts() -> int:
+        with event_transaction(ctx.sessions, UUID(event_id)) as session:
+            return int(session.scalar(select(func.count()).select_from(SearchAttempt)) or 0)
+
+    before = attempts()
+    assert discover_search(guest, selfie_frames(1)).status_code == 200
+    assert attempts() == before
 
     # 2. Scene search must be blocked (HTTP 403)
     scene_blocked = guest.post(
@@ -358,9 +357,7 @@ def test_search_window_enforcement_and_no_data_loss(organiser: TestClient, ctx: 
     assert "Search window for this event has closed" in scene_blocked.text
 
     # 3. Existing gallery keeps working
-    gal_resp = guest.get(f"/events/{event_id}/gallery")
-    assert gal_resp.status_code == 200
-    assert len(gal_resp.json()["photos"]) == len(initial_matches)
+    assert len(event_photos(guest, event_id)) == len(initial_matches)
 
     # 4. Downloads keep working
     sample_photo_id = initial_matches[0]
