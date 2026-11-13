@@ -368,8 +368,32 @@ html::-webkit-scrollbar {
   height: 310px;
 }
 
-.st-moment:hover {
-  transform: translateY(-4px);
+/* Board tiles in 3D: they lean towards the mouse (--rx / --ry from SiteLayout), lift and
+   cast a deeper shadow; on touch screens a press sinks the tile a little. */
+.st-moment,
+.st-event-tile,
+.st-tile,
+.st-candidate {
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg))
+    translateY(var(--lift, 0px)) scale(var(--press, 1));
+  transition:
+    transform 0.18s ease-out,
+    box-shadow 0.25s ease;
+}
+
+.st-moment:hover,
+.st-event-tile:hover,
+.st-tile:hover,
+.st-candidate:hover {
+  --lift: -6px;
+  box-shadow: 0 22px 44px rgba(40, 24, 8, 0.24);
+}
+
+.st-moment:active,
+.st-event-tile:active,
+.st-tile:active,
+.st-candidate:active {
+  --press: 0.97;
 }
 
 .st-moment figcaption {
@@ -1032,9 +1056,13 @@ html::-webkit-scrollbar {
 }
 
 .st-candidates {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
+  columns: 3 220px;
+  column-gap: 14px;
+}
+
+.st-candidates > * {
+  break-inside: avoid;
+  margin-bottom: 14px;
 }
 
 .st-candidate {
@@ -1158,20 +1186,17 @@ html::-webkit-scrollbar {
 
 /* ---------------------------------------------------------------- events dashboard */
 
+/* Inside pages are photo boards too: cards keep their own height and stack in columns. */
 .st-event-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 18px;
+  columns: 3 240px;
+  column-gap: 16px;
   margin-top: 8px;
 }
 
 .st-event-tile {
-  display: grid;
-  gap: 6px;
-  padding: 16px;
-  border-radius: var(--fs-radius);
-  border: 1px solid var(--fs-line);
-  background: var(--fs-surface);
+  display: block;
+  break-inside: avoid;
+  margin: 0 0 16px;
   text-decoration: none;
   color: var(--fs-text);
   animation: st-rise 0.5s ease both;
@@ -1180,11 +1205,30 @@ html::-webkit-scrollbar {
     border-color 0.25s ease;
 }
 
-.st-event-tile:hover,
 .st-event-tile:focus-visible {
-  transform: translateY(-3px);
-  border-color: var(--fs-accent);
+  --lift: -6px;
   outline: none;
+}
+
+.st-event-tile:focus-visible .st-event-cover {
+  outline: 3px solid var(--fs-accent);
+  outline-offset: 2px;
+}
+
+.st-event-cover {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 140px;
+  border-radius: 18px;
+  background: var(--fs-surface-strong);
+  box-shadow: 0 10px 28px rgba(40, 24, 8, 0.14);
+}
+
+.st-event-caption {
+  display: grid;
+  gap: 2px;
+  padding: 8px 4px 0;
 }
 
 .st-event-tile strong {
@@ -1193,39 +1237,6 @@ html::-webkit-scrollbar {
 }
 
 /* Up to three polaroids stacked like prints on a table. */
-.st-event-cover {
-  position: relative;
-  height: 232px; /* tallest print: 140px wide, 3:4, 6px + 18px border, 8px top */
-  margin-bottom: 4px;
-}
-
-.st-event-cover img {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  width: min(46%, 140px);
-  aspect-ratio: 3 / 4;
-  object-fit: cover;
-  background: #2a251c;
-  border: 6px solid #f4ede1;
-  border-bottom-width: 18px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
-}
-
-.st-event-cover img[data-layer='0'] {
-  transform: translateX(-50%) rotate(-2deg);
-  z-index: 3;
-}
-
-.st-event-cover img[data-layer='1'] {
-  transform: translateX(-88%) rotate(-9deg);
-  z-index: 2;
-}
-
-.st-event-cover img[data-layer='2'] {
-  transform: translateX(-12%) rotate(8deg);
-  z-index: 1;
-}
 
 /* ---------------------------------------------------------------- 3D coverflow */
 
@@ -1320,9 +1331,13 @@ html::-webkit-scrollbar {
 }
 
 .st-events {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
+  columns: 3 260px;
+  column-gap: 14px;
+}
+
+.st-events > * {
+  break-inside: avoid;
+  margin-bottom: 14px;
 }
 
 .st-event-card {

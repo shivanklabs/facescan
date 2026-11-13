@@ -1,5 +1,6 @@
 // SiteLayout: the frame of the new website (milestone 7) for every page: brand, account actions,
 // a menu that shows each person only what their role allows, the page, and the help bubble.
+import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { HelpChat } from '@/components/site/HelpChat';
@@ -65,6 +66,52 @@ function AccountStatusNote({ me }: { me: Me }) {
   );
 }
 
+/** Board tiles that lean towards the mouse (front page, My photos, gallery grid, Find more). */
+const TILT_TILES = '.st-moment, .st-event-tile, .st-tile, .st-candidate';
+const TILT_DEGREES = 9;
+
+/**
+ * Purpose: the board's 3D feel: the tile under the mouse leans towards it (perspective tilt,
+ *   set as CSS variables; the CSS adds lift and a deeper shadow). Mouse only: touch screens
+ *   get a pressed look from CSS. Off for people who ask for reduced motion.
+ * Inputs: none. Outputs: none. Side effects: one pointer listener on the document while the
+ *   site frame is shown; removed on unmount.
+ */
+function useBoardTilt() {
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let current: HTMLElement | null = null;
+    const reset = (el: HTMLElement) => {
+      el.style.removeProperty('--rx');
+      el.style.removeProperty('--ry');
+    };
+    const move = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') return;
+      const target = event.target instanceof Element ? event.target : null;
+      const tile = target?.closest<HTMLElement>(TILT_TILES) ?? null;
+      if (current && current !== tile) reset(current);
+      current = tile;
+      if (!tile) return;
+      const box = tile.getBoundingClientRect();
+      const x = (event.clientX - box.left) / box.width - 0.5;
+      const y = (event.clientY - box.top) / box.height - 0.5;
+      tile.style.setProperty('--ry', `${(x * TILT_DEGREES).toFixed(2)}deg`);
+      tile.style.setProperty('--rx', `${(-y * TILT_DEGREES).toFixed(2)}deg`);
+    };
+    const leave = () => {
+      if (current) reset(current);
+      current = null;
+    };
+    document.addEventListener('pointermove', move, { passive: true });
+    document.documentElement.addEventListener('pointerleave', leave);
+    return () => {
+      document.removeEventListener('pointermove', move);
+      document.documentElement.removeEventListener('pointerleave', leave);
+      leave();
+    };
+  }, []);
+}
+
 /**
  * Purpose: page frame with the FaceScan brand and, when signed in, the menu and sign-out.
  * Inputs: none (reads the session). Outputs: layout element. Side effects: sign-out request.
@@ -74,6 +121,7 @@ export function SiteLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { me, loading } = useCurrentUser();
+  useBoardTilt();
 
   async function signOut() {
     try {

@@ -139,13 +139,15 @@ export default function MyPhotosPage() {
             className="st-event-tile"
             style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
           >
-            <span className="st-event-cover" aria-hidden="true">
-              {group.photos.slice(0, 3).map((photo, k) => (
-                <img key={photo.photo_id} src={photo.url} alt="" loading="lazy" data-layer={k} />
-              ))}
+            {group.photos[0] && (
+              <img className="st-event-cover" src={group.photos[0].url} alt="" loading="lazy" />
+            )}
+            <span className="st-event-caption">
+              <strong>{group.event_name}</strong>
+              <span className="st-count">
+                {t('photos.inEvent', { count: group.photos.length })}
+              </span>
             </span>
-            <strong>{group.event_name}</strong>
-            <span className="st-count">{t('photos.inEvent', { count: group.photos.length })}</span>
           </Link>
         ))}
       </div>
