@@ -385,6 +385,9 @@ def list_collections(ctx: AppContext, event_id: UUID, user: CurrentUser) -> list
     """
     Purpose: collections for the approval page, each with signed preview URLs of its photos
         (issued only after the organiser check; they expire after a few minutes).
+    Inputs: ctx, event id, the signed-in organiser. Outputs: newest collection first.
+    Side effects: none (reads only). Three queries in total, however many collections exist
+        (the first PREVIEWS_PER_COLLECTION photos of every collection come from one query).
     """
     with event_transaction(ctx.sessions, event_id) as session:
         require_role(session, event_id, user.user_id, ("organiser",))
@@ -395,30 +398,41 @@ def list_collections(ctx: AppContext, event_id: UUID, user: CurrentUser) -> list
                 .group_by(Photo.collection_id)
             ).all()
         )
-        result = []
-        for collection in session.scalars(
-            select(Collection)
-            .where(Collection.event_id == event_id)
-            .order_by(Collection.created_at.desc())
-        ):
-            preview_photos = session.scalars(
-                select(Photo)
-                .where(Photo.collection_id == collection.id)
-                .order_by(Photo.created_at)
-                .limit(PREVIEWS_PER_COLLECTION)
-            ).all()
-            previews = []
-            for photo in preview_photos:
-                bucket, key = photo.bucket, photo.object_key
-                if photo.web_object_key is not None:
-                    bucket, key = ctx.settings.storage_bucket_derivatives, photo.web_object_key
-                previews.append(ctx.storage.create_signed_download_url(bucket, event_id, key).url)
-            result.append(
-                CollectionView(
-                    collection.id, collection.status, counts.get(collection.id, 0), previews
-                )
+        position = (
+            func.row_number()
+            .over(partition_by=Photo.collection_id, order_by=(Photo.created_at, Photo.id))
+            .label("position")
+        )
+        ranked = (
+            select(
+                Photo.collection_id, Photo.bucket, Photo.object_key, Photo.web_object_key, position
             )
-        return result
+            .where(Photo.event_id == event_id)
+            .subquery()
+        )
+        previews: dict[UUID, list[str]] = {}
+        for collection_id, bucket, object_key, web_key, _ in session.execute(
+            select(ranked)
+            .where(ranked.c.position <= PREVIEWS_PER_COLLECTION)
+            .order_by(ranked.c.collection_id, ranked.c.position)
+        ):
+            if web_key is not None:
+                bucket, object_key = ctx.settings.storage_bucket_derivatives, web_key
+            url = ctx.storage.create_signed_download_url(bucket, event_id, object_key).url
+            previews.setdefault(collection_id, []).append(url)
+        return [
+            CollectionView(
+                collection.id,
+                collection.status,
+                counts.get(collection.id, 0),
+                previews.get(collection.id, []),
+            )
+            for collection in session.scalars(
+                select(Collection)
+                .where(Collection.event_id == event_id)
+                .order_by(Collection.created_at.desc())
+            )
+        ]
 
 
 def init_upload_session(

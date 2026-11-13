@@ -18,7 +18,7 @@ from app.connectors.photo_storage.local_filesystem_download import (
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
 from app.core.rate_limit import RateLimitStore
-from app.core.request_checks import same_origin_guard
+from app.core.request_checks import same_origin_guard, security_headers
 from app.core.services_setup import AppContext, build_context
 from app.core.settings import Settings, get_settings
 from app.core.upload_parsing import clean_orphaned_spool_files
@@ -52,7 +52,8 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     Outputs: a configured FastAPI instance.
     Side effects: configures root logging (with the redaction filter); builds the application
         context when FACESCAN_DB_URL is set; mounts the signed storage download route when
-        FACESCAN_STORAGE_SIGNING_KEY is set; adds the same-origin guard for state changes.
+        FACESCAN_STORAGE_SIGNING_KEY is set; adds the same-origin guard for state changes and
+        the security-headers middleware.
         In public/production mode every backend route lives only under /api, so browser
         pages such as /auth/callback reach the SPA fallback; dev also mounts them at the
         root (the Vite proxy strips /api).
@@ -88,6 +89,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     app.state.rate_limits = RateLimitStore()
     register_error_handlers(app)
     app.middleware("http")(same_origin_guard(settings.auth_rp_origin))
+    app.middleware("http")(security_headers)
 
     def health() -> HealthResponse:
         """Purpose: liveness probe. Inputs: none. Outputs: status + version. Side effects: none."""

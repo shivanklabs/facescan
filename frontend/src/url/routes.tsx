@@ -5,18 +5,19 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { SiteLayout } from '@/components/site/SiteLayout';
+import type { ComponentType } from 'react';
 import LoginPage from '@/pages/guest/LoginPage';
-import FaceScanPage from '@/pages/guest/FaceScanPage';
-import MyPhotosPage from '@/pages/guest/MyPhotosPage';
-import EventGalleryPage from '@/pages/guest/EventGalleryPage';
-import PrivacyPage from '@/pages/guest/PrivacyPage';
-import FindMorePhotosPage from '@/pages/guest/FindMorePhotosPage';
 import EventLinkPage from '@/pages/guest/EventLinkPage';
-import OwnerUploadPage from '@/pages/owner/OwnerUploadPage';
-import EventSettingsPage from '@/pages/owner/EventSettingsPage';
-import UploadStatusPage from '@/pages/owner/UploadStatusPage';
-import ClaimReviewPage from '@/pages/owner/ClaimReviewPage';
-import AdminHealthPage from '@/pages/admin/AdminHealthPage';
+
+/**
+ * Purpose: load a page's code only when its route is opened, so a guest's first visit does
+ *   not download Studio, admin or gallery code (the two entry pages above load at once).
+ * Inputs: a dynamic import of a page module. Outputs: a react-router `lazy` function.
+ * Side effects: fetches the page's JS chunk on first navigation.
+ */
+function page(load: () => Promise<{ default: ComponentType }>) {
+  return async () => ({ Component: (await load()).default });
+}
 
 /**
  * Purpose: the page for unknown addresses, in the site design.
@@ -38,17 +39,26 @@ export const routes = [
     element: <SiteLayout />,
     children: [
       { index: true, element: <LoginPage /> },
-      { path: 'scan', element: <FaceScanPage /> },
-      { path: 'photos', element: <MyPhotosPage /> },
-      { path: 'photos/:eventId', element: <EventGalleryPage /> },
-      { path: 'find', element: <FindMorePhotosPage /> },
-      { path: 'privacy', element: <PrivacyPage /> },
+      { path: 'scan', lazy: page(() => import('@/pages/guest/FaceScanPage')) },
+      { path: 'photos', lazy: page(() => import('@/pages/guest/MyPhotosPage')) },
+      { path: 'photos/:eventId', lazy: page(() => import('@/pages/guest/EventGalleryPage')) },
+      { path: 'find', lazy: page(() => import('@/pages/guest/FindMorePhotosPage')) },
+      { path: 'privacy', lazy: page(() => import('@/pages/guest/PrivacyPage')) },
       { path: 'e/:eventId', element: <EventLinkPage /> },
-      { path: 'studio', element: <OwnerUploadPage /> },
-      { path: 'studio/events/:eventId/settings', element: <EventSettingsPage /> },
-      { path: 'studio/events/:eventId/status', element: <UploadStatusPage /> },
-      { path: 'studio/events/:eventId/claims', element: <ClaimReviewPage /> },
-      { path: 'admin', element: <AdminHealthPage /> },
+      { path: 'studio', lazy: page(() => import('@/pages/owner/OwnerUploadPage')) },
+      {
+        path: 'studio/events/:eventId/settings',
+        lazy: page(() => import('@/pages/owner/EventSettingsPage')),
+      },
+      {
+        path: 'studio/events/:eventId/status',
+        lazy: page(() => import('@/pages/owner/UploadStatusPage')),
+      },
+      {
+        path: 'studio/events/:eventId/claims',
+        lazy: page(() => import('@/pages/owner/ClaimReviewPage')),
+      },
+      { path: 'admin', lazy: page(() => import('@/pages/admin/AdminHealthPage')) },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

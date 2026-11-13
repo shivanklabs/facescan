@@ -148,3 +148,28 @@ def same_origin_guard(
         return await call_next(request)
 
     return middleware
+
+
+async def security_headers(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """
+    Purpose: middleware adding browser security headers to every response, and caching rules:
+        hashed /assets/ files are cached for a year (their name changes with their content);
+        everything else (API answers, the page itself) is never cached unless the route set
+        its own Cache-Control.
+    Inputs: request, next handler. Outputs: the response with headers added.
+    Side effects: none beyond headers; never overwrites a header a route already set.
+    """
+    response = await call_next(request)
+    headers = response.headers
+    headers.setdefault("X-Content-Type-Options", "nosniff")
+    headers.setdefault("X-Frame-Options", "DENY")
+    headers.setdefault("Referrer-Policy", "no-referrer")
+    # Camera only for this site (the face scan); no microphone, location or payment APIs.
+    headers.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
+    if request.url.path.startswith("/assets/"):
+        headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    else:
+        headers.setdefault("Cache-Control", "no-store")
+    return response
