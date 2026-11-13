@@ -112,7 +112,7 @@ async def test_search_offloads_to_threadpool() -> None:
         mock_read.return_value = [b"frame1", b"frame2", b"frame3"]
         mock_pool.return_value = dummy_result
 
-        res = await discover_router.search(req, user, ctx, "v1", "blink")
+        res = await discover_router.search(req, user, ctx, "v1")
         assert mock_pool.called
         assert mock_pool.call_args[0][0] == discover_router.service.search_all_events
         assert res.released == 0
