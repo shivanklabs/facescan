@@ -211,25 +211,6 @@ def test_blink_burst_of_seven_frames_is_accepted_and_eight_refused(
     assert refused.status_code in (413, 422)
 
 
-def test_look_scan_works_only_in_dev(ctx: AppContext, events: tuple[list[str], list[str]]) -> None:
-    guest = passkey_guest(ctx)
-    v = notice_version(guest)
-    url = f"/discover/search?notice_version={v}&method=look"
-    ok = guest.post(url, content=selfie(1), headers=FRAMES_HEADERS)
-    assert ok.status_code == 200, ok.text
-    assert (
-        guest.post(f"{url[:-4]}bad", content=selfie(1), headers=FRAMES_HEADERS).status_code == 422
-    )
-
-    original = ctx.settings
-    try:
-        ctx.settings = original.model_copy(update={"env": "test"})
-        refused = guest.post(url, content=selfie(1), headers=FRAMES_HEADERS)
-        assert refused.status_code == 403
-    finally:
-        ctx.settings = original
-
-
 # ---------------------------------------------------------------- delete my account (DPDP)
 
 

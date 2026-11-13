@@ -107,27 +107,16 @@ def _enrol(ctx: AppContext, user: CurrentUser, event_id: UUID, notice_version: s
     return True
 
 
-def look_scan_allowed(ctx: AppContext) -> bool:
-    """
-    Purpose: the "look" scan (no blink challenge) exists only while the owner compares scan
-        methods in development (FACESCAN_ENV=dev). Inputs: ctx. Outputs: bool.
-    Side effects: none.
-    """
-    return ctx.settings.env == "dev"
-
-
 def search_all_events(
     ctx: AppContext,
     user: CurrentUser,
     frames: list[bytes],
     notice_version: str,
-    require_blink: bool = True,
 ) -> DiscoverResult:
     """
     Purpose: search every searchable event with one live scan (selfie + blink).
     Inputs: ctx, signed-in user, 3 to FACESCAN_DISCOVER_MAX_FRAMES encoded frames (front,
-        blink burst, front; memory only), agreed notice version, require_blink (False is
-        refused outside development).
+        blink burst, front; memory only), agreed notice version.
     Outputs: DiscoverResult (counts only).
     Raises 403 when search is disabled, 409 when the notice changed, 422 for bad frames or
         failed liveness, 429 over the hourly limits.
@@ -141,9 +130,6 @@ def search_all_events(
     if not 3 <= len(frames) <= settings.discover_max_frames:
         frames.clear()
         raise UnprocessableError(f"send 3 to {settings.discover_max_frames} selfie frames")
-    if not require_blink and not look_scan_allowed(ctx):
-        frames.clear()
-        raise HTTPException(status_code=403, detail="look_scan_disabled")
     if notice_version != consent_service.notice_for(ctx).version:
         frames.clear()
         raise ConflictError("the notice has changed; read it again")
@@ -163,9 +149,7 @@ def search_all_events(
 
     # Liveness sees every frame (the blink burst); matching uses the open-eye first and last.
     last = len(frames) - 1
-    queries = embed_selfie_frames(
-        ctx, frames, front_only=True, embed_indices=(0, last), require_blink=require_blink
-    )
+    queries = embed_selfie_frames(ctx, frames, front_only=True, embed_indices=(0, last))
     released = 0
     events_with_photos = 0
     searched = 0

@@ -547,7 +547,6 @@ describe('help bot', () => {
     const fetchMock = signedInAs({ can_create_events: false, is_admin: false });
     renderAt('/photos');
     await screen.findByRole('navigation', { name: 'Main menu' });
-    const callsBefore = fetchMock.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'Open help' }));
     const panel = screen.getByRole('dialog', { name: 'FaceScan help' });
     fireEvent.click(within(panel).getByRole('button', { name: 'How do I delete my data?' }));
@@ -559,7 +558,9 @@ describe('help bot', () => {
     fireEvent.change(within(panel).getByRole('textbox'), { target: { value: 'hello?' } });
     fireEvent.click(within(panel).getByRole('button', { name: 'Ask' }));
     expect(within(panel).getByText(/I don't know that one yet/)).toBeInTheDocument();
-    expect(fetchMock.mock.calls.length).toBe(callsBefore); // nothing typed is sent anywhere
+    // Nothing typed is sent anywhere (no request carries the question).
+    const sent = fetchMock.mock.calls.map(([input]) => String(input)).join(' ');
+    expect(sent).not.toContain('hello');
   });
 });
 

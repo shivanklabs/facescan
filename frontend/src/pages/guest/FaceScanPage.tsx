@@ -7,7 +7,6 @@ import { useCurrentUser } from '@/features/auth/useCurrentUser';
 import { api, ApiError } from '@/lib/serverApi';
 import {
   captureBlinkScan,
-  captureFrames as captureTimedFrames,
   framesBody,
   FRAMES_CONTENT_TYPE,
   ovalFor,
@@ -25,24 +24,6 @@ import type { LiveStep } from '@/lib/liveBlink';
 const liveBlinkModule = () => import('@/lib/liveBlink');
 
 type Phase = 'intro' | 'camera' | 'capturing' | 'searching';
-
-/** Scan methods the owner is comparing (milestone 7); the most stable one is kept later. */
-export type ScanMethod = 'live' | 'burst' | 'look';
-const METHODS: ScanMethod[] = ['live', 'burst', 'look'];
-const METHOD_KEY = 'facescan.scanMethod';
-
-/**
- * Purpose: the method chosen last time on this device (browser storage may be blocked).
- * Inputs: none. Outputs: ScanMethod ('live' by default). Side effects: reads localStorage.
- */
-function savedMethod(): ScanMethod {
-  try {
-    const value = window.localStorage.getItem(METHOD_KEY);
-    return METHODS.find((m) => m === value) ?? 'live';
-  } catch {
-    return 'live';
-  }
-}
 
 interface Notice {
   version: string;
@@ -98,7 +79,6 @@ export default function FaceScanPage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [message, setMessage] = useState('');
-  const [method, setMethod] = useState<ScanMethod>(savedMethod);
   const [usedFallback, setUsedFallback] = useState(false);
   // The oval follows the face (size and place) while the camera is on; null = fixed oval.
   const [oval, setOval] = useState<OvalBox | null>(null);
@@ -146,21 +126,6 @@ export default function FaceScanPage() {
     };
   }, [phase]);
 
-  /**
-   * Purpose: switch the scan method and remember it on this device.
-   * Inputs: method. Outputs: none. Side effects: writes localStorage when allowed.
-   */
-  function chooseMethod(next: ScanMethod) {
-    setMethod(next);
-    setMessage('');
-    setUsedFallback(false);
-    try {
-      window.localStorage.setItem(METHOD_KEY, next);
-    } catch {
-      // storage blocked: the choice simply is not remembered
-    }
-  }
-
   useEffect(() => {
     let active = true;
     api<Notice>('/consent/notice')
@@ -194,20 +159,18 @@ export default function FaceScanPage() {
       stream.current = await startSelfieCamera(video);
       setPhase('camera');
       // Start loading the on-device blink model now, so it is ready when the scan starts.
-      if (method === 'live') {
-        liveBlinkModule()
-          .then((mod) => mod.loadLandmarker())
-          .catch(() => undefined);
-      }
+      liveBlinkModule()
+        .then((mod) => mod.loadLandmarker())
+        .catch(() => undefined);
     } catch {
       setMessage(t('scan.errCamera'));
     }
   }
 
   /**
-   * Purpose: capture the frames for the chosen method: live blink detection on the phone
-   *   (timed burst when the on-device model cannot run), the timed burst, or 'look' (three
-   *   front frames, no blink).
+   * Purpose: capture the live-blink scan: the phone watches the eyes and takes the frames
+   *   around one real blink. Only when the on-device model cannot run on this phone, a timed
+   *   burst while the person blinks is used instead (the server checks the blink either way).
    * Inputs: playing video. Outputs: JPEG frames. Side effects: updates the on-screen step.
    */
   async function captureFrames(source: HTMLVideoElement): Promise<Blob[]> {
@@ -217,14 +180,6 @@ export default function FaceScanPage() {
         setStep(key);
         setFlash((n) => n + 1);
       });
-    if (method === 'burst') return timedBurst();
-    if (method === 'look') {
-      setStep('lookStraight');
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      const frames = await captureTimedFrames(source, 3, 450);
-      setFlash((n) => n + 1);
-      return frames;
-    }
     let live: Awaited<ReturnType<typeof liveBlinkModule>>;
     try {
       live = await liveBlinkModule();
@@ -271,8 +226,7 @@ export default function FaceScanPage() {
       stopCamera();
       const body = await framesBody(frames);
       const result = await api<ScanResult>(
-        `/discover/search?notice_version=${encodeURIComponent(notice.version)}` +
-          `&method=${method === 'look' ? 'look' : 'blink'}`,
+        `/discover/search?notice_version=${encodeURIComponent(notice.version)}`,
         { body, headers: { 'Content-Type': FRAMES_CONTENT_TYPE }, timeoutMs: 180_000 },
       );
       const target = focusEvent ? `/photos/${encodeURIComponent(focusEvent)}` : '/photos';
@@ -372,23 +326,6 @@ export default function FaceScanPage() {
         </ul>
 
         <div className="st-stack-gap">
-          {(phase === 'intro' || phase === 'camera') && (
-            <div className="st-methods" role="radiogroup" aria-label={t('scan.methodLabel')}>
-              {METHODS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="radio"
-                  aria-checked={method === m}
-                  className={`st-method ${method === m ? 'is-active' : ''}`}
-                  onClick={() => chooseMethod(m)}
-                >
-                  <strong>{t(`scan.method.${m}`)}</strong>
-                  <span>{t(`scan.methodHint.${m}`)}</span>
-                </button>
-              ))}
-            </div>
-          )}
           {usedFallback && <p className="st-note">{t('scan.usedFallback')}</p>}
           {phase === 'intro' && (
             <>

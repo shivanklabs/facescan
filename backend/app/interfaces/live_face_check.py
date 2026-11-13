@@ -26,13 +26,10 @@ class Liveness(Protocol):
         """Static description of the adapter implementing this port."""
         ...
 
-    def verify_liveness(
-        self, frames: list[bytes], front_only: bool = False, require_blink: bool = True
-    ) -> LivenessVerdict:
+    def verify_liveness(self, frames: list[bytes], front_only: bool = False) -> LivenessVerdict:
         """
         Purpose: passive anti-spoofing + challenge checks (blink and head turn).
-        Inputs: raw frame bytes (in memory only), front_only flag, require_blink (False only
-            for the dev-only "look" scan of milestone 7; the anti-spoofing model still runs).
+        Inputs: raw frame bytes (in memory only), front_only flag.
         Outputs: LivenessVerdict.
         Side effects: none.
         """

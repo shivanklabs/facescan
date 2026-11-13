@@ -58,12 +58,10 @@ class SilentFaceLiveness:
                 self._yunet = YuNetDetector(det_session, det_spec.version, DetectorConfig())
             return self._detector, self._yunet
 
-    def verify_liveness(
-        self, frames: list[bytes], front_only: bool = False, require_blink: bool = True
-    ) -> LivenessVerdict:
+    def verify_liveness(self, frames: list[bytes], front_only: bool = False) -> LivenessVerdict:
         """
         Purpose: verify passive anti-spoofing and active challenges across frames.
-        Inputs: encoded image bytes (in memory only), front_only flag, require_blink.
+        Inputs: encoded image bytes (in memory only), front_only flag.
         Outputs: LivenessVerdict.
         Side effects: none.
         """
@@ -94,7 +92,7 @@ class SilentFaceLiveness:
                 )
             pairs.append((img, faces[0]))
 
-        res = detector.evaluate_frames(pairs, front_only=front_only, require_blink=require_blink)
+        res = detector.evaluate_frames(pairs, front_only=front_only)
         return LivenessVerdict(
             passed=res.passed,
             is_live=res.is_live,

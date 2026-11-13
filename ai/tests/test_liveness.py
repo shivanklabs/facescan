@@ -180,11 +180,6 @@ def test_check_blink_and_evaluate_frames(detector: SilentFaceDetector) -> None:
     assert result_none.blink_detected is False
     assert "blink_not_detected" in result_none.reasons
 
-    # require_blink=False (dev-only "look" scan) skips only the blink challenge.
-    result_look = detector.evaluate_frames(no_blink, front_only=True, require_blink=False)
-    assert "blink_not_detected" not in result_look.reasons
-    assert result_look.is_live == result_none.is_live
-
 
 def _upstream_crop_reference(
     image: np.ndarray, bbox: tuple[int, int, int, int], scale: float

@@ -75,23 +75,19 @@ def embed_selfie_frames(
     frames: list[bytes],
     front_only: bool,
     embed_indices: tuple[int, ...] | None = None,
-    require_blink: bool = True,
 ) -> list[SelfieQuery]:
     """
     Purpose: run liveness on the live frames, then embed the frames used for matching
         (memory only).
     Inputs: ctx, encoded frames (cleared before returning), front_only flag, optional indices
         of the frames to embed (default: all; the simple-site scan embeds only the open-eye
-        first and last frames, while liveness still sees the whole burst), require_blink
-        (False only for the dev-only "look" scan).
+        first and last frames, while liveness still sees the whole burst).
     Outputs: one SelfieQuery per embedded frame.
     Raises UnprocessableError for failed liveness, a frame without exactly one face, or an
         unusable image. Side effects: empties `frames`; nothing is stored or logged.
     """
     if ctx.liveness is not None:
-        verdict = ctx.liveness.verify_liveness(
-            frames, front_only=front_only, require_blink=require_blink
-        )
+        verdict = ctx.liveness.verify_liveness(frames, front_only=front_only)
         if not verdict.passed:
             frames.clear()
             reasons = ", ".join(verdict.reasons) if verdict.reasons else "liveness_failed"
