@@ -32,9 +32,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Purpose: add role/status/name, fold the staff flags into role, add assigned_by."""
     op.add_column("users", sa.Column("display_name", sa.String(80), nullable=True))
-    op.add_column(
-        "users", sa.Column("role", sa.String(20), nullable=False, server_default="guest")
-    )
+    op.add_column("users", sa.Column("role", sa.String(20), nullable=False, server_default="guest"))
     op.add_column(
         "users", sa.Column("status", sa.String(20), nullable=False, server_default="active")
     )
