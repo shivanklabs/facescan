@@ -1,6 +1,7 @@
 // MyPhotosPage: the events dashboard. One card per event I was found in (only those events),
 // with a cover photo and how many photos; a card opens that event's 3D gallery.
-// Friendly empty state when nothing matched yet.
+// Friendly empty state when nothing matched yet. A short note says when the organiser did
+// not approve a photo the person claimed (a count only; that photo is never shown).
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +17,27 @@ interface EventPhotos {
   event_id: string;
   event_name: string;
   photos: Photo[];
+  rejected_claims?: number;
+}
+
+/**
+ * Purpose: one line per event where the organiser rejected the person's claims.
+ * Inputs: all event groups from /discover/photos. Outputs: note element or null.
+ * Side effects: none.
+ */
+function RejectedClaimsNote({ events }: { events: EventPhotos[] }) {
+  const { t } = useTranslation();
+  const rejected = events.filter((e) => (e.rejected_claims ?? 0) > 0);
+  if (rejected.length === 0) return null;
+  return (
+    <div className="st-note" role="status">
+      {rejected.map((e) => (
+        <p key={e.event_id}>
+          {t('photos.claimRejected', { count: e.rejected_claims, event: e.event_name })}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -30,12 +52,12 @@ export default function MyPhotosPage() {
   const legacyEvent = params.get('event');
   const scanState = location.state as { scanned?: boolean } | null;
   const { me, loading: meLoading } = useCurrentUser();
-  const [events, setEvents] = useState<EventPhotos[] | null>(null);
+  const [allEvents, setAllEvents] = useState<EventPhotos[] | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
     api<{ events: EventPhotos[] }>('/discover/photos')
-      .then((value) => setEvents(value.events.filter((e) => e.photos.length > 0)))
+      .then((value) => setAllEvents(value.events))
       .catch(() => setError(t('photos.loadFailed')));
   }, [t]);
 
@@ -50,7 +72,7 @@ export default function MyPhotosPage() {
     );
   }
 
-  if (error && !events) {
+  if (error && !allEvents) {
     return (
       <section className="st-empty">
         <div>
@@ -65,7 +87,7 @@ export default function MyPhotosPage() {
     );
   }
 
-  if (!events) {
+  if (!allEvents) {
     return (
       <section className="st-searching" aria-busy="true">
         <div className="st-aperture" aria-hidden="true" />
@@ -73,6 +95,7 @@ export default function MyPhotosPage() {
     );
   }
 
+  const events = allEvents.filter((e) => e.photos.length > 0);
   const total = events.reduce((sum, group) => sum + group.photos.length, 0);
 
   if (total === 0) {
@@ -87,6 +110,7 @@ export default function MyPhotosPage() {
           <Link to="/scan" className="st-btn st-btn-primary">
             {scanState?.scanned ? t('photos.scanAgain') : t('photos.scanNow')}
           </Link>
+          <RejectedClaimsNote events={allEvents} />
         </div>
       </section>
     );
@@ -106,6 +130,7 @@ export default function MyPhotosPage() {
           </Link>
         </div>
       </div>
+      <RejectedClaimsNote events={allEvents} />
       <div className="st-event-cards">
         {events.map((group, i) => (
           <Link

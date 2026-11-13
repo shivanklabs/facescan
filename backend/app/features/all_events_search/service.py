@@ -54,11 +54,12 @@ class DiscoverResult:
 
 @dataclass(frozen=True, slots=True)
 class EventPhotos:
-    """The person's released photos in one event."""
+    """The person's released photos in one event and how many of their claims were rejected."""
 
     event_id: UUID
     event_name: str
     photos: list[GalleryItem]
+    rejected_claims: int
 
 
 def searchable_event_ids(ctx: AppContext) -> list[UUID]:
@@ -190,7 +191,8 @@ def search_all_events(
 def my_photos(ctx: AppContext, user: CurrentUser) -> list[EventPhotos]:
     """
     Purpose: the person's released photos in every event they are a guest of.
-    Inputs: ctx, user. Outputs: one EventPhotos per event that has photos, newest event first.
+    Inputs: ctx, user. Outputs: one EventPhotos per event with photos or rejected claims,
+        newest event first.
     Side effects: gallery.viewed audit rows (one per event read).
     """
     groups: list[EventPhotos] = []
@@ -203,6 +205,8 @@ def my_photos(ctx: AppContext, user: CurrentUser) -> list[EventPhotos]:
             if exc.status_code in (403, 404):
                 continue  # consent withdrawn or membership gone: nothing to show
             raise
-        if content.photos:
-            groups.append(EventPhotos(event.event_id, event.name, content.photos))
+        if content.photos or content.rejected_claims:
+            groups.append(
+                EventPhotos(event.event_id, event.name, content.photos, content.rejected_claims)
+            )
     return groups

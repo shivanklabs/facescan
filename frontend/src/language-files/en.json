@@ -107,7 +107,9 @@
     "loadFailed": "Your photos could not load.",
     "notMeFailed": "That did not work. Please try again.",
     "retry": "Try again",
-    "allEvents": "All my photos"
+    "allEvents": "All my photos",
+    "claimRejected_one": "The organiser of {{event}} did not approve 1 photo you claimed.",
+    "claimRejected_other": "The organiser of {{event}} did not approve {{count}} photos you claimed."
   },
   "studio": {
     "nav": "Account",

@@ -12,7 +12,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError
@@ -23,7 +23,6 @@ from app.db.event_isolation import event_transaction
 from app.features.activity_log.service import record
 from app.features.consent.service import FACE_SEARCH, active_consent
 from app.features.face_matching.models import Match
-from app.features.gallery.schemas import ClaimNotice
 from app.features.photo_upload.models import Photo
 
 
@@ -38,10 +37,10 @@ class GalleryItem:
 
 @dataclass(frozen=True, slots=True)
 class GalleryContent:
-    """The guest's released photos and rejected claim notices."""
+    """The guest's released photos and how many of their claims the organiser rejected."""
 
     photos: list[GalleryItem]
-    rejections: list[ClaimNotice]
+    rejected_claims: int
 
 
 def _guest_with_consent(session: Session, event_id: UUID, user: CurrentUser) -> None:
@@ -57,7 +56,7 @@ def get_gallery_content(ctx: AppContext, user: CurrentUser, event_id: UUID) -> G
     """
     Purpose: retrieve guest's released photos and claim notices under event scope.
     Inputs: ctx, user, event_id.
-    Outputs: GalleryContent with photo items and rejections.
+    Outputs: GalleryContent with photo items and the number of rejected claims.
     Side effects: writes gallery.viewed audit record.
     """
     bucket = ctx.settings.storage_bucket_derivatives
@@ -81,34 +80,25 @@ def get_gallery_content(ctx: AppContext, user: CurrentUser, event_id: UUID) -> G
 
         from app.features.gallery.models import Claim
 
-        claims_rejected = session.scalars(
-            select(Claim)
-            .where(
-                Claim.event_id == event_id,
-                Claim.user_id == user.user_id,
-                Claim.status == "rejected",
+        rejected = int(
+            session.scalar(
+                select(func.count(Claim.id)).where(
+                    Claim.event_id == event_id,
+                    Claim.user_id == user.user_id,
+                    Claim.status == "rejected",
+                )
             )
-            .order_by(Claim.reviewed_at.desc())
-        ).all()
-        rejections = [
-            ClaimNotice(
-                claim_id=c.id,
-                photo_id=c.photo_id,
-                status=c.status,
-                reason=c.reason,
-                reviewed_at=c.reviewed_at,
-            )
-            for c in claims_rejected
-        ]
+            or 0
+        )
 
         record(
             session,
             event_id=event_id,
             actor=user.actor,
             action="gallery.viewed",
-            details={"photos": len(items), "rejections": len(rejections)},
+            details={"photos": len(items), "rejections": rejected},
         )
-        return GalleryContent(photos=items, rejections=rejections)
+        return GalleryContent(photos=items, rejected_claims=rejected)
 
 
 def download(ctx: AppContext, user: CurrentUser, event_id: UUID, photo_id: UUID) -> bytes:

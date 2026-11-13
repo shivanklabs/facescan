@@ -77,6 +77,7 @@ async def photos(user: User, ctx: Ctx) -> DiscoverPhotosResponse:
                     )
                     for item in group.photos
                 ],
+                rejected_claims=group.rejected_claims,
             )
             for group in groups
         ]

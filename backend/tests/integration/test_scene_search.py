@@ -447,6 +447,10 @@ def test_organiser_claim_queue_reject_flow(organiser: TestClient, ctx: AppContex
         claim = s.get(Claim, uuid.UUID(claim_id))
         assert claim is not None and claim.status == "rejected"
     assert photo_id_2 not in released_ids(guest, event_id)
+    # The guest is told (a count only; the rejected photo itself is never shown)
+    groups = guest.get("/discover/photos").json()["events"]
+    mine = next(g for g in groups if g["event_id"] == event_id)
+    assert mine["rejected_claims"] == 1 and photo_id_2 not in str(mine)
 
     with event_transaction(ctx.sessions, UUID(event_id)) as s:
         from app.features.activity_log.models import AuditLog

@@ -24,11 +24,13 @@ class DiscoverPhoto(BaseModel):
 
 
 class DiscoverEvent(BaseModel):
-    """The person's photos in one event."""
+    """The person's photos in one event, and how many of their claims the organiser rejected
+    (a count only: the rejected photo itself is never shown)."""
 
     event_id: UUID
     event_name: str
     photos: list[DiscoverPhoto]
+    rejected_claims: int = 0
 
 
 class DiscoverPhotosResponse(BaseModel):

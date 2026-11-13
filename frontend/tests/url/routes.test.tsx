@@ -481,6 +481,25 @@ describe('events dashboard and 3D gallery', () => {
     expect(screen.queryByText('Empty Event')).toBeNull();
   });
 
+  it('tells the guest when the organiser rejected a claim, without showing that photo', async () => {
+    signedInAs(
+      { can_create_events: false, is_admin: false },
+      {
+        '/discover/photos': {
+          events: [
+            ...photosResponse.events,
+            { event_id: 'ev3', event_name: 'Mehndi', photos: [], rejected_claims: 2 },
+          ],
+        },
+      },
+    );
+    renderAt('/photos');
+    expect(
+      await screen.findByText('The organiser of Mehndi did not approve 2 photos you claimed.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Mehndi/ })).toBeNull(); // no card, no photo
+  });
+
   it('falls back to a light grid when the device cannot do 3D', async () => {
     signedInAs(
       { can_create_events: false, is_admin: false },
