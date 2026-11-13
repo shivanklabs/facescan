@@ -6,6 +6,36 @@ export const FRAMES_CONTENT_TYPE = 'application/x-facescan-frames';
 export const FRAME_COUNT = 4;
 export const FRAME_INTERVAL_MS = 500;
 
+/**
+ * Purpose: open the front camera and show it in the video element once it has mounted.
+ * Inputs: ref of the <video> (rendered after this resolves). Outputs: the camera stream.
+ * Side effects: asks for camera permission; throws when it is refused or missing.
+ */
+export async function startSelfieCamera(video: {
+  current: HTMLVideoElement | null;
+}): Promise<MediaStream> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+    audio: false,
+  });
+  // Wait one frame for the <video> to mount, then attach the stream.
+  requestAnimationFrame(() => {
+    if (video.current) {
+      video.current.srcObject = stream;
+      void video.current.play();
+    }
+  });
+  return stream;
+}
+
+/**
+ * Purpose: turn the camera off. Inputs: stream or null. Outputs: none.
+ * Side effects: stops every track (the camera light goes off).
+ */
+export function stopStream(stream: MediaStream | null): void {
+  stream?.getTracks().forEach((track) => track.stop());
+}
+
 export interface ScanStep {
   key: 'lookStraight' | 'blink';
 }
@@ -64,7 +94,7 @@ const SETTLE_MS = 900;
  * Inputs: playing video element. Outputs: canvas holding the frame.
  * Side effects: none (memory only).
  */
-function grabCanvas(video: HTMLVideoElement): HTMLCanvasElement {
+export function grabCanvas(video: HTMLVideoElement): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;

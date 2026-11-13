@@ -98,24 +98,34 @@ def embed_selfie_frames(
             reasons = ", ".join(verdict.reasons) if verdict.reasons else "liveness_failed"
             raise UnprocessableError(f"liveness check failed: {reasons}")
 
-    queries: list[SelfieQuery] = []
     chosen = (
         [(i + 1, frames[i]) for i in embed_indices]
         if embed_indices is not None
         else list(enumerate(frames, start=1))
     )
     try:
-        for number, frame in chosen:
-            try:
-                queries.append(ctx.analyzer.selfie_query(frame))
-            except SelfieRejectedError as exc:
-                raise UnprocessableError(
-                    f"frame {number}: the selfie must show exactly one face; found {exc.face_count}"
-                ) from exc
-            except ImageRejectedError as exc:
-                raise UnprocessableError(f"frame {number} is not a usable image") from exc
+        return embed_frames(ctx, chosen)
     finally:
         frames.clear()  # drop the frame bytes as soon as they are embedded
+
+
+def embed_frames(ctx: AppContext, numbered: list[tuple[int, bytes]]) -> list[SelfieQuery]:
+    """
+    Purpose: one search query per selfie frame (memory only).
+    Inputs: ctx, (frame number, frame bytes) pairs. Outputs: SelfieQuery list.
+    Raises UnprocessableError naming the frame without exactly one face or not an image.
+    Side effects: none.
+    """
+    queries: list[SelfieQuery] = []
+    for number, frame in numbered:
+        try:
+            queries.append(ctx.analyzer.selfie_query(frame))
+        except SelfieRejectedError as exc:
+            raise UnprocessableError(
+                f"frame {number}: the selfie must show exactly one face; found {exc.face_count}"
+            ) from exc
+        except ImageRejectedError as exc:
+            raise UnprocessableError(f"frame {number} is not a usable image") from exc
     return queries
 
 

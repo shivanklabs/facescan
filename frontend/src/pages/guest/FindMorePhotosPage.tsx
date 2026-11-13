@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
-import { captureBlinkScan } from '@/lib/cameraFrames';
+import { captureBlinkScan, startSelfieCamera, stopStream } from '@/lib/cameraFrames';
 import { api, apiUrl, ApiError } from '@/lib/serverApi';
 
 interface ConsentRecord {
@@ -178,7 +178,7 @@ export default function FindMorePhotosPage() {
   useEffect(() => () => stopCamera(), []);
 
   function stopCamera() {
-    stream.current?.getTracks().forEach((track) => track.stop());
+    stopStream(stream.current);
     stream.current = null;
   }
 
@@ -206,17 +206,8 @@ export default function FindMorePhotosPage() {
   async function openCamera() {
     setMessage('');
     try {
-      stream.current = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
-        audio: false,
-      });
+      stream.current = await startSelfieCamera(video);
       setClaim('camera');
-      requestAnimationFrame(() => {
-        if (video.current && stream.current) {
-          video.current.srcObject = stream.current;
-          void video.current.play();
-        }
-      });
     } catch {
       setMessage(t('scan.errCamera'));
     }

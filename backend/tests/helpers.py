@@ -177,9 +177,9 @@ def guest_client(
     adult: bool = True,
     consent: bool = True,
 ) -> TestClient:
-    """A guest who opened the invite without email, joined, and consented."""
+    """A guest who signed up with a passkey, opened the invite, joined, and consented."""
     key = invite_url.split("?k=", 1)[1]
-    client = new_client(ctx)
+    client = passkey_guest(ctx)
     join_resp = client.post(f"/invites/{event_id}/join", json={"key": key})
     assert join_resp.status_code == 200, join_resp.text
     if not adult:

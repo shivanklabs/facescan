@@ -29,7 +29,7 @@ from tests.helpers import (
     frames_body,
     guest_client,
     key_only_client,
-    new_client,
+    passkey_guest,
     searchable_event,
 )
 
@@ -533,8 +533,8 @@ def test_submit_claim_no_consent_never_calls_liveness_or_analyzer(
     event_id, invite_url, photos = searchable_event(ctx, organiser, [make_png(1, 1)])
     # Join event without granting consent
     key = invite_url.split("?k=")[1]
-    guest = new_client(ctx)
-    guest.post(f"/invites/{event_id}/join", json={"key": key})
+    guest = passkey_guest(ctx)
+    assert guest.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 200
 
     called = {"liveness": False, "analyzer": False}
 

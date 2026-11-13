@@ -747,33 +747,6 @@ body:has(.studio) {
   margin-top: 8px;
 }
 
-.st-event {
-  margin-bottom: 44px;
-}
-
-.st-event-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding-bottom: 14px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--fs-line);
-}
-
-.st-event-head h2 {
-  font-size: 1.5rem;
-}
-
-.st-event-head small {
-  color: var(--fs-muted);
-  margin-left: 10px;
-  font-family: var(--fs-sans);
-  font-size: 0.9rem;
-  font-weight: 400;
-}
-
 .st-grid {
   columns: 4 220px;
   column-gap: 14px;

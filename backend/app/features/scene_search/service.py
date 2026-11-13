@@ -28,7 +28,6 @@ from app.core.errors import (
     DomainError,
     NotFoundError,
     PayloadTooLargeError,
-    UnprocessableError,
 )
 from app.core.login_sessions import CurrentUser
 from app.core.request_checks import require_role
@@ -41,6 +40,7 @@ from app.features.consent.service import (
 )
 from app.features.events.service import data_key
 from app.features.face_matching.models import CannotLink, Match
+from app.features.face_matching.service import embed_frames
 from app.features.gallery.models import Claim
 from app.features.photo_processing import repository as vision_repo
 from app.features.photo_processing.models import Face
@@ -64,7 +64,6 @@ from app.features.scene_search.schemas import (
     SubmitClaimRequest,
     SubmitClaimResponse,
 )
-from app.interfaces.face_analyzer import ImageRejectedError, SelfieQuery, SelfieRejectedError
 from app.interfaces.photo_storage import ObjectNotFoundError
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
@@ -455,17 +454,8 @@ def submit_claim(
         raise HTTPException(status_code=403, detail="liveness_required")
 
     # 4. Embed selfie frames in memory
-    selfie_queries: list[SelfieQuery] = []
     try:
-        for number, frame_data in enumerate(decoded_frames, start=1):
-            try:
-                selfie_queries.append(ctx.analyzer.selfie_query(frame_data))
-            except SelfieRejectedError as exc:
-                raise UnprocessableError(
-                    f"frame {number}: the selfie must show exactly one face; found {exc.face_count}"
-                ) from exc
-            except ImageRejectedError as exc:
-                raise UnprocessableError(f"frame {number} is not a usable image") from exc
+        selfie_queries = embed_frames(ctx, list(enumerate(decoded_frames, start=1)))
     finally:
         del decoded_frames  # Invariant: raw frames discarded immediately from memory
 

@@ -21,8 +21,6 @@ from app.core.encryption import new_data_key
 from app.core.errors import ConflictError, NotFoundError, UnprocessableError
 from app.core.login_sessions import (
     CurrentUser,
-    create_anonymous_user,
-    create_session,
     hash_token,
     new_token,
 )
@@ -219,60 +217,47 @@ def _valid_invite(session: Session, event_id: UUID, secret: str) -> EventInvite 
     return invite
 
 
+def _event_for_invite(session: Session, event_id: UUID, secret: str) -> Event:
+    """
+    Purpose: the event behind a valid invite link. Inputs: session, event id, link secret.
+    Outputs: the open event. Raises NotFoundError for a missing/closed event or a bad,
+        revoked or expired link (one message, so nothing leaks which part was wrong).
+    """
+    event = repository.get_event(session, event_id)
+    if (
+        event is None
+        or event.status == "closed"
+        or _valid_invite(session, event_id, secret) is None
+    ):
+        raise NotFoundError("invite link is invalid or has expired")
+    return event
+
+
 def resolve_invite(ctx: AppContext, event_id: UUID, secret: str) -> EventView:
     """Purpose: public landing data for a valid invite link. 404 for anything invalid."""
     with event_transaction(ctx.sessions, event_id) as session:
-        event = repository.get_event(session, event_id)
-        if (
-            event is None
-            or event.status == "closed"
-            or _valid_invite(session, event_id, secret) is None
-        ):
-            raise NotFoundError("invite link is invalid or has expired")
-        return _view(event)
+        return _view(_event_for_invite(session, event_id, secret))
 
 
-def join_with_invite(
-    ctx: AppContext, user: CurrentUser | None, event_id: UUID, secret: str
-) -> tuple[EventView, str | None]:
+def join_with_invite(ctx: AppContext, user: CurrentUser, event_id: UUID, secret: str) -> EventView:
     """
-    Purpose: make the caller a guest of the event through a valid invite link. If caller is
-        not signed in, creates an anonymous guest account and a session token.
-    Inputs: ctx, user (CurrentUser | None), event_id, secret.
-    Outputs: tuple of (EventView, session_token or None).
-    Side effects: inserts user/session (if anonymous), inserts event_members (guest), records audit.
+    Purpose: make the signed-in person a guest of the event through a valid invite link.
+    Inputs: ctx, user, event_id, link secret. Outputs: the event with the person's roles.
+    Side effects: inserts the guest membership (once) and an audit row.
     """
     with event_transaction(ctx.sessions, event_id) as session:
-        event = repository.get_event(session, event_id)
-        if (
-            event is None
-            or event.status == "closed"
-            or _valid_invite(session, event_id, secret) is None
-        ):
-            raise NotFoundError("invite link is invalid or has expired")
-
-        session_token: str | None = None
-        if user is None:
-            anon_user = create_anonymous_user(session, ctx.keys)
-            session_token = create_session(
-                session, ctx.settings, anon_user.id, "magic_link", event_id
-            )
-            session.add(EventMember(event_id=event_id, user_id=anon_user.id, role="guest"))
-            record(session, event_id=event_id, actor=f"user:{anon_user.id}", action="invite.joined")
-            return _view(event, ("guest",)), session_token
-
-        roles = {
-            m.role
-            for m in session.scalars(
-                select(EventMember).where(
+        event = _event_for_invite(session, event_id, secret)
+        roles = set(
+            session.scalars(
+                select(EventMember.role).where(
                     EventMember.event_id == event_id, EventMember.user_id == user.user_id
                 )
             )
-        }
+        )
         if "guest" not in roles:
             session.add(EventMember(event_id=event_id, user_id=user.user_id, role="guest"))
             record(session, event_id=event_id, actor=user.actor, action="invite.joined")
-        return _view(event, tuple(sorted(roles | {"guest"}))), None
+        return _view(event, tuple(sorted(roles | {"guest"})))
 
 
 def data_key(session: Session, keys: KeyManager, event_id: UUID) -> tuple[bytes, int]:

@@ -4,9 +4,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
 
-from app.core.login_sessions import set_session_cookie
 from app.core.rate_limit import RateLimiter
-from app.core.request_checks import Ctx, MaybeUser, PasskeyUser, User
+from app.core.request_checks import Ctx, PasskeyUser, User
 from app.features.events import service
 from app.features.events.schemas import (
     CameraInfo,
@@ -114,21 +113,12 @@ def resolve_invite(event_id: UUID, body: InviteKey, ctx: Ctx) -> PublicEventResp
 @router.post(
     "/invites/{event_id}/join", response_model=EventResponse, dependencies=[Depends(invite_limiter)]
 )
-def join(
-    event_id: UUID,
-    body: InviteKey,
-    user: MaybeUser,
-    ctx: Ctx,
-    response: Response,
-) -> EventResponse:
+def join(event_id: UUID, body: InviteKey, user: User, ctx: Ctx) -> EventResponse:
     """
-    Purpose: become a guest of the event through its invite link
-    (creates anonymous session if unauthenticated).
+    Purpose: a signed-in person becomes a guest of the event through its invite link.
+    Signed-out visitors get 401 (accounts exist only after a passkey is verified).
     """
-    view, session_token = service.join_with_invite(ctx, user, event_id, body.key)
-    if session_token is not None:
-        set_session_cookie(response, ctx.settings, session_token)
-    return _response(view)
+    return _response(service.join_with_invite(ctx, user, event_id, body.key))
 
 
 @router.post("/events/{event_id}/sections", status_code=201, response_model=SectionResponse)

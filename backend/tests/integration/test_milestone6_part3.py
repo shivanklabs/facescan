@@ -122,7 +122,6 @@ def test_non_destructive_withdrawal_and_restoration(organiser: TestClient, ctx: 
     w_resp = guest.post(f"/events/{event_id}/consent/withdraw")
     assert w_resp.status_code == 200
     assert w_resp.json()["matches"] == 4
-    assert w_resp.json()["sessions"] >= 1
 
     # Invariant: NO DATA LOSS. Match rows are NOT deleted, but marked 'withdrawn'
     with event_transaction(ctx.sessions, event_uuid) as s:
@@ -137,8 +136,8 @@ def test_non_destructive_withdrawal_and_restoration(organiser: TestClient, ctx: 
         ).scalar()
         assert release_count_now == 0
 
-    # Old session is revoked
-    assert guest.get(f"/events/{event_id}/gallery").status_code == 401
+    # The event's photos are hidden at once
+    assert guest.get(f"/events/{event_id}/gallery").status_code == 403
 
     # New sign-in without active consent is blocked
     new_sess = new_client(ctx)

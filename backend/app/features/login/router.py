@@ -3,15 +3,14 @@
 import base64
 import binascii
 import json
-from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 
-from app.core.login_sessions import CurrentUser, clear_session_cookie, set_session_cookie
+from app.core.login_sessions import clear_session_cookie, set_session_cookie
 from app.core.rate_limit import RateLimiter
-from app.core.request_checks import Ctx, PasskeyUser, User, optional_user
+from app.core.request_checks import Ctx, MaybeUser, PasskeyUser, User
 from app.features.login import service
 from app.features.login.schemas import (
     AgeAnswer,
@@ -31,7 +30,6 @@ from app.features.login.schemas import (
 
 router = APIRouter(prefix="/auth", tags=["sign-in"])
 sign_in_limiter = RateLimiter("sign-in", limit=20, window_seconds=600)
-MaybeUser = Annotated[CurrentUser | None, Depends(optional_user)]
 
 
 def _b64url(value: object) -> bytes:

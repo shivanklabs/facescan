@@ -11,6 +11,8 @@ import {
   framesBody,
   FRAMES_CONTENT_TYPE,
   ScanStep,
+  startSelfieCamera,
+  stopStream,
 } from '@/lib/cameraFrames';
 import type { LiveStep } from '@/lib/liveBlink';
 
@@ -129,23 +131,20 @@ export default function FaceScanPage() {
   useEffect(
     () => () => {
       abort.current?.abort();
-      stream.current?.getTracks().forEach((track) => track.stop());
+      stopStream(stream.current);
     },
     [],
   );
 
   function stopCamera() {
-    stream.current?.getTracks().forEach((track) => track.stop());
+    stopStream(stream.current);
     stream.current = null;
   }
 
   async function openCamera() {
     setMessage('');
     try {
-      stream.current = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
-        audio: false,
-      });
+      stream.current = await startSelfieCamera(video);
       setPhase('camera');
       // Start loading the on-device blink model now, so it is ready when the scan starts.
       if (method === 'live') {
@@ -153,13 +152,6 @@ export default function FaceScanPage() {
           .then((mod) => mod.loadLandmarker())
           .catch(() => undefined);
       }
-      // Wait one frame for the <video> to mount, then attach the stream.
-      requestAnimationFrame(() => {
-        if (video.current && stream.current) {
-          video.current.srcObject = stream.current;
-          void video.current.play();
-        }
-      });
     } catch {
       setMessage(t('scan.errCamera'));
     }

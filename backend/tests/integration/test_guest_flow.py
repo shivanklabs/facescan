@@ -18,6 +18,7 @@ from tests.helpers import (
     frames_body,
     guest_client,
     new_client,
+    passkey_guest,
     searchable_event,
     staff_client,
 )
@@ -71,13 +72,13 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
         organiser.get(f"/events/{event_id}/invites").json()["invites"][0]["url"] is None
     )
 
-    # Guest: landing page before sign-in, then join without email creating anonymous session.
+    # Guest: landing page before sign-in; joining needs a passkey account first.
     guest = new_client(ctx)
     landing = guest.post(f"/invites/{event_id}/resolve", json={"key": key})
     assert landing.status_code == 200 and landing.json()["name"] == "Wedding"
-    join_resp = guest.post(f"/invites/{event_id}/join", json={"key": key})
-    assert join_resp.status_code == 200
-    assert "fs_session" in guest.cookies
+    assert guest.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 401
+    guest = passkey_guest(ctx)
+    assert guest.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 200
     assert guest.get("/me/consents").json()["consents"] == []  # joined, no consent yet
     assert search(guest, event_id, selfie_frames(1)).status_code == 403  # no consent yet
     notice = guest.get("/consent/notice").json()
@@ -113,11 +114,11 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
     authenticator = register_passkey(guest)
 
     # Withdrawal: matches hidden (marked withdrawn, not deleted),
-    # sessions for this event ended, gallery empty.
+    # the event's photos no longer shown.
     withdrawn = guest.post(f"/events/{event_id}/consent/withdraw")
     assert withdrawn.status_code == 200
-    assert withdrawn.json()["matches"] == 4 and withdrawn.json()["sessions"] >= 1
-    assert guest.get(f"/events/{event_id}/gallery").status_code == 401  # signed out of the event
+    assert withdrawn.json()["matches"] == 4
+    assert guest.get(f"/events/{event_id}/gallery").status_code == 403  # no consent any more
     again = new_client(ctx)
     passkey_sign_in(again, authenticator)
     assert again.get(f"/events/{event_id}/gallery").status_code == 403  # no consent any more
@@ -296,7 +297,7 @@ def test_revoked_and_expired_invites_stop_working(
 ) -> None:
     event_id, invite, _ = event
     key = invite.split("?k=")[1]
-    guest = new_client(ctx)
+    guest = passkey_guest(ctx)
     assert guest.post(f"/invites/{event_id}/resolve", json={"key": key}).status_code == 200
     invite_id = organiser.get(f"/events/{event_id}/invites").json()["invites"][0]["invite_id"]
     assert organiser.post(f"/events/{event_id}/invites/{invite_id}/revoke").status_code == 204
@@ -334,31 +335,26 @@ def test_return_visit_with_cookie(event: tuple[str, str, list[str]], ctx: AppCon
     assert guest.get(f"/events/{event_id}/gallery").status_code == 200
 
 
-def test_new_account_after_lost_session(event: tuple[str, str, list[str]], ctx: AppContext) -> None:
+def test_signed_out_visitors_cannot_create_an_account_with_an_invite_link(
+    event: tuple[str, str, list[str]], ctx: AppContext
+) -> None:
     """
-    Purpose: verify that if a guest session is lost, opening the invite link
-    creates a new anonymous guest account.
-    Inputs: event fixture, ctx (AppContext).
-    Outputs: None.
-    Side effects: tests HTTP endpoints.
+    Purpose: an invite link never creates an account: accounts exist only after a passkey
+        is verified (no passkey-less guests).
+    Inputs: event fixture, ctx. Outputs: None. Side effects: HTTP calls, reads users count.
     """
+    from app.features.login.models import User
+    from sqlalchemy import func, select
+
     event_id, invite, _ = event
     key = invite.split("?k=")[1]
-
-    # First guest joins anonymously
-    guest1 = guest_client(ctx, "anon1@example.test", event_id, invite)
-    me1 = guest1.get("/auth/me").json()
-    user_id_1 = me1["user_id"]
-
-    # Session lost / new browser client opens invite link
-    guest2 = new_client(ctx)
-    join_resp = guest2.post(f"/invites/{event_id}/join", json={"key": key})
-    assert join_resp.status_code == 200
-    assert "fs_session" in guest2.cookies
-
-    me2 = guest2.get("/auth/me").json()
-    user_id_2 = me2["user_id"]
-    assert user_id_1 != user_id_2
+    with ctx.sessions() as session:
+        before = session.scalar(select(func.count(User.id)))
+    visitor = new_client(ctx)
+    assert visitor.post(f"/invites/{event_id}/join", json={"key": key}).status_code == 401
+    assert "fs_session" not in visitor.cookies
+    with ctx.sessions() as session:
+        assert session.scalar(select(func.count(User.id))) == before
 
 
 def test_claim_queue_shows_guest_number(

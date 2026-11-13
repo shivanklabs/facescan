@@ -141,6 +141,19 @@ def validate_files(ctx: AppContext, files: list[bytes]) -> list[ImageInfo]:
     return infos
 
 
+def _require_open_event(session: Session, event_id: UUID) -> None:
+    """
+    Purpose: uploads go only into an existing event that is not closed.
+    Inputs: session, event id. Outputs: None. Raises NotFoundError / ConflictError.
+    Side effects: none.
+    """
+    event = events_repo.get_event(session, event_id)
+    if event is None:
+        raise NotFoundError("event not found")
+    if event.status == "closed":
+        raise ConflictError("event is closed")
+
+
 def _get_or_create_collection(
     session: Session, event_id: UUID, collection_id: UUID | None
 ) -> Collection:
@@ -183,11 +196,7 @@ def upload_photos(
     try:
         with event_transaction(ctx.sessions, event_id) as session:
             require_role(session, event_id, user.user_id, ("photographer", "organiser"))
-            event = events_repo.get_event(session, event_id)
-            if event is None:
-                raise NotFoundError("event not found")
-            if event.status == "closed":
-                raise ConflictError("event is closed")
+            _require_open_event(session, event_id)
             collection = _get_or_create_collection(session, event_id, collection_id)
             # Query existing SHA-256 digests and perceptual hashes in this event
             existing_sha256s = set(
@@ -455,11 +464,7 @@ def init_upload_session(
         require_role(session, event_id, user.user_id, ("photographer", "organiser"))
         if byte_size > ctx.settings.upload_max_bytes:
             raise PayloadTooLargeError("file size exceeds upload limit")
-        event = events_repo.get_event(session, event_id)
-        if event is None:
-            raise NotFoundError("event not found")
-        if event.status == "closed":
-            raise ConflictError("event is closed")
+        _require_open_event(session, event_id)
         collection = _get_or_create_collection(session, event_id, collection_id)
 
         upload_session = UploadSession(

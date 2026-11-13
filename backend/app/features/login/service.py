@@ -30,6 +30,7 @@ from webauthn.helpers.structs import (
     ResidentKeyRequirement,
     UserVerificationRequirement,
 )
+from webauthn.registration.verify_registration_response import VerifiedRegistration
 
 from app.core.errors import ConflictError, ForbiddenError, UnprocessableError
 from app.core.login_sessions import (
@@ -179,6 +180,36 @@ def registration_options(ctx: AppContext, user: CurrentUser) -> str:
     return options_to_json(options)
 
 
+def _verify_new_passkey(
+    ctx: AppContext, credential: dict[str, object], challenge: bytes
+) -> VerifiedRegistration:
+    """
+    Purpose: check a new passkey against our challenge, site and origin (user verification
+        required). Inputs: ctx, browser credential, challenge. Outputs: the verified passkey.
+    Raises SignInError. Side effects: none.
+    """
+    try:
+        return verify_registration_response(
+            credential=credential,
+            expected_challenge=challenge,
+            expected_rp_id=ctx.settings.auth_rp_id,
+            expected_origin=ctx.settings.auth_rp_origin,
+            require_user_verification=True,
+        )
+    except InvalidRegistrationResponse as exc:
+        raise SignInError("passkey could not be verified") from exc
+
+
+def _passkey_row(user_id: UUID, verified: VerifiedRegistration) -> Passkey:
+    """Purpose: the passkeys row for a verified passkey. Side effects: none."""
+    return Passkey(
+        user_id=user_id,
+        credential_id=verified.credential_id,
+        public_key=verified.credential_public_key,
+        sign_count=verified.sign_count,
+    )
+
+
 def register_passkey(
     ctx: AppContext, user: CurrentUser, credential: dict[str, object], challenge: bytes
 ) -> str:
@@ -188,25 +219,9 @@ def register_passkey(
     """
     if not _consume_challenge(ctx, challenge, "register", user.user_id):
         raise SignInError("passkey registration expired; try again")
-    try:
-        verified = verify_registration_response(
-            credential=credential,
-            expected_challenge=challenge,
-            expected_rp_id=ctx.settings.auth_rp_id,
-            expected_origin=ctx.settings.auth_rp_origin,
-            require_user_verification=True,
-        )
-    except InvalidRegistrationResponse as exc:
-        raise SignInError("passkey could not be verified") from exc
+    verified = _verify_new_passkey(ctx, credential, challenge)
     with ctx.sessions() as session, session.begin():
-        session.add(
-            Passkey(
-                user_id=user.user_id,
-                credential_id=verified.credential_id,
-                public_key=verified.credential_public_key,
-                sign_count=verified.sign_count,
-            )
-        )
+        session.add(_passkey_row(user.user_id, verified))
         token = create_session(
             session,
             ctx.settings,
@@ -336,26 +351,10 @@ def sign_up_guest_with_passkey(
         ).scalar()
     if pending is None:
         raise SignInError("sign-up expired; try again")
-    try:
-        verified = verify_registration_response(
-            credential=credential,
-            expected_challenge=challenge,
-            expected_rp_id=ctx.settings.auth_rp_id,
-            expected_origin=ctx.settings.auth_rp_origin,
-            require_user_verification=True,
-        )
-    except InvalidRegistrationResponse as exc:
-        raise SignInError("passkey could not be verified") from exc
+    verified = _verify_new_passkey(ctx, credential, challenge)
     with ctx.sessions() as session, session.begin():
         user = create_anonymous_user(session, ctx.keys, pending)
-        session.add(
-            Passkey(
-                user_id=user.id,
-                credential_id=verified.credential_id,
-                public_key=verified.credential_public_key,
-                sign_count=verified.sign_count,
-            )
-        )
+        session.add(_passkey_row(user.id, verified))
         token = create_session(
             session, ctx.settings, user.id, "passkey", None, replaces=current_session
         )

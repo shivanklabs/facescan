@@ -8,6 +8,7 @@ import wasmBinarySimd from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?ur
 import wasmLoaderNoSimd from '@mediapipe/tasks-vision/vision_wasm_nosimd_internal.js?url';
 import wasmBinaryNoSimd from '@mediapipe/tasks-vision/vision_wasm_nosimd_internal.wasm?url';
 import modelUrl from '@/assets/models/face_landmarker.task?url';
+import { grabCanvas } from '@/lib/cameraFrames';
 
 export type LiveStep = 'findFace' | 'lookStraight' | 'blink' | 'eyesOpen';
 
@@ -108,25 +109,8 @@ export function eyesClosed(eyes: EyeReading, limits: EyeLimits): boolean {
 }
 
 /**
- * Purpose: copy the current video frame into a canvas. The eyes are then read from this same
- *   canvas, so the frame sent to the server is exactly the frame that was judged. (Before, the
- *   eyes were read from the video and a slightly later frame was sent, often with the eyes
- *   already opening, so the server refused the blink.)
- * Inputs: playing video. Outputs: canvas. Side effects: none (memory only).
- */
-function grab(video: HTMLVideoElement): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('canvas not available');
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas;
-}
-
-/**
  * Purpose: read face count and the two eye-blink scores for one grabbed frame.
- * Inputs: landmarker, canvas from grab(). Outputs: EyeReading (scores 0 open .. 1 closed).
+ * Inputs: landmarker, canvas from grabCanvas(). Outputs: EyeReading (scores 0 open .. 1 closed).
  * Side effects: none.
  */
 function readEyes(model: FaceLandmarker, frame: HTMLCanvasElement): EyeReading {
@@ -183,7 +167,7 @@ export async function captureWithLiveBlink(
     stopIfAborted();
     if (performance.now() > findDeadline) throw new BlinkTimeoutError('no_face');
     const now = await nextFrame();
-    const frame = grab(video);
+    const frame = grabCanvas(video);
     const eyes = readEyes(model, frame);
     if (eyes.faces !== 1 || !eyesOpen(eyes, FIRST_LOOK_LIMITS)) {
       steadySince = 0;
@@ -211,7 +195,7 @@ export async function captureWithLiveBlink(
     stopIfAborted();
     if (performance.now() > blinkDeadline) throw new BlinkTimeoutError('no_blink');
     await nextFrame();
-    const frame = grab(video);
+    const frame = grabCanvas(video);
     const eyes = readEyes(model, frame);
     if (eyes.faces !== 1) continue;
     if (eyesClosed(eyes, limits)) {
@@ -231,6 +215,6 @@ export async function captureWithLiveBlink(
   onStep('eyesOpen');
   await new Promise((resolve) => setTimeout(resolve, REOPEN_SETTLE_MS));
   stopIfAborted();
-  const back = grab(video);
+  const back = grabCanvas(video);
   return Promise.all([front, beforeBlink, closedFrame, afterBlink, back].map(toJpeg));
 }

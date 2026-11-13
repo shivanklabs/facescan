@@ -540,6 +540,42 @@ def _install_stop_handlers() -> None:
         signal.signal(signal.SIGBREAK, _raise_keyboard_interrupt)
 
 
+def _run_until_one_exits(
+    processes: list[DevProcess],
+    env: dict[str, str],
+    names: str,
+    watched: subprocess.Popen[str] | None = None,
+) -> None:
+    """
+    Purpose: start the processes and wait until Ctrl+C or until one of them (or `watched`,
+        e.g. the tunnel) exits; then stop them all.
+    Inputs: processes, child env, their names for the stop message, an extra process to watch.
+    Outputs: None. Raises TaskError naming the process that exited on its own.
+    Side effects: spawns and stops process trees; prints prefixed output.
+    """
+    lock = threading.Lock()
+    exit_message = ""
+    try:
+        for p in processes:
+            _start(p, env, lock)
+        while not exit_message:
+            for p in processes:
+                if p.proc is not None and p.proc.poll() is not None:
+                    exit_message = f"{p.name} exited with code {p.proc.returncode}"
+                    break
+            if not exit_message and watched is not None and watched.poll() is not None:
+                exit_message = f"cloudflared tunnel exited with code {watched.returncode}"
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        exit_message = ""
+    finally:
+        with lock:
+            print(f"\nStopping {names}...", flush=True)
+        stop_all(processes)
+    if exit_message:
+        raise TaskError(exit_message)
+
+
 def task_dev(_args: argparse.Namespace) -> None:
     """
     Purpose: run the API (uvicorn --reload), the worker and Vite together until Ctrl+C (or
@@ -577,26 +613,8 @@ def task_dev(_args: argparse.Namespace) -> None:
         DevProcess("worker", python_tool("app.worker"), BACKEND),
         DevProcess("web", [npm(), "run", "dev"], FRONTEND),
     ]
-    lock = threading.Lock()
     print("Starting api (:8000), worker and web (:5173). Press Ctrl+C to stop.", flush=True)
-    exit_message = ""
-    try:
-        for p in processes:
-            _start(p, env, lock)
-        while not exit_message:
-            for p in processes:
-                if p.proc is not None and p.proc.poll() is not None:
-                    exit_message = f"{p.name} exited with code {p.proc.returncode}"
-                    break
-            time.sleep(0.3)
-    except KeyboardInterrupt:
-        exit_message = ""
-    finally:
-        with lock:
-            print("\nStopping api, worker and web...", flush=True)
-        stop_all(processes)
-    if exit_message:
-        raise TaskError(exit_message)
+    _run_until_one_exits(processes, env, "api, worker and web")
     print("All dev processes stopped.")
 
 
@@ -744,33 +762,14 @@ def task_public(_args: argparse.Namespace) -> None:
         DevProcess("worker", python_tool("app.worker"), BACKEND),
     ]
 
-    lock = threading.Lock()
-    exit_message = ""
     try:
-        for p in processes:
-            _start(p, env, lock)
-        while not exit_message:
-            for p in processes:
-                if p.proc is not None and p.proc.poll() is not None:
-                    exit_message = f"{p.name} exited with code {p.proc.returncode}"
-                    break
-            if tunnel_proc.poll() is not None:
-                exit_message = f"cloudflared tunnel exited with code {tunnel_proc.returncode}"
-                break
-            time.sleep(0.3)
-    except KeyboardInterrupt:
-        exit_message = ""
+        _run_until_one_exits(processes, env, "api, worker and tunnel", tunnel_proc)
     finally:
-        with lock:
-            print("\nStopping api, worker and tunnel...", flush=True)
-        stop_all(processes)
         try:
             tunnel_proc.terminate()
             tunnel_proc.wait(timeout=3)
         except Exception:
             tunnel_proc.kill()
-    if exit_message:
-        raise TaskError(exit_message)
     print("Public test mode stopped cleanly.")
 
 
