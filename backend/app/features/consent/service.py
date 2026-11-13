@@ -23,7 +23,7 @@ from app.core import country_rules as policy_module
 from app.core.errors import ConflictError
 from app.core.login_sessions import CurrentUser, revoke_sessions
 from app.core.request_checks import STAFF_ROLES, require_role
-from app.core.services_setup import AppContext, guest_search_allowed
+from app.core.services_setup import AppContext
 from app.db.event_isolation import event_transaction, user_transaction
 from app.features.activity_log.service import record
 from app.features.consent.models import Consent
@@ -149,54 +149,6 @@ def check_guest_search_access(
     consent = active_consent(session, event_id, user.user_id, FACE_SEARCH)
     if consent is None or consent.notice_version != notice.version:
         raise HTTPException(status_code=403, detail="consent_required")
-
-
-@dataclass(frozen=True, slots=True)
-class GuestStatus:
-    """What the guest pages need to decide the next step (no personal data)."""
-
-    roles: tuple[str, ...]
-    age_answered: bool
-    is_minor: bool
-    consent_current: bool
-    notice_version: str
-    search_enabled: bool
-    dev_without_liveness: bool
-    event_searchable: bool
-
-
-def guest_status(ctx: AppContext, user: CurrentUser, event_id: UUID) -> GuestStatus:
-    """
-    Purpose: the guest's state in one event. 404 for non-members.
-    Inputs: ctx, user, event_id.
-    Outputs: GuestStatus with consent and search enablement flags.
-    Side effects: none.
-    """
-    notice = notice_for(ctx)
-    with event_transaction(ctx.sessions, event_id) as session:
-        roles = require_role(
-            session, event_id, user.user_id, ("guest", "organiser", "photographer")
-        )
-        account = session.get(User, user.user_id)
-        event = session.get(Event, event_id)
-        consent = active_consent(session, event_id, user.user_id, FACE_SEARCH)
-        policy = load_country_policy(
-            event.country if event else "IN", ctx.settings.config_policies_dir
-        )
-        age_answered = (
-            account is not None and account.age_answered_at is not None
-        ) or policy.minors_self_search_allowed
-        is_minor = (account is None or account.is_minor) and not policy.minors_self_search_allowed
-        return GuestStatus(
-            roles=tuple(sorted(roles)),
-            age_answered=age_answered,
-            is_minor=is_minor,
-            consent_current=consent is not None and consent.notice_version == notice.version,
-            notice_version=notice.version,
-            search_enabled=guest_search_allowed(ctx.settings),
-            dev_without_liveness=ctx.settings.env == "dev" and ctx.settings.liveness_adapter == "",
-            event_searchable=event is not None and event.status == "searchable",
-        )
 
 
 def grant(

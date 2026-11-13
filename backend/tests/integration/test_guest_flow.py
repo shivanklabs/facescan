@@ -78,9 +78,7 @@ def test_full_guest_flow(organiser: TestClient, ctx: AppContext) -> None:
     join_resp = guest.post(f"/invites/{event_id}/join", json={"key": key})
     assert join_resp.status_code == 200
     assert "fs_session" in guest.cookies
-    status = guest.get(f"/events/{event_id}/guest-status").json()
-    assert status["roles"] == ["guest"] and not status["consent_current"]
-    assert status["dev_without_liveness"] is True and status["search_enabled"] is True
+    assert guest.get("/me/consents").json()["consents"] == []  # joined, no consent yet
     assert search(guest, event_id, selfie_frames(1)).status_code == 403  # no consent yet
     notice = guest.get("/consent/notice").json()
     assert notice["draft"] is True and set(notice["texts"]) == {"en", "hi"}
@@ -289,8 +287,6 @@ def test_guest_search_is_disabled_outside_dev_without_liveness(
         response = search(guest, event_id, selfie_frames(1))
         assert response.status_code == 403
         assert response.json()["detail"] == "search_disabled_without_liveness"
-        status = guest.get(f"/events/{event_id}/guest-status").json()
-        assert status["search_enabled"] is False and status["dev_without_liveness"] is False
     finally:
         ctx.settings.env = "dev"
 

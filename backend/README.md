@@ -28,6 +28,6 @@ Every transaction sets its RLS scope (`app/db/event_isolation.py`); see `databas
 | `POST /events/{id}/members`, `/invites`, `/invites/{iid}/revoke`, `/collections/{cid}/approve`, `GET /collections` | organisers |
 | `POST /events/{id}/photos` | photographers, organisers |
 | `POST /invites/{id}/resolve`, `/invites/{id}/join` | anyone with the invite link (join needs sign-in) |
-| `GET /consent/notice`, `GET /events/{id}/guest-status`, `POST /events/{id}/consent`, `/consent/withdraw`, `GET /me/consents` | guests |
+| `GET /consent/notice`, `POST /events/{id}/consent`, `/consent/withdraw`, `GET /me/consents` | guests |
 | `POST /events/{id}/search` (raw `application/x-facescan-frames`) | guests with consent, adults, dev only for now |
 | `GET /events/{id}/gallery`, `GET /events/{id}/gallery/{pid}/download` | the guest, own matches only |

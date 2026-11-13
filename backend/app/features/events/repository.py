@@ -16,11 +16,6 @@ def get_event(session: Session, event_id: UUID) -> Event | None:
     return session.get(Event, event_id)
 
 
-def list_events(session: Session) -> list[Event]:
-    """Purpose: all events visible in the current scope, newest first."""
-    return list(session.scalars(select(Event).order_by(Event.created_at.desc())))
-
-
 def active_key(session: Session, event_id: UUID) -> EventKey | None:
     """Purpose: the newest key row of an event (destroyed or not)."""
     return session.scalars(

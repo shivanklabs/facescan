@@ -1,4 +1,4 @@
-"""HTTP routes for the notice, guest status, consent and withdrawal."""
+"""HTTP routes for the notice, consent and withdrawal."""
 
 from uuid import UUID
 
@@ -11,7 +11,6 @@ from app.features.consent import service
 from app.features.consent.schemas import (
     ConsentRecordResponse,
     ConsentRequest,
-    GuestStatusResponse,
     MyConsentsResponse,
     NoticeResponse,
     WithdrawResponse,
@@ -25,22 +24,6 @@ def notice(ctx: Ctx) -> NoticeResponse:
     """Purpose: the current notice text in English and Hindi."""
     n = service.notice_for(ctx)
     return NoticeResponse(version=n.version, draft=n.draft, texts=n.texts)
-
-
-@router.get("/events/{event_id}/guest-status", response_model=GuestStatusResponse)
-def guest_status(event_id: UUID, user: User, ctx: Ctx) -> GuestStatusResponse:
-    """Purpose: the guest's next step (age, consent, search availability)."""
-    s = service.guest_status(ctx, user, event_id)
-    return GuestStatusResponse(
-        roles=list(s.roles),
-        age_answered=s.age_answered,
-        is_minor=s.is_minor,
-        consent_current=s.consent_current,
-        notice_version=s.notice_version,
-        search_enabled=s.search_enabled,
-        dev_without_liveness=s.dev_without_liveness,
-        event_searchable=s.event_searchable,
-    )
 
 
 @router.post("/events/{event_id}/consent", status_code=204)

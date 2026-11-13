@@ -15,19 +15,6 @@ class NoticeResponse(BaseModel):
     texts: dict[str, dict[str, str]]
 
 
-class GuestStatusResponse(BaseModel):
-    """The guest's state in an event."""
-
-    roles: list[str]
-    age_answered: bool
-    is_minor: bool
-    consent_current: bool
-    notice_version: str
-    search_enabled: bool
-    dev_without_liveness: bool
-    event_searchable: bool
-
-
 class ConsentRequest(BaseModel):
     """Body: consent to the current notice and to face search in this event."""
 

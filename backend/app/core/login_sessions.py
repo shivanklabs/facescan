@@ -19,7 +19,7 @@ from fastapi import Response
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.core.encryption import DecryptionError, open_sealed, seal
+from app.core.encryption import DecryptionError, seal
 from app.core.settings import Settings
 from app.features.login.models import AuthSession, User
 from app.interfaces.encryption_keys import KeyManager
@@ -77,11 +77,6 @@ def seal_email(keys: KeyManager, address: str) -> bytes:
     return seal(keys.derive_key("email-encrypt"), address.encode("utf-8"), _EMAIL_AAD)
 
 
-def open_email(keys: KeyManager, sealed: bytes) -> str:
-    """Purpose: decrypt an address. Raises DecryptionError."""
-    return open_sealed(keys.derive_key("email-encrypt"), sealed, _EMAIL_AAD).decode("utf-8")
-
-
 def create_anonymous_user(session: Session, keys: KeyManager, user_id: UUID | None = None) -> User:
     """
     Purpose: Create an anonymous guest account with a random UUID and synthetic address.
@@ -108,19 +103,6 @@ def create_anonymous_user(session: Session, keys: KeyManager, user_id: UUID | No
     session.add(user)
     session.flush()
     return user
-
-
-def is_anonymous_email(address: str) -> bool:
-    """
-    Purpose: Check if an email address represents an anonymous guest account.
-    Inputs:
-        address: email address string
-    Outputs:
-        bool: True if synthetic anonymous address, False otherwise
-    Side Effects:
-        None.
-    """
-    return address.startswith("anon_") and address.endswith("@guest.local")
 
 
 def find_or_create_user(session: Session, keys: KeyManager, address: str) -> User:
@@ -243,11 +225,9 @@ __all__ = [
     "email_hash",
     "find_or_create_user",
     "hash_token",
-    "is_anonymous_email",
     "lookup_session",
     "new_token",
     "normalise_email",
-    "open_email",
     "organiser_allowed",
     "revoke_sessions",
     "seal_email",
