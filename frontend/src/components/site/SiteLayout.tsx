@@ -79,6 +79,7 @@ const TILT_DEGREES = 9;
  */
 function useBoardTilt() {
   useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return; // very old browsers, test runners
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     let current: HTMLElement | null = null;
     const reset = (el: HTMLElement) => {
