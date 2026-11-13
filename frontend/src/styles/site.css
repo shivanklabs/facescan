@@ -321,12 +321,98 @@ html::-webkit-scrollbar {
 
 /* ---------------------------------------------------------------- welcome */
 
-.st-hero {
+/* Front page: the sign-in card beside a wall of event moments (tiles of different
+   heights, like a photo board). Real event photos can replace the colour tiles later. */
+.st-landing {
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: clamp(24px, 5vw, 64px);
-  align-items: center;
-  min-height: calc(100dvh - 140px);
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: start;
+}
+
+.st-landing-card {
+  position: sticky;
+  top: 20px;
+  padding-top: 12px;
+}
+
+.st-wall {
+  columns: 3 200px;
+  column-gap: 14px;
+}
+
+.st-moment {
+  position: relative;
+  break-inside: avoid;
+  margin: 0 0 14px;
+  height: 230px;
+  border-radius: 18px;
+  overflow: hidden;
+  /* An out-of-focus event photo: warm light spots over the moment's colours. */
+  background:
+    radial-gradient(circle at 18% 22%, rgba(255, 246, 222, 0.42) 0 5%, transparent 6%),
+    radial-gradient(circle at 74% 14%, rgba(255, 236, 190, 0.32) 0 3.5%, transparent 4.5%),
+    radial-gradient(circle at 62% 64%, rgba(255, 255, 255, 0.16) 0 11%, transparent 12%),
+    radial-gradient(circle at 30% 82%, rgba(255, 214, 150, 0.22) 0 7%, transparent 8%),
+    linear-gradient(160deg, var(--a), var(--b));
+  box-shadow: 0 10px 28px rgba(40, 24, 8, 0.12);
+  animation: st-rise 0.6s ease both;
+  transition: transform 0.25s ease;
+}
+
+.st-moment.is-s {
+  height: 160px;
+}
+
+.st-moment.is-l {
+  height: 310px;
+}
+
+.st-moment:hover {
+  transform: translateY(-4px);
+}
+
+.st-moment figcaption {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(14, 10, 6, 0.5);
+  color: #fff8ec;
+  font-size: 0.78rem;
+  backdrop-filter: blur(6px);
+}
+
+/* FaceScan's own mark: viewfinder corners where a face was found. */
+.st-moment.is-found::before {
+  content: '';
+  position: absolute;
+  inset: 22% 26% 30%;
+  border-radius: 12px;
+  background:
+    linear-gradient(#fff8ec, #fff8ec) top left / 18px 2px,
+    linear-gradient(#fff8ec, #fff8ec) top left / 2px 18px,
+    linear-gradient(#fff8ec, #fff8ec) top right / 18px 2px,
+    linear-gradient(#fff8ec, #fff8ec) top right / 2px 18px,
+    linear-gradient(#fff8ec, #fff8ec) bottom left / 18px 2px,
+    linear-gradient(#fff8ec, #fff8ec) bottom left / 2px 18px,
+    linear-gradient(#fff8ec, #fff8ec) bottom right / 18px 2px,
+    linear-gradient(#fff8ec, #fff8ec) bottom right / 2px 18px;
+  background-repeat: no-repeat;
+  opacity: 0.9;
+}
+
+.st-moment-found {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--fs-accent);
+  color: var(--fs-accent-ink);
+  font-size: 0.74rem;
+  font-weight: 700;
 }
 
 .st-eyebrow {
@@ -347,14 +433,10 @@ html::-webkit-scrollbar {
   background: var(--fs-accent);
 }
 
-.st-hero h1 {
-  font-size: clamp(2.6rem, 6.4vw, 4.8rem);
-  line-height: 1.02;
-}
-
-.st-hero h1 em {
-  font-style: italic;
-  color: var(--fs-accent);
+.st-landing h1 {
+  font-size: clamp(2rem, 3.4vw, 2.9rem);
+  line-height: 1.08;
+  margin: 0;
 }
 
 .st-lead {
@@ -404,114 +486,6 @@ html::-webkit-scrollbar {
   font-size: 0.82rem;
   color: var(--fs-muted);
   max-width: 40ch;
-}
-
-/* polaroid stack */
-.st-stack {
-  position: relative;
-  aspect-ratio: 4 / 5;
-  max-width: 440px;
-  width: 100%;
-  justify-self: center;
-}
-
-.st-polaroid {
-  position: absolute;
-  inset: 8% 10%;
-  background: #fbf6ec;
-  border-radius: 6px;
-  padding: 12px 12px 54px;
-  box-shadow: var(--fs-shadow);
-  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.st-polaroid:nth-child(1) {
-  transform: rotate(-9deg) translate(-8%, 4%);
-}
-
-.st-polaroid:nth-child(2) {
-  transform: rotate(6deg) translate(9%, -2%);
-}
-
-.st-polaroid:nth-child(3) {
-  transform: rotate(-1deg);
-}
-
-.st-stack:hover .st-polaroid:nth-child(1) {
-  transform: rotate(-14deg) translate(-16%, 6%);
-}
-
-.st-stack:hover .st-polaroid:nth-child(2) {
-  transform: rotate(11deg) translate(16%, -4%);
-}
-
-.st-polaroid-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 2px;
-  background:
-    radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.35) 0 14%, transparent 15%),
-    radial-gradient(ellipse at 50% 92%, rgba(255, 255, 255, 0.25) 0 32%, transparent 33%),
-    linear-gradient(160deg, #3a2a17, #7a4a1c 55%, #e3a24b);
-}
-
-.st-polaroid:nth-child(1) .st-polaroid-img {
-  background:
-    radial-gradient(circle at 35% 40%, rgba(255, 255, 255, 0.3) 0 11%, transparent 12%),
-    radial-gradient(circle at 66% 44%, rgba(255, 255, 255, 0.3) 0 11%, transparent 12%),
-    linear-gradient(200deg, #1d2a33, #3c5566 60%, #b9a07a);
-}
-
-.st-polaroid:nth-child(2) .st-polaroid-img {
-  background:
-    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.3) 0 13%, transparent 14%),
-    linear-gradient(140deg, #3b1e22, #8a3b3b 55%, #f0b37a);
-}
-
-.st-polaroid-caption {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 14px;
-  text-align: center;
-  font-family: var(--fs-serif);
-  font-style: italic;
-  color: #3b3226;
-  font-size: 1.05rem;
-}
-
-.st-scan-chip {
-  position: absolute;
-  right: 4%;
-  bottom: 10%;
-  z-index: 4;
-  background: var(--fs-bg-raised);
-  border: 1px solid var(--fs-line);
-  border-radius: 16px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  box-shadow: var(--fs-shadow);
-  font-size: 0.9rem;
-}
-
-.st-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--fs-ok);
-  box-shadow: 0 0 0 0 rgba(143, 209, 139, 0.6);
-  animation: st-pulse 1.8s infinite;
-}
-
-@keyframes st-pulse {
-  70% {
-    box-shadow: 0 0 0 10px rgba(143, 209, 139, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(143, 209, 139, 0);
-  }
 }
 
 /* ---------------------------------------------------------------- cards and notices */
@@ -1595,19 +1569,36 @@ body:has(.st-claim-camera) .st-help-panel {
 /* ---------------------------------------------------------------- small screens */
 
 @media (max-width: 860px) {
-  .st-hero,
   .st-scan {
     grid-template-columns: 1fr;
     min-height: auto;
   }
 
-  .st-hero {
-    padding-top: 10px;
+  /* Phone: sign-in first, then the moments wall in two columns. */
+  .st-landing {
+    grid-template-columns: 1fr;
   }
 
-  /* Phone: sign-in comes first; the decorative photo stack only pushed it off the screen. */
-  .st-hero .st-stack {
-    display: none;
+  .st-landing-card {
+    position: static;
+  }
+
+  .st-wall {
+    columns: 2;
+    column-gap: 10px;
+  }
+
+  .st-moment {
+    height: 170px;
+    margin-bottom: 10px;
+  }
+
+  .st-moment.is-s {
+    height: 120px;
+  }
+
+  .st-moment.is-l {
+    height: 230px;
   }
 
   /* Narrow phones: four choices (admin filters) in two rows. */

@@ -14,25 +14,32 @@
     "useIt": "Sign in with your passkey"
   },
   "welcome": {
-    "eyebrow": "Event photos, found by your face",
-    "titleStart": "Every photo of you,",
-    "titleAccent": "in one scan.",
     "lead": "Sign in, look at your camera and blink. FaceScan finds the photos you are in from every event and shows them in your own private gallery.",
     "fine": "Your selfie is checked live and never stored. Only you can see the photos that match you.",
     "step1": "Start with your fingerprint (passkey)",
     "step2": "Scan your face",
     "step3": "View and download",
-    "caption1": "the sangeet",
-    "caption2": "first dance",
-    "caption3": "you, found",
-    "chip": "128 photos matched",
-    "start": "Start with a passkey",
-    "comeBack": "I've been here before",
     "passkeyHint": "A passkey is your phone's fingerprint or face unlock. No email, no password; nothing about you is stored.",
     "passkeyFailed": "The passkey did not work. Please try again.",
     "noPasskeyHere": "This app's built-in browser cannot use passkeys. Open this page in Chrome or Safari.",
     "openInBrowser": "Open in browser",
-    "copyLink": "Copy link"
+    "copyLink": "Copy link",
+    "title": "Every event photo you're in, found by your face.",
+    "found": "Found you",
+    "moment": {
+      "haldi": "Haldi",
+      "mehendi": "Mehendi",
+      "sangeet": "Sangeet",
+      "baraat": "Baraat",
+      "varmala": "Varmala",
+      "pheras": "Pheras",
+      "family": "Family portrait",
+      "dance": "Dance floor",
+      "cake": "Cake cutting",
+      "reception": "Reception",
+      "candid": "Candid laughs",
+      "bidaai": "Bidaai"
+    }
   },
   "scan": {
     "eyebrow": "Face scan",

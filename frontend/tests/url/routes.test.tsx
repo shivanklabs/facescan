@@ -35,7 +35,10 @@ describe('router', () => {
     vi.stubGlobal('PublicKeyCredential', function PublicKeyCredential() {});
     renderAt('/');
     expect(
-      await screen.findByRole('heading', { name: 'Every photo of you, in one scan.', level: 1 }),
+      await screen.findByRole('heading', {
+        name: "Every event photo you're in, found by your face.",
+        level: 1,
+      }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in with passkey' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Create account' })).toBeInTheDocument();
@@ -51,7 +54,10 @@ describe('router', () => {
   it('sends signed-out visitors from the scan and photos pages to the welcome page', async () => {
     renderAt('/photos');
     expect(
-      await screen.findByRole('heading', { name: 'Every photo of you, in one scan.', level: 1 }),
+      await screen.findByRole('heading', {
+        name: "Every event photo you're in, found by your face.",
+        level: 1,
+      }),
     ).toBeInTheDocument();
   });
   it('shows an invalid-invite message for a bad link', async () => {

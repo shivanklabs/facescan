@@ -2,8 +2,10 @@
 // person's role and status and opens their own dashboard. New people create an account
 // (name, email, type: guest / organiser / photographer - never admin) with a passkey;
 // organisers and photographers wait for an admin's approval. Staff keys still work.
+// Beside it, a wall of event moments (FaceScan's own design: tiles of different heights;
+// no other site's name, logo, colours or text).
 // Signed-in people go straight to their photos (or the invite link they came from).
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
@@ -30,6 +32,22 @@ export function afterSignInPath(next: string | null): string {
 }
 
 const ACCOUNT_TYPES: AccountType[] = ['guest', 'organiser', 'photographer'];
+
+/** The moments wall on the front page: colour tiles until real event photos are added. */
+const MOMENTS: { key: string; size: 's' | 'm' | 'l'; a: string; b: string; found?: boolean }[] = [
+  { key: 'haldi', size: 'l', a: '#f6c445', b: '#d97a12', found: true },
+  { key: 'mehendi', size: 'm', a: '#7e9b4c', b: '#2f4a25' },
+  { key: 'sangeet', size: 's', a: '#7a3f9d', b: '#251238' },
+  { key: 'baraat', size: 'm', a: '#e4572e', b: '#7a1d14' },
+  { key: 'varmala', size: 'l', a: '#f1a7b5', b: '#b23a5b', found: true },
+  { key: 'pheras', size: 's', a: '#ff9a3c', b: '#8c2d0c' },
+  { key: 'family', size: 'm', a: '#c9a27c', b: '#5b3a24' },
+  { key: 'dance', size: 'l', a: '#3e5ba9', b: '#140f2e', found: true },
+  { key: 'cake', size: 's', a: '#f3d9c4', b: '#c0896a' },
+  { key: 'reception', size: 'm', a: '#1f6f78', b: '#0b2730' },
+  { key: 'candid', size: 'm', a: '#e8b04f', b: '#6b3b10' },
+  { key: 'bidaai', size: 's', a: '#b7414b', b: '#3d0f16' },
+];
 
 /**
  * Purpose: the account type to preselect from ?as= (a link like /?as=organiser opens the
@@ -92,12 +110,9 @@ export default function LoginPage() {
   }
 
   return (
-    <section className="st-hero">
-      <div>
-        <p className="st-eyebrow">{t('welcome.eyebrow')}</p>
-        <h1>
-          {t('welcome.titleStart')} <em>{t('welcome.titleAccent')}</em>
-        </h1>
+    <section className="st-landing">
+      <div className="st-landing-card">
+        <h1>{t('welcome.title')}</h1>
         <p className="st-lead">{t('welcome.lead')}</p>
         <div className="st-signin" id="signin">
           <div className="st-roles st-roles-2" role="tablist" aria-label={t('account.title')}>
@@ -242,23 +257,17 @@ export default function LoginPage() {
           </li>
         </ol>
       </div>
-      <div className="st-stack" aria-hidden="true">
-        <div className="st-polaroid">
-          <div className="st-polaroid-img" />
-          <span className="st-polaroid-caption">{t('welcome.caption1')}</span>
-        </div>
-        <div className="st-polaroid">
-          <div className="st-polaroid-img" />
-          <span className="st-polaroid-caption">{t('welcome.caption2')}</span>
-        </div>
-        <div className="st-polaroid">
-          <div className="st-polaroid-img" />
-          <span className="st-polaroid-caption">{t('welcome.caption3')}</span>
-        </div>
-        <div className="st-scan-chip">
-          <span className="st-dot" />
-          {t('welcome.chip')}
-        </div>
+      <div className="st-wall" aria-hidden="true">
+        {MOMENTS.map((m, i) => (
+          <figure
+            key={m.key}
+            className={`st-moment is-${m.size} ${m.found ? 'is-found' : ''}`}
+            style={{ '--a': m.a, '--b': m.b, animationDelay: `${i * 50}ms` } as CSSProperties}
+          >
+            {m.found && <span className="st-moment-found">{t('welcome.found')}</span>}
+            <figcaption>{t(`welcome.moment.${m.key}`)}</figcaption>
+          </figure>
+        ))}
       </div>
     </section>
   );
