@@ -562,3 +562,29 @@ describe('help bot', () => {
     expect(fetchMock.mock.calls.length).toBe(callsBefore); // nothing typed is sent anywhere
   });
 });
+
+describe('log in as', () => {
+  it('offers guest, organiser, photographer and admin on the front page', async () => {
+    vi.stubGlobal('PublicKeyCredential', function PublicKeyCredential() {});
+    renderAt('/?as=photographer');
+    const group = await screen.findByRole('radiogroup', { name: 'Log in as' });
+    for (const name of ['Guest', 'Organiser', 'Photographer', 'Admin']) {
+      expect(within(group).getByRole('radio', { name })).toBeInTheDocument();
+    }
+    expect(within(group).getByRole('radio', { name: 'Photographer' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByText(/Event settings > Staff keys/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Staff key/)).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole('radio', { name: 'Guest' }));
+    expect(screen.getByRole('button', { name: 'Start with a passkey' })).toBeInTheDocument();
+  });
+
+  it('falls back to guest for an unknown ?as= value', async () => {
+    const { loginRoleFrom } = await import('@/pages/guest/LoginPage');
+    expect(loginRoleFrom('admin')).toBe('admin');
+    expect(loginRoleFrom('root')).toBe('guest');
+    expect(loginRoleFrom(null)).toBe('guest');
+  });
+});

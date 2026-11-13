@@ -1,5 +1,6 @@
-// LoginPage: the front door. Guests start or come back with a passkey only (fingerprint or
-// face unlock; no email, no password); staff sign in with a key FaceScan gave them.
+// LoginPage: the front door. "Login as" picks who is signing in: guests start or come back
+// with a passkey only (fingerprint or face unlock; no email, no password); organisers,
+// photographers and admins sign in with the one-time key FaceScan gave them, then a passkey.
 // Signed-in people go straight to their photos (or the invite link they came from).
 import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
@@ -26,6 +27,17 @@ export function afterSignInPath(next: string | null): string {
   return next && SAFE_NEXT.test(next) ? next : '/photos';
 }
 
+const ROLES = ['guest', 'organiser', 'photographer', 'admin'] as const;
+export type LoginRole = (typeof ROLES)[number];
+
+/**
+ * Purpose: the "Login as" choice from ?as= (so a link can open the right one), guest by default.
+ * Inputs: the raw ?as= value. Outputs: a known role. Side effects: none.
+ */
+export function loginRoleFrom(value: string | null): LoginRole {
+  return ROLES.find((role) => role === value) ?? 'guest';
+}
+
 /**
  * Purpose: landing page with passkey sign-up / sign-in for guests and a staff key form.
  * Inputs: optional ?next= (an invite link to return to). Outputs: page element.
@@ -34,15 +46,14 @@ export function afterSignInPath(next: string | null): string {
 export default function LoginPage() {
   const { t } = useTranslation();
   const { me, loading } = useCurrentUser();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const role = loginRoleFrom(params.get('as'));
   const destination = afterSignInPath(params.get('next'));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [devLogin, setDevLogin] = useState(false);
   const [devEmail, setDevEmail] = useState('');
   const [devBusy, setDevBusy] = useState(false);
-  // Staff (organisers, photographers, admins) sign in with a key FaceScan gave them.
-  const [staffOpen, setStaffOpen] = useState(false);
   const supported = passkeysSupported();
 
   useEffect(() => {
@@ -102,8 +113,40 @@ export default function LoginPage() {
           {t('welcome.titleStart')} <em>{t('welcome.titleAccent')}</em>
         </h1>
         <p className="st-lead">{t('welcome.lead')}</p>
-        <div className="st-signin">
-          {supported ? (
+        <div className="st-signin" id="signin">
+          <p className="st-roles-label" id="login-as">
+            {t('loginAs.title')}
+          </p>
+          <div className="st-roles" role="radiogroup" aria-labelledby="login-as">
+            {ROLES.map((item) => (
+              <button
+                key={item}
+                type="button"
+                role="radio"
+                aria-checked={role === item}
+                className={role === item ? 'st-role is-active' : 'st-role'}
+                onClick={() =>
+                  setParams(
+                    (current) => {
+                      const next = new URLSearchParams(current);
+                      if (item === 'guest') next.delete('as');
+                      else next.set('as', item);
+                      return next;
+                    },
+                    { replace: true },
+                  )
+                }
+              >
+                {t(`loginAs.${item}`)}
+              </button>
+            ))}
+          </div>
+          {role !== 'guest' ? (
+            <>
+              <p className="st-fine">{t(`loginAs.how.${role}`)}</p>
+              <StaffKeyForm onSignedIn={(next) => window.location.assign(next)} />
+            </>
+          ) : supported ? (
             <div className="st-form-row">
               <button
                 type="button"
@@ -137,7 +180,7 @@ export default function LoginPage() {
               </button>
             </div>
           )}
-          <p className="st-fine">{t('welcome.passkeyHint')}</p>
+          {role === 'guest' && <p className="st-fine">{t('welcome.passkeyHint')}</p>}
           {devLogin && (
             <form
               className="st-card st-stack-gap"
@@ -177,17 +220,6 @@ export default function LoginPage() {
             </p>
           )}
           <p className="st-fine">{t('welcome.fine')}</p>
-          {staffOpen ? (
-            <StaffKeyForm onSignedIn={(next) => window.location.assign(next)} />
-          ) : (
-            <button
-              type="button"
-              className="st-btn st-btn-ghost st-btn-small"
-              onClick={() => setStaffOpen(true)}
-            >
-              {t('staff.open')}
-            </button>
-          )}
         </div>
         <ol className="st-steps">
           <li>

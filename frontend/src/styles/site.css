@@ -147,17 +147,63 @@ body:has(.studio) {
 }
 
 /* Role-based menu under the top bar; scrolls sideways on narrow phones instead of wrapping. */
+/* Wraps onto a second line on narrow phones, so every tab (Studio, Health) stays visible
+   instead of hiding behind a sideways scroll with no scrollbar. */
 .st-menu {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 0 clamp(16px, 4vw, 40px) 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
   border-bottom: 1px solid var(--fs-line);
 }
 
-.st-menu::-webkit-scrollbar {
-  display: none;
+/* "Log in as" choice on the front page. */
+.st-roles-label {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: var(--fs-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.st-roles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 14px;
+  border-radius: 16px;
+  background: var(--fs-surface);
+  border: 1px solid var(--fs-line);
+}
+
+.st-role {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 6px;
+  background: transparent;
+  color: var(--fs-muted);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.st-role:hover {
+  color: var(--fs-text);
+}
+
+.st-role.is-active {
+  background: var(--fs-accent);
+  color: var(--fs-accent-ink);
+}
+
+.st-role:focus-visible {
+  outline: 2px solid var(--fs-accent);
+  outline-offset: 2px;
 }
 
 .st-menu-link {
@@ -1538,9 +1584,16 @@ body:has(.st-claim-camera) .st-help-panel {
     padding-top: 10px;
   }
 
-  .st-stack {
-    max-width: 320px;
-    order: -1;
+  /* Phone: sign-in comes first; the decorative photo stack only pushed it off the screen. */
+  .st-hero .st-stack {
+    display: none;
+  }
+
+  /* Narrow phones: the four "Log in as" choices in two rows. */
+  @media (max-width: 420px) {
+    .st-roles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .st-scan {

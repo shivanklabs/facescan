@@ -1,6 +1,6 @@
 // SiteLayout: the frame of the new website (milestone 7) for every page: brand, account actions,
 // a menu that shows each person only what their role allows, the page, and the help bubble.
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { HelpChat } from '@/components/site/HelpChat';
 import { useCurrentUser, type Me } from '@/features/auth/useCurrentUser';
@@ -53,7 +53,8 @@ function SiteMenu({ me }: { me: Me }) {
 export function SiteLayout() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { me } = useCurrentUser();
+  const { pathname } = useLocation();
+  const { me, loading } = useCurrentUser();
 
   async function signOut() {
     try {
@@ -87,6 +88,11 @@ export function SiteLayout() {
             >
               {t('common.signOut')}
             </button>
+          )}
+          {!me && !loading && pathname !== '/' && (
+            <Link to="/" className="st-btn st-btn-primary st-btn-small">
+              {t('loginAs.navButton')}
+            </Link>
           )}
         </nav>
       </header>

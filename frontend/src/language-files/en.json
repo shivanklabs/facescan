@@ -385,5 +385,18 @@
       "faceStored": "Open Privacy",
       "delete": "Open Privacy"
     }
+  },
+  "loginAs": {
+    "title": "Log in as",
+    "guest": "Guest",
+    "organiser": "Organiser",
+    "photographer": "Photographer",
+    "admin": "Admin",
+    "navButton": "Log in",
+    "how": {
+      "organiser": "Event owners: the first time, enter the one-time key from the FaceScan admin, then add a passkey. After that, sign in with your passkey.",
+      "photographer": "Photographers: the event organiser makes your key in Event settings > Staff keys. Enter it once, then sign in with your passkey.",
+      "admin": "Admins: make a key on the server with \"uv run tasks staff-key --role admin\". Enter it once, then sign in with your passkey."
+    }
   }
 }
