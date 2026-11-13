@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Providers } from '@/url/providers';
@@ -530,5 +530,35 @@ describe('events dashboard and 3D gallery', () => {
     const left = coverflowPose(-2);
     expect(left.x).toBeCloseTo(-(1.45 + 0.62));
     expect(left.rotY).toBeCloseTo(0.95);
+  });
+});
+
+describe('help bot', () => {
+  it('matches typed questions in English, Hindi and Hinglish without any network call', async () => {
+    const { matchTopic } = await import('@/components/site/HelpChat');
+    expect(matchTopic('how do I delete my account?')).toBe('delete');
+    expect(matchTopic('meri photo nahi mil rahi')).toBe('none');
+    expect(matchTopic('यह फ़ोटो मैं नहीं हूँ, गलत है')).toBe('notMe');
+    expect(matchTopic('QR link expired')).toBe('badLink');
+    expect(matchTopic('what is the weather')).toBeNull();
+  });
+
+  it('opens from the bubble and answers a picked question with a link to the right page', async () => {
+    const fetchMock = signedInAs({ can_create_events: false, is_admin: false });
+    renderAt('/photos');
+    await screen.findByRole('navigation', { name: 'Main menu' });
+    const callsBefore = fetchMock.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Open help' }));
+    const panel = screen.getByRole('dialog', { name: 'FaceScan help' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'How do I delete my data?' }));
+    expect(within(panel).getByText(/type DELETE to erase your account/)).toBeInTheDocument();
+    expect(within(panel).getByRole('link', { name: 'Open Privacy' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    );
+    fireEvent.change(within(panel).getByRole('textbox'), { target: { value: 'hello?' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Ask' }));
+    expect(within(panel).getByText(/I don't know that one yet/)).toBeInTheDocument();
+    expect(fetchMock.mock.calls.length).toBe(callsBefore); // nothing typed is sent anywhere
   });
 });

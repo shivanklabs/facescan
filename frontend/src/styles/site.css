@@ -1400,6 +1400,131 @@ body:has(.studio) {
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------------- help bot */
+
+.st-help-bubble {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 40;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--fs-accent);
+  color: var(--fs-accent-ink);
+  font: 700 1.4rem/1 var(--fs-sans);
+  box-shadow: var(--fs-shadow);
+  cursor: pointer;
+}
+
+.st-help-bubble:focus-visible {
+  outline: 3px solid var(--fs-text);
+  outline-offset: 3px;
+}
+
+.st-help-panel {
+  position: fixed;
+  right: 16px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  z-index: 40;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(580px, calc(100dvh - 110px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--fs-radius);
+  border: 1px solid var(--fs-line);
+  background: var(--fs-bg-raised);
+  color: var(--fs-text);
+  box-shadow: var(--fs-shadow);
+  overflow: hidden;
+}
+
+.st-help-head {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--fs-line);
+}
+
+.st-help-head span {
+  color: var(--fs-muted);
+  font-size: 0.8rem;
+}
+
+.st-help-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.st-help-msg {
+  margin: 0;
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 16px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  background: var(--fs-surface-strong);
+}
+
+.st-help-msg p {
+  margin: 0 0 8px;
+}
+
+.st-help-msg.is-me {
+  align-self: flex-end;
+  background: var(--fs-accent);
+  color: var(--fs-accent-ink);
+}
+
+.st-help-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 16px;
+  border-top: 1px solid var(--fs-line);
+}
+
+.st-help-chip {
+  flex: none;
+  border: 1px solid var(--fs-line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--fs-surface);
+  color: var(--fs-text);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.st-help-form {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px 14px;
+}
+
+.st-help-form .st-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Room under the last button of a page so the bubble never sits on it for good. */
+.st-main {
+  padding-bottom: 84px;
+}
+
+/* Never cover the camera or its buttons: hidden while a camera is on. */
+body:has(.st-scan.is-camera) .st-help-bubble,
+body:has(.st-scan.is-camera) .st-help-panel,
+body:has(.st-claim-camera) .st-help-bubble,
+body:has(.st-claim-camera) .st-help-panel {
+  display: none;
+}
+
 /* ---------------------------------------------------------------- small screens */
 
 @media (max-width: 860px) {

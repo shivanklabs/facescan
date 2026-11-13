@@ -343,5 +343,47 @@
     "doneText": "Your data has been erased from FaceScan. You can start again any time with a new face scan.",
     "passkeyNote": "Your phone may still keep the FaceScan passkey. Remove it in your phone's password manager (Google Password Manager or iCloud Keychain).",
     "home": "Go to start"
+  },
+  "help": {
+    "open": "Open help",
+    "close": "Close help",
+    "title": "FaceScan help",
+    "subtitle": "Quick answers. Nothing you type leaves your phone.",
+    "hello": "Hi! Pick a question below or type your own.",
+    "placeholder": "Type your question",
+    "send": "Ask",
+    "unknown": "Sorry, I don't know that one yet. Try one of the questions below, or ask the event organiser.",
+    "q": {
+      "find": "How do I find my photos?",
+      "none": "Why don't I see any photos?",
+      "notMe": "A photo is not of me",
+      "unclear": "My face isn't clear in some photos",
+      "passkey": "What is a passkey?",
+      "newPhone": "How do I sign in on another phone?",
+      "faceStored": "Is my face saved?",
+      "delete": "How do I delete my data?",
+      "badLink": "The event link or QR doesn't work"
+    },
+    "a": {
+      "find": "Open Scan, agree, look at the camera and blink once. FaceScan then looks for you in every event and shows your photos under My photos.",
+      "none": "The event's photos may still be uploading or processing. Try a new scan later, in good light, without sunglasses or a mask. If nothing comes up, you may not be in this event's photos.",
+      "notMe": "Open the photo, tap More options and choose \"This is not me\". It disappears at once and FaceScan never shows it to you again.",
+      "unclear": "Use Find more: describe the moment (for example \"cake cutting\"), tap your face in a photo and take a quick scan to claim it. The organiser may check it first.",
+      "passkey": "A passkey is your phone's fingerprint or face unlock, used instead of a password. No email or password is needed and nobody can guess it.",
+      "newPhone": "If your passkey is saved in your Google or Apple account, tap \"I've been here before\" on the new phone. If not, start again with a passkey on that phone and scan once more.",
+      "faceStored": "No. The scan is kept in memory only, compared once and thrown away. FaceScan keeps only which photos are yours. You can turn any event off on the Privacy page.",
+      "delete": "Go to Privacy and use \"Delete my account\": type DELETE to erase your account and everything that is yours. Event photos stay with the event.",
+      "badLink": "Links can expire or be switched off by the organiser. Ask them for a new link or QR code. You can also just scan: FaceScan looks in every open event."
+    },
+    "go": {
+      "find": "Open Scan",
+      "none": "Scan again",
+      "notMe": "Go to My photos",
+      "unclear": "Open Find more",
+      "passkey": "Go to sign in",
+      "newPhone": "Go to sign in",
+      "faceStored": "Open Privacy",
+      "delete": "Open Privacy"
+    }
   }
 }

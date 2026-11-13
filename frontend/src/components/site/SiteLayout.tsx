@@ -1,7 +1,8 @@
 // SiteLayout: the frame of the new website (milestone 7) for every page: brand, account actions,
-// a menu that shows each person only what their role allows, and the page.
+// a menu that shows each person only what their role allows, the page, and the help bubble.
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { HelpChat } from '@/components/site/HelpChat';
 import { useCurrentUser, type Me } from '@/features/auth/useCurrentUser';
 import { api } from '@/lib/serverApi';
 import '@/styles/site.css';
@@ -93,6 +94,7 @@ export function SiteLayout() {
       <main className="st-main">
         <Outlet />
       </main>
+      <HelpChat />
     </div>
   );
 }
