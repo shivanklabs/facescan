@@ -14,9 +14,7 @@ from app.core.request_checks import Ctx, MaybeUser, PasskeyUser, SignedIn, User
 from app.features.login import service
 from app.features.login.schemas import (
     AgeAnswer,
-    AuthConfigResponse,
     DeleteAccountRequest,
-    DevSignIn,
     MeResponse,
     PasskeyCredential,
     RegisterOptionsRequest,
@@ -65,26 +63,6 @@ def _signed_in(ctx: Ctx, result: service.SignInResult) -> JSONResponse:
     )
     set_session_cookie(response, ctx.settings, result.token)
     return response
-
-
-@router.get("/config", response_model=AuthConfigResponse)
-def auth_config(ctx: Ctx) -> AuthConfigResponse:
-    """
-    Purpose: what the sign-in page may show (the dev-only email sign-in exists only when
-        FACESCAN_ENV=dev). Inputs: ctx. Outputs: AuthConfigResponse. Side effects: none.
-    """
-    return AuthConfigResponse(dev_login=service.dev_login_allowed(ctx))
-
-
-@router.post("/dev-login", dependencies=[Depends(sign_in_limiter)])
-def dev_login(body: DevSignIn, ctx: Ctx, user: MaybeUser) -> JSONResponse:
-    """
-    Purpose: email-only sign-in for local development (FACESCAN_ENV=dev only; 403 otherwise).
-    Inputs: body.email, current session. Outputs: SignInResponse with the session cookie.
-    Side effects: see service.sign_in_dev.
-    """
-    result = service.sign_in_dev(ctx, body.email, user.session_id if user else None)
-    return _signed_in(ctx, result)
 
 
 @router.post("/passkey/register/options")

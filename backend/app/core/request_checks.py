@@ -91,12 +91,11 @@ def staff_refusal(account: UserModel | None) -> str:
 
 def passkey_user(user: User) -> CurrentUser:
     """
-    Purpose: require a strong sign-in for staff pages: a passkey, or the dev-only sign-in
-        (exists only when FACESCAN_ENV=dev). A staff-key session without a passkey is
-        refused until the person adds one.
+    Purpose: require a strong sign-in for staff pages: a passkey. A staff-key session
+        without a passkey is refused until the person adds one.
     Inputs: the signed-in user. Outputs: the same user. Side effects: none.
     """
-    if user.auth_method not in ("passkey", "dev"):
+    if user.auth_method != "passkey":
         raise HTTPException(status_code=403, detail="passkey_required")
     return user
 

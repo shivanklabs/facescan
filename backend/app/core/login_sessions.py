@@ -145,17 +145,6 @@ def create_registered_user(
     return user
 
 
-def find_or_create_user(session: Session, keys: KeyManager, address: str) -> User:
-    """Purpose: the user for an address, created on first sign-in. Side effects: may insert."""
-    digest = email_hash(keys, address)
-    user = session.scalars(select(User).where(User.email_hash == digest)).first()
-    if user is None:
-        user = User(email_hash=digest, email_encrypted=seal_email(keys, address))
-        session.add(user)
-        session.flush()
-    return user
-
-
 def organiser_allowed(user: User) -> bool:
     """
     Purpose: True if the user may create and manage events: an approved (active) organiser,
@@ -285,7 +274,6 @@ __all__ = [
     "create_registered_user",
     "create_session",
     "email_hash",
-    "find_or_create_user",
     "hash_token",
     "home_path",
     "lookup_session",

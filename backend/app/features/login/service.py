@@ -42,7 +42,6 @@ from app.core.login_sessions import (
     create_registered_user,
     create_session,
     email_hash,
-    find_or_create_user,
     home_path,
     normalise_email,
     organiser_allowed,
@@ -87,44 +86,6 @@ def audit_global(
     """Purpose: audit row without an event (admin scope). Side effects: one insert."""
     with scoped_transaction(ctx.sessions, ADMIN_SCOPE) as session:
         record(session, event_id=None, actor=actor, action=action, details=details)
-
-
-def dev_login_allowed(ctx: AppContext) -> bool:
-    """
-    Purpose: the email-only dev sign-in exists only in local development (FACESCAN_ENV=dev).
-    Inputs: ctx. Outputs: bool. Side effects: none.
-    """
-    return ctx.settings.env == "dev"
-
-
-def sign_in_dev(ctx: AppContext, address: str, current_session: UUID | None) -> SignInResult:
-    """
-    Purpose: local-development sign-in with an email address only (testing without a
-        passkey device). Refused outside FACESCAN_ENV=dev.
-    Inputs: ctx, email address, the session it replaces.
-    Outputs: SignInResult (next path "/").
-    Raises ForbiddenError outside dev, UnprocessableError for a malformed address.
-    Side effects: creates the user on first sign-in; rotates the session; audit row (no email).
-    """
-    if not dev_login_allowed(ctx):
-        raise ForbiddenError("dev sign-in is only available in development")
-    try:
-        email = normalise_email(address)
-    except ValueError as exc:
-        raise UnprocessableError("enter a valid email address") from exc
-    with ctx.sessions() as session, session.begin():
-        user = find_or_create_user(session, ctx.keys, email)
-        has_passkey = bool(
-            session.scalar(
-                select(func.count()).select_from(Passkey).where(Passkey.user_id == user.id)
-            )
-        )
-        token = create_session(
-            session, ctx.settings, user.id, "dev", None, replaces=current_session
-        )
-        user_id = user.id
-    audit_global(ctx, f"user:{user_id}", "auth.signed_in", {"method": "dev"})
-    return SignInResult(token, user_id, "/", has_passkey)
 
 
 # ---------------------------------------------------------------- passkeys

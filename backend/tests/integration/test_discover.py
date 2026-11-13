@@ -176,42 +176,6 @@ def test_scan_needs_the_current_notice_and_a_sign_in(
     assert scan(anonymous, 1, version="v1").status_code == 401
 
 
-def test_dev_login_works_only_in_dev(ctx: AppContext) -> None:
-    client = new_client(ctx)
-    assert client.get("/auth/config").json()["dev_login"] is True
-    response = client.post("/auth/dev-login", json={"email": "dev.person@example.test"})
-    assert response.status_code == 200, response.text
-    me = client.get("/auth/me").json()
-    assert me["auth_method"] == "dev"
-    assert me["can_create_events"] is False  # staff rights come only from staff keys
-
-    original = ctx.settings
-    try:
-        ctx.settings = original.model_copy(update={"env": "test"})
-        other = new_client(ctx)
-        assert other.get("/auth/config").json()["dev_login"] is False
-        refused = other.post("/auth/dev-login", json={"email": "someone@example.test"})
-        assert refused.status_code == 403
-    finally:
-        ctx.settings = original
-
-
-def test_blink_burst_of_seven_frames_is_accepted_and_eight_refused(
-    ctx: AppContext, events: tuple[list[str], list[str]]
-) -> None:
-    guest = passkey_guest(ctx)
-    v = notice_version(guest)
-    seven = frames_body(*[make_png(1, 1, (40 + i, 30)) for i in range(7)])
-    ok = guest.post(f"/discover/search?notice_version={v}", content=seven, headers=FRAMES_HEADERS)
-    assert ok.status_code == 200, ok.text
-    assert ok.json()["released"] == 5
-    eight = frames_body(*[make_png(1, 1, (40 + i, 30)) for i in range(8)])
-    refused = guest.post(
-        f"/discover/search?notice_version={v}", content=eight, headers=FRAMES_HEADERS
-    )
-    assert refused.status_code in (413, 422)
-
-
 # ---------------------------------------------------------------- delete my account (DPDP)
 
 

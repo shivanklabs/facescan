@@ -3,11 +3,11 @@
 // (name, email, type: guest / organiser / photographer - never admin) with a passkey;
 // organisers and photographers wait for an admin's approval. Staff keys still work.
 // Signed-in people go straight to their photos (or the invite link they came from).
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
-import { api, ApiError } from '@/lib/serverApi';
+import { ApiError } from '@/lib/serverApi';
 import { StaffKeyForm } from '@/features/auth/StaffKeyForm';
 import {
   type AccountType,
@@ -59,34 +59,13 @@ export default function LoginPage() {
   const [staffOpen, setStaffOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [devLogin, setDevLogin] = useState(false);
-  const [devEmail, setDevEmail] = useState('');
-  const [devBusy, setDevBusy] = useState(false);
   const supported = passkeysSupported();
-
-  useEffect(() => {
-    if (loading || me) return;
-    let active = true;
-    api<{ dev_login: boolean }>('/auth/config')
-      .then((config) => {
-        if (active) setDevLogin(config.dev_login);
-      })
-      .catch(() => undefined); // only decides whether the dev sign-in box is shown
-    return () => {
-      active = false;
-    };
-  }, [loading, me]);
 
   // Signed in already: the invite link they came from, else their own dashboard.
   if (!loading && me) {
     return <Navigate to={invite ? destination : (me.home ?? '/photos')} replace />;
   }
 
-  /**
-   * Purpose: dev-only sign-in with an email (local testing without a passkey device).
-   * Inputs: none (reads the form state). Outputs: none.
-   * Side effects: starts a session, then reloads into the gallery.
-   */
   /**
    * Purpose: run a passkey ceremony (sign-in or new account), then open the page the server
    *   chose for this person's role (or the invite link they came from).
@@ -109,19 +88,6 @@ export default function LoginPage() {
             : t('welcome.passkeyFailed'),
       );
       setBusy(false);
-    }
-  }
-
-  async function submitDevLogin() {
-    if (!devEmail.trim()) return;
-    setDevBusy(true);
-    setError('');
-    try {
-      await api('/auth/dev-login', { json: { email: devEmail.trim() } });
-      window.location.assign(destination);
-    } catch {
-      setError(t('welcome.devFailed'));
-      setDevBusy(false);
     }
   }
 
@@ -241,39 +207,6 @@ export default function LoginPage() {
               >
                 {t('account.create')}
               </button>
-            </form>
-          )}
-          {devLogin && (
-            <form
-              className="st-card st-stack-gap"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitDevLogin();
-              }}
-            >
-              <p className="st-badge is-busy">{t('welcome.devTitle')}</p>
-              <label className="st-visually-hidden" htmlFor="dev-email">
-                {t('welcome.devEmail')}
-              </label>
-              <div className="st-form-row">
-                <input
-                  id="dev-email"
-                  className="st-input"
-                  type="email"
-                  autoComplete="email"
-                  placeholder={t('welcome.devEmail')}
-                  value={devEmail}
-                  onChange={(event) => setDevEmail(event.target.value)}
-                />
-                <button
-                  type="submit"
-                  className="st-btn st-btn-primary"
-                  disabled={devBusy || !devEmail.trim()}
-                >
-                  {t('welcome.devButton')}
-                </button>
-              </div>
-              <p className="st-fine">{t('welcome.devHint')}</p>
             </form>
           )}
           {error && (

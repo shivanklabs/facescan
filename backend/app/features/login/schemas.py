@@ -7,13 +7,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class DevSignIn(BaseModel):
-    """Body: email for the dev-only sign-in."""
-
-    model_config = ConfigDict(extra="forbid")
-    email: str = Field(min_length=3, max_length=254)
-
-
 class SignInResponse(BaseModel):
     """Where to go after signing in."""
 
@@ -114,12 +107,6 @@ class StaffKeyList(BaseModel):
     """The staff keys the caller created."""
 
     keys: list[StaffKeyItem]
-
-
-class AuthConfigResponse(BaseModel):
-    """What the sign-in page may show."""
-
-    dev_login: bool
 
 
 class DeleteAccountRequest(BaseModel):
