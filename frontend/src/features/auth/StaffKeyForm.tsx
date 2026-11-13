@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, ApiError } from '@/lib/serverApi';
-import { signInWithPasskey } from '@/lib/passkeys';
+import { passkeyErrorKey, signInWithPasskey } from '@/lib/passkeys';
 
 interface Props {
   onSignedIn: (next: string) => void;
@@ -47,8 +47,8 @@ export function StaffKeyForm({ onSignedIn }: Props) {
     try {
       await signInWithPasskey();
       onSignedIn('/studio');
-    } catch {
-      setError(t('welcome.passkeyFailed'));
+    } catch (err) {
+      setError(t(passkeyErrorKey(err)));
     }
   }
 

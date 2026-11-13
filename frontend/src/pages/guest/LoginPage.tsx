@@ -9,11 +9,11 @@ import { useState, type CSSProperties } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser } from '@/features/auth/useCurrentUser';
-import { ApiError } from '@/lib/serverApi';
 import { StaffKeyForm } from '@/features/auth/StaffKeyForm';
 import {
   type AccountType,
   openInBrowserUrl,
+  passkeyErrorKey,
   passkeysSupported,
   signInWithPasskey,
   signUpWithPasskey,
@@ -97,14 +97,7 @@ export default function LoginPage() {
       // Full load so the header sees the new session.
       window.location.assign(invite ? destination : result.next || '/photos');
     } catch (err) {
-      const detail = err instanceof ApiError ? err.detail : '';
-      setError(
-        detail === 'email_taken'
-          ? t('account.emailTaken')
-          : err instanceof ApiError && err.status === 422
-            ? t('account.invalid')
-            : t('welcome.passkeyFailed'),
-      );
+      setError(t(passkeyErrorKey(err)));
       setBusy(false);
     }
   }

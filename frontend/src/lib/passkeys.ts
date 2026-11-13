@@ -6,7 +6,7 @@ import {
   type PublicKeyCredentialCreationOptionsJSON,
   type PublicKeyCredentialRequestOptionsJSON,
 } from '@simplewebauthn/browser';
-import { api } from './serverApi';
+import { api, ApiError } from './serverApi';
 
 export async function registerPasskey(): Promise<void> {
   const optionsJSON = await api<PublicKeyCredentialCreationOptionsJSON>(
@@ -59,6 +59,28 @@ export function openInBrowserUrl(href: string): string {
   if (!/Android/i.test(navigator.userAgent)) return url.toString();
   const rest = `${url.host}${url.pathname}${url.search}`;
   return `intent://${rest}#Intent;scheme=${url.protocol.replace(':', '')};package=com.android.chrome;end`;
+}
+
+/**
+ * Purpose: which message explains a failed passkey sign-in / sign-up, so people know what to
+ *   do: the window was closed or this device has no passkey for this site address, the
+ *   passkey is not registered here, the email is taken, bad input, or the server is down.
+ * Inputs: the error thrown by the ceremony or the API. Outputs: a translation key.
+ * Side effects: none.
+ */
+export function passkeyErrorKey(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.detail === 'email_taken') return 'account.emailTaken';
+    if (error.status === 422) return 'account.invalid';
+    if (error.status === 400) return 'welcome.passkeyUnknown';
+    if (error.status >= 500) return 'welcome.serverDown';
+    return 'welcome.passkeyFailed';
+  }
+  if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
+    return 'welcome.passkeyCancelled';
+  }
+  if (error instanceof TypeError) return 'welcome.serverDown'; // the request never arrived
+  return 'welcome.passkeyFailed';
 }
 
 export async function signInWithPasskey(): Promise<{ next: string }> {

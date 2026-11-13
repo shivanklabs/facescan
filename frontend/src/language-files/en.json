@@ -39,7 +39,10 @@
       "reception": "Reception",
       "candid": "Candid laughs",
       "bidaai": "Bidaai"
-    }
+    },
+    "passkeyCancelled": "No passkey was used: the window was closed, or this device has no passkey for this site yet. New here? Choose Create account.",
+    "passkeyUnknown": "This passkey is not registered on this site. Choose Create account first, or use the device where you made your account.",
+    "serverDown": "The FaceScan server cannot be reached. Check that it is running and try again."
   },
   "scan": {
     "eyebrow": "Face scan",

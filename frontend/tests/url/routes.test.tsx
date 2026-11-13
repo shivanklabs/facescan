@@ -682,3 +682,19 @@ describe('live scan oval', () => {
     expect(near.width).toBeGreaterThan(far.width);
   });
 });
+
+describe('passkey errors', () => {
+  it('explains each failure instead of one generic message', async () => {
+    const { passkeyErrorKey } = await import('@/lib/passkeys');
+    const { ApiError } = await import('@/lib/serverApi');
+    const closed = new Error('closed');
+    closed.name = 'NotAllowedError';
+    expect(passkeyErrorKey(closed)).toBe('welcome.passkeyCancelled');
+    expect(passkeyErrorKey(new ApiError(400, 'passkey_sign_in_failed'))).toBe(
+      'welcome.passkeyUnknown',
+    );
+    expect(passkeyErrorKey(new ApiError(409, 'email_taken'))).toBe('account.emailTaken');
+    expect(passkeyErrorKey(new ApiError(503, 'down'))).toBe('welcome.serverDown');
+    expect(passkeyErrorKey(new TypeError('Failed to fetch'))).toBe('welcome.serverDown');
+  });
+});
