@@ -28,6 +28,7 @@ from webauthn.helpers.exceptions import InvalidAuthenticationResponse, InvalidRe
 from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria,
     PublicKeyCredentialDescriptor,
+    PublicKeyCredentialHint,
     ResidentKeyRequirement,
     UserVerificationRequirement,
 )
@@ -61,6 +62,10 @@ from app.features.events.models import EventMember
 from app.features.login.models import AuthChallenge, Passkey, StaffKey, User
 
 CHALLENGE_MINUTES = 5
+# Ask the browser to offer the device's own fingerprint / face unlock first, then a nearby
+# phone (QR), instead of a USB security key. The fingerprint or face is checked on the device
+# and never leaves it: FaceScan stores only the passkey's public key (no biometric data).
+BUILT_IN_FIRST = [PublicKeyCredentialHint.CLIENT_DEVICE, PublicKeyCredentialHint.HYBRID]
 
 
 class SignInError(Exception):
@@ -137,6 +142,7 @@ def registration_options(ctx: AppContext, user: CurrentUser) -> str:
         user_id=user.user_id.bytes,
         user_name=f"user-{str(user.user_id)[:8]}",  # never the email
         challenge=challenge,
+        hints=BUILT_IN_FIRST,
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.REQUIRED,
             user_verification=UserVerificationRequirement.REQUIRED,
@@ -285,6 +291,7 @@ def new_account_options(ctx: AppContext, name: str, address: str) -> str:
         user_name=email,  # shown in the person's own password manager only
         user_display_name=name,
         challenge=challenge,
+        hints=BUILT_IN_FIRST,
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.REQUIRED,
             user_verification=UserVerificationRequirement.REQUIRED,

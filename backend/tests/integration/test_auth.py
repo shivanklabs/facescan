@@ -496,3 +496,11 @@ def test_suspended_people_can_still_see_why_and_delete_their_account(ctx: AppCon
     refused = again.get("/discover/photos")
     assert refused.status_code == 403 and refused.json()["detail"] == "account_suspended"
     assert again.post("/auth/delete-account", json={"confirm": "DELETE"}).status_code == 200
+
+
+def test_new_passkeys_ask_for_the_device_unlock_first(ctx: AppContext) -> None:
+    """Purpose: browsers offer built-in fingerprint / face unlock (then a phone), not a USB key."""
+    body = {"name": "Hint", "email": "hint@example.test", "account_type": "guest"}
+    options = new_client(ctx).post("/auth/register/options", json=body).json()
+    assert options["hints"] == ["client-device", "hybrid"]
+    assert options["authenticatorSelection"]["userVerification"] == "required"
