@@ -114,14 +114,34 @@ export function eyesClosed(eyes: EyeReading, limits: EyeLimits): boolean {
  * Side effects: none.
  */
 function readEyes(model: FaceLandmarker, frame: HTMLCanvasElement): EyeReading {
-  const result = model.detectForVideo(frame, performance.now());
+  // The camera can report a 0 x 0 picture for a moment; the model breaks on that.
+  if (frame.width === 0 || frame.height === 0) return { faces: 0, left: 0, right: 0 };
+  const result = detect(model, frame);
   const faces = result.faceBlendshapes.length;
   const categories = result.faceBlendshapes[0]?.categories ?? [];
   const score = (name: string) => categories.find((c) => c.categoryName === name)?.score ?? 0;
   return { faces, left: score('eyeBlinkLeft'), right: score('eyeBlinkRight') };
 }
 
-let lastBoxTime = 0;
+let lastTime = 0;
+
+/**
+ * Purpose: run the face model on one frame with a strictly increasing timestamp (the oval
+ *   and the blink check share the model). If the model fails, it is thrown away so the next
+ *   use loads a fresh one, and the caller gets LiveBlinkUnavailableError (the scan then uses
+ *   the timed burst instead of stopping).
+ * Inputs: model, a non-empty canvas. Outputs: the model's result.
+ * Side effects: resets the cached model on failure.
+ */
+function detect(model: FaceLandmarker, frame: HTMLCanvasElement) {
+  lastTime = Math.max(performance.now(), lastTime + 1);
+  try {
+    return model.detectForVideo(frame, lastTime);
+  } catch (error) {
+    landmarker = null;
+    throw new LiveBlinkUnavailableError(error instanceof Error ? error.message : 'model failed');
+  }
+}
 
 /**
  * Purpose: where the face is in the camera picture right now, for the live oval.
@@ -130,9 +150,13 @@ let lastBoxTime = 0;
  * Side effects: none (memory only; nothing is kept or sent).
  */
 export function faceBox(model: FaceLandmarker, video: HTMLVideoElement): FaceBox | null {
-  // VIDEO mode needs strictly increasing timestamps.
-  lastBoxTime = Math.max(performance.now(), lastBoxTime + 1);
-  const points = model.detectForVideo(video, lastBoxTime).faceLandmarks[0];
+  if (video.videoWidth === 0 || video.videoHeight === 0) return null;
+  let points: ReturnType<FaceLandmarker['detectForVideo']>['faceLandmarks'][number] | undefined;
+  try {
+    points = detect(model, grabCanvas(video)).faceLandmarks[0];
+  } catch {
+    return null; // the oval simply stays where it is
+  }
   if (!points || points.length === 0) return null;
   let minX = 1;
   let minY = 1;
