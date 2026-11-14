@@ -33,7 +33,7 @@ def test_two_workers_never_take_the_same_job(ctx: AppContext) -> None:
         start.wait()
         while (job := ctx.queue.claim(name)) is not None:
             taken[name].append(job.job_id)
-            time.sleep(0.001)  # hold the job briefly so both workers overlap
+            time.sleep(0.01)  # hold each job long enough that both workers really overlap
 
     threads = [threading.Thread(target=worker, args=(n,)) for n in taken]
     for t in threads:

@@ -37,6 +37,8 @@ export const routes = [
   {
     path: '/',
     element: <SiteLayout />,
+    // Shown for a moment while a page's code loads (no empty flash, no router warning).
+    hydrateFallbackElement: <div className="st-searching" aria-busy="true" />,
     children: [
       { index: true, element: <LoginPage /> },
       { path: 'scan', lazy: page(() => import('@/pages/guest/FaceScanPage')) },

@@ -3,8 +3,6 @@
 // Nothing is ever saved to disk or browser storage.
 
 export const FRAMES_CONTENT_TYPE = 'application/x-facescan-frames';
-export const FRAME_COUNT = 4;
-export const FRAME_INTERVAL_MS = 500;
 
 /**
  * Purpose: open the front camera and show it in the video element once it has mounted.
@@ -89,35 +87,6 @@ export function ovalFor(
 
 export interface ScanStep {
   key: 'lookStraight' | 'blink';
-}
-
-export function frameToJpeg(video: HTMLVideoElement): Promise<Blob> {
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const context = canvas.getContext('2d');
-  if (!context) return Promise.reject(new Error('canvas not available'));
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('could not capture frame'))),
-      'image/jpeg',
-      0.92,
-    );
-  });
-}
-
-export async function captureFrames(
-  video: HTMLVideoElement,
-  count = FRAME_COUNT,
-  intervalMs = FRAME_INTERVAL_MS,
-): Promise<Blob[]> {
-  const frames: Blob[] = [];
-  for (let i = 0; i < count; i += 1) {
-    if (i > 0) await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    frames.push(await frameToJpeg(video));
-  }
-  return frames;
 }
 
 export async function framesBody(frames: Blob[]): Promise<Uint8Array<ArrayBuffer>> {

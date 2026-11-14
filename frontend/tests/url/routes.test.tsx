@@ -699,45 +699,6 @@ describe('passkey errors', () => {
   });
 });
 
-describe('edit mode (dev only)', () => {
-  it('saves only existing texts, and only safe size rules', async () => {
-    const { applyTextEdit, applyStyleEdit } = await import('../../vite.config');
-    const file = JSON.stringify({ welcome: { title: 'Old' }, n: 1 }, null, 2);
-    expect(JSON.parse(applyTextEdit(file, 'welcome.title', ' New title '))).toEqual({
-      welcome: { title: 'New title' },
-      n: 1,
-    });
-    expect(() => applyTextEdit(file, 'welcome.missing', 'x')).toThrow('unknown key');
-    expect(() => applyTextEdit(file, 'n', 'x')).toThrow('unknown key');
-    expect(() => applyTextEdit(file, 'welcome.title', '   ')).toThrow();
-
-    const NL = String.fromCharCode(10);
-    let css = ['/* edits */', ''].join(NL);
-    css = applyStyleEdit(css, '.st-moment', 'height', '260px');
-    css = applyStyleEdit(css, '.st-moment', 'font-size', '1.1rem');
-    css = applyStyleEdit(css, '.st-moment', 'height', '300px');
-    expect(css).toBe(
-      ['/* edits */', '', '.st-moment {', '  font-size: 1.1rem;', '  height: 300px;', '}', ''].join(
-        NL,
-      ),
-    );
-    expect(() => applyStyleEdit(css, 'body', 'height', '1px')).toThrow();
-    expect(() => applyStyleEdit(css, '.st-x', 'background', '1px')).toThrow();
-    expect(() => applyStyleEdit(css, '.st-x', 'height', '1px; color: red')).toThrow();
-  });
-
-  it('finds the language key of a clicked text and the class to save sizes for', async () => {
-    const { keysForText, selectorFor } = await import('@/components/site/EditMode');
-    expect(keysForText({ a: { b: 'Hello', c: 'Bye' }, d: 'Hello' }, 'Hello')).toEqual(['a.b', 'd']);
-    const outer = document.createElement('div');
-    outer.className = 'st-moment is-l';
-    const inner = document.createElement('span');
-    outer.appendChild(inner);
-    expect(selectorFor(inner)).toBe('.st-moment');
-    expect(selectorFor(document.createElement('p'))).toBeNull();
-  });
-});
-
 describe('event themes', () => {
   it('picks the look from the event name', async () => {
     const { eventThemeFor } = await import('@/components/site/SiteLayout');

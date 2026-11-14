@@ -298,7 +298,6 @@
   },
   "staff": {
     "title": "Staff sign-in",
-    "open": "Staff sign-in (organisers, photographers)",
     "passkeyNeeded": "You signed in with a staff key. Add a passkey on this device now; from then on you sign in with it, and staff work (events, uploads, claims) needs it.",
     "key": "Staff key",
     "keyHint": "Staff key, e.g. FS-…",
