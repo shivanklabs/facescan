@@ -3,7 +3,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +29,8 @@ class Photo(Base):
 
     __tablename__ = "photos"
     __table_args__ = (
+        Index("ix_photos_event_corrected_time", "event_id", "corrected_time"),
+        Index("ix_photos_event_sha256", "event_id", "sha256"),
         CheckConstraint(f"status IN {PHOTO_STATUSES}", name="status"),
         CheckConstraint(
             "content_type IN ('image/jpeg', 'image/png', 'image/webp')", name="content_type"
@@ -45,14 +56,14 @@ class Photo(Base):
     width: Mapped[int] = mapped_column(Integer, nullable=False)
     height: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="quarantined")
-    sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64))
     phash: Mapped[str | None] = mapped_column(String(16))
     is_near_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     camera_make: Mapped[str | None] = mapped_column(String(64))
     camera_model: Mapped[str | None] = mapped_column(String(64))
     camera_serial: Mapped[str | None] = mapped_column(String(64))
-    corrected_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    corrected_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +16,14 @@ class Claim(Base):
 
     __tablename__ = "claims"
     __table_args__ = (
+        Index(
+            "uq_claims_pending_per_face",
+            "event_id",
+            "user_id",
+            "face_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
         CheckConstraint("status IN ('pending', 'accepted', 'approved', 'rejected')", name="status"),
     )
 

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from app.db.base import Base
 from app.db.columns import created_at, event_fk, uuid_pk
-from sqlalchemy import ForeignKey, LargeBinary, String
+from sqlalchemy import ForeignKey, Index, LargeBinary, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,6 +29,10 @@ class SceneSearchCandidate(Base):
     """Short-lived server-side record of candidate faces shown to a guest in scene search."""
 
     __tablename__ = "scene_search_candidates"
+    # Created by the migrations; declared here so autogenerate keeps it.
+    __table_args__ = (
+        Index("ix_scene_search_candidates_lookup", "event_id", "user_id", "photo_id", "face_id"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     event_id: Mapped[uuid.UUID] = event_fk()
@@ -48,6 +52,8 @@ class SceneSearchAttempt(Base):
     """Rate limiting attempt row for scene search per guest per event per day."""
 
     __tablename__ = "scene_search_attempts"
+    # Created by the migrations; declared here so autogenerate keeps it.
+    __table_args__ = (Index("ix_scene_search_attempts_rate", "event_id", "user_id", "created_at"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     event_id: Mapped[uuid.UUID] = event_fk()
@@ -61,6 +67,8 @@ class ClaimAttempt(Base):
     """Rate limiting attempt row for claims per guest per event per day."""
 
     __tablename__ = "claim_attempts"
+    # Created by the migrations; declared here so autogenerate keeps it.
+    __table_args__ = (Index("ix_claim_attempts_rate", "event_id", "user_id", "created_at"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     event_id: Mapped[uuid.UUID] = event_fk()

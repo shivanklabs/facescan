@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -82,6 +83,10 @@ class CameraOffset(Base):
     """Per-camera clock sync offset for an event."""
 
     __tablename__ = "camera_offsets"
+    # Created by the migrations; declared here so autogenerate keeps it.
+    __table_args__ = (
+        Index("ix_camera_offsets_event_model", "event_id", "camera_model", "camera_serial"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     event_id: Mapped[uuid.UUID] = event_fk()

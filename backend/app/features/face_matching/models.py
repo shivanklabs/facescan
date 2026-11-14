@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -49,6 +50,8 @@ class CannotLink(Base):
     """A face and/or photo marked as 'not me' for a guest in one event."""
 
     __tablename__ = "cannot_links"
+    # Created by the migrations; declared here so autogenerate keeps it.
+    __table_args__ = (Index("ix_cannot_links_event_user_photo", "event_id", "user_id", "photo_id"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     event_id: Mapped[uuid.UUID] = event_fk()
