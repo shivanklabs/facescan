@@ -103,7 +103,7 @@ describe('site menu', () => {
     renderAt('/photos');
     const menu = await screen.findByRole('navigation', { name: 'Main menu' });
     expect(menu).toHaveTextContent('My photos');
-    expect(menu).toHaveTextContent('Scan');
+    expect(menu).not.toHaveTextContent('Scan'); // the scan opens from My photos
     expect(menu).toHaveTextContent('Privacy');
     expect(menu).not.toHaveTextContent('Studio');
     expect(menu).not.toHaveTextContent('Health');

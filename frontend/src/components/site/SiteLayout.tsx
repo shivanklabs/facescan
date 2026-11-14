@@ -16,8 +16,8 @@ interface MenuItem {
 }
 
 /**
- * Purpose: the role-based menu under the top bar. Everyone signed in sees their own photos,
- *   scan and privacy; event owners and photographers also see Studio; platform admins
+ * Purpose: the role-based menu under the top bar. Everyone signed in sees their own photos
+ *   (the scan opens from there) and privacy; event owners and photographers also see Studio; platform admins
  *   also see Health.
  *   The server still checks every permission; the menu only hides what would be refused.
  * Inputs: the signed-in user's flags. Outputs: nav element. Side effects: none.
@@ -27,7 +27,6 @@ function SiteMenu({ me }: { me: Me }) {
   const items: MenuItem[] = [
     { to: '/photos', label: t('menu.photos') },
     { to: '/find', label: t('menu.find') },
-    { to: '/scan', label: t('menu.scan') },
     { to: '/privacy', label: t('menu.privacy') },
   ];
   if (me.can_create_events || me.is_staff) {
