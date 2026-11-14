@@ -80,6 +80,17 @@ export default function FaceScanPage() {
   const [agreed, setAgreed] = useState(false);
   const [message, setMessage] = useState('');
   const [usedFallback, setUsedFallback] = useState(false);
+  // Attach the camera to the <video> once it is on the page (the attach in
+  // startSelfieCamera can run before React has drawn the element; then the box stayed empty).
+  useEffect(() => {
+    const v = video.current;
+    const s = stream.current;
+    if (phase !== 'intro' && v && s && v.srcObject !== s) {
+      v.srcObject = s;
+      void v.play().catch(() => undefined);
+    }
+  }, [phase]);
+
   // The oval follows the face (size and place) while the camera is on; null = fixed oval.
   const [oval, setOval] = useState<OvalBox | null>(null);
 

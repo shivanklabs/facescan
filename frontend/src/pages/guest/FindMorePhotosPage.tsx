@@ -127,6 +127,16 @@ export default function FindMorePhotosPage() {
   const [message, setMessage] = useState('');
   const video = useRef<HTMLVideoElement | null>(null);
   const stream = useRef<MediaStream | null>(null);
+  // Attach the camera to the <video> once it is on the page (the attach in
+  // startSelfieCamera can run before React has drawn the element; then the box stayed empty).
+  useEffect(() => {
+    const v = video.current;
+    const s = stream.current;
+    if (claim === 'camera' && v && s && v.srcObject !== s) {
+      v.srcObject = s;
+      void v.play().catch(() => undefined);
+    }
+  }, [claim]);
 
   useEffect(() => {
     if (!me) return;

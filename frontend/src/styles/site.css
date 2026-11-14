@@ -1586,7 +1586,7 @@ body:has(.st-claim-camera) .st-help-panel {
 }
 
 .st-scan.is-camera .st-viewfinder {
-  width: min(100%, 520px, calc((100dvh - 310px) * 0.75));
+  width: max(240px, min(100%, 520px, calc((100dvh - 310px) * 0.75)));
   height: auto;
   max-height: none;
   aspect-ratio: 3 / 4;
