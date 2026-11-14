@@ -262,10 +262,10 @@ html::-webkit-scrollbar {
   justify-content: center;
   gap: 10px;
   border: 0;
-  border-radius: 999px;
-  padding: 14px 26px;
+  border-radius: var(--fs-radius-btn, 999px);
+  padding: 10px 20px;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.95rem;
   text-decoration: none;
   transition:
     transform 0.15s ease,
@@ -298,8 +298,8 @@ html::-webkit-scrollbar {
 }
 
 .st-btn-small {
-  padding: 8px 16px;
-  font-size: 0.9rem;
+  padding: 6px 12px;
+  font-size: 0.85rem;
 }
 
 .st-btn[disabled] {
@@ -499,7 +499,7 @@ html::-webkit-scrollbar {
   background: var(--fs-surface);
   border: 1px solid var(--fs-line);
   border-radius: var(--fs-radius);
-  padding: clamp(18px, 3vw, 28px);
+  padding: clamp(14px, 2.4vw, 22px);
   backdrop-filter: blur(14px);
 }
 
@@ -620,8 +620,19 @@ html::-webkit-scrollbar {
     border-color 0.3s ease;
 }
 
+/* Face guide states: scanning pulses in the theme's ring colour, amber when the distance is
+   wrong, green when the blink is caught. */
+.st-oval.is-warn {
+  border: 3px solid #f59e0b;
+}
+
+.st-oval.is-ok,
+.st-oval.is-live.is-ok {
+  border: 3px solid #10b981;
+}
+
 .st-oval.is-live {
-  border: 3px solid var(--fs-accent);
+  border: 3px solid var(--fs-scan-ring, var(--fs-accent));
   animation: st-breathe 1.4s ease-in-out infinite;
 }
 
@@ -865,7 +876,7 @@ html::-webkit-scrollbar {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(6, 5, 4, 0.94);
+  background: rgba(9, 9, 11, 0.95);
   display: grid;
   grid-template-rows: auto 1fr auto;
   color: #f4ede1;
@@ -957,10 +968,13 @@ html::-webkit-scrollbar {
 
 /* ---------------------------------------------------------------- simple pages (privacy, find more) */
 
+/* Inside pages sit in the middle of the screen (they used to hug the left edge). */
 .st-page {
   display: grid;
-  gap: 18px;
+  gap: 16px;
+  width: 100%;
   max-width: 760px;
+  margin: 0 auto;
 }
 
 .st-page h1 {
@@ -1572,7 +1586,7 @@ body:has(.st-claim-camera) .st-help-panel {
 }
 
 .st-scan.is-camera .st-viewfinder {
-  width: min(100%, 520px, calc((100dvh - 230px) * 0.75));
+  width: min(100%, 520px, calc((100dvh - 310px) * 0.75));
   height: auto;
   max-height: none;
   aspect-ratio: 3 / 4;
@@ -1598,6 +1612,35 @@ body:has(.st-claim-camera) .st-help-panel {
   padding: 10px 22px;
 }
 
+/* Scanner in a bright frosted-glass card. */
+.st-scan.is-camera {
+  padding: 16px;
+  border-radius: var(--fs-radius);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--fs-line);
+  box-shadow: var(--fs-shadow);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.st-trust {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--fs-muted);
+  text-align: center;
+}
+
+/* Gallery grid: neutral canvas, 10px gaps, the theme's card corners. */
+.st-grid {
+  column-gap: 10px;
+}
+
+.st-tile {
+  margin-bottom: 10px;
+  border-radius: var(--fs-radius);
+}
+
 /* Small checkbox / policy line on Create account. */
 .st-check-small {
   font-size: 0.82rem;
@@ -1609,7 +1652,10 @@ body:has(.st-claim-camera) .st-help-panel {
    SiteLayout): the site's own tokens are re-pointed, so every component follows. The photo
    viewer (.st-lightbox) keeps its own dark backdrop so photos keep full contrast. */
 
-:root[data-event-theme='default'] .studio {
+:root[data-event-theme='default'] .studio,
+:root:not([data-event-theme]) .studio {
+  --fs-scan-ring: #0284c7;
+  --fs-radius-btn: 10px;
   --fs-bg: #f8fafc;
   --fs-bg-raised: #ffffff;
   --fs-surface: #eff6ff;
@@ -1628,6 +1674,8 @@ body:has(.st-claim-camera) .st-help-panel {
 }
 
 :root[data-event-theme='corporate'] .studio {
+  --fs-scan-ring: #0284c7;
+  --fs-radius-btn: 10px;
   --fs-bg: #f8fafc;
   --fs-bg-raised: #ffffff;
   --fs-surface: #eff6ff;
@@ -1646,6 +1694,8 @@ body:has(.st-claim-camera) .st-help-panel {
 }
 
 :root[data-event-theme='wedding'] .studio {
+  --fs-scan-ring: #e11d48;
+  --fs-radius-btn: 9999px;
   --fs-bg: #fdfbf7;
   --fs-bg-raised: #ffffff;
   --fs-surface: #f5efe6;
@@ -1664,6 +1714,8 @@ body:has(.st-claim-camera) .st-help-panel {
 }
 
 :root[data-event-theme='college'] .studio {
+  --fs-scan-ring: #0891b2;
+  --fs-radius-btn: 12px;
   --fs-bg: #f8fafc;
   --fs-bg-raised: #ffffff;
   --fs-surface: #f3e8ff;
@@ -1682,6 +1734,8 @@ body:has(.st-claim-camera) .st-help-panel {
 }
 
 :root[data-event-theme='birthday'] .studio {
+  --fs-scan-ring: #f59e0b;
+  --fs-radius-btn: 9999px;
   --fs-bg: #fffdf9;
   --fs-bg-raised: #ffffff;
   --fs-surface: #fef3c7;
@@ -1699,8 +1753,8 @@ body:has(.st-claim-camera) .st-help-panel {
   color-scheme: light;
 }
 
-/* Glass top bar on event pages. */
-:root[data-event-theme] .st-bar {
+/* Glass top bar on every page. */
+.studio .st-bar {
   position: sticky;
   top: 0;
   z-index: 30;

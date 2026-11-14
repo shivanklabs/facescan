@@ -76,7 +76,8 @@
     "stepDone": "Got it!",
     "usedFallback": "Live blink could not start on this phone, so Quick burst was used.",
     "closer": "Come a little closer",
-    "farther": "Move back a little"
+    "farther": "Move back a little",
+    "trust": "Privacy first: your face scan is only used to find your event photos."
   },
   "photos": {
     "eyebrow": "Your gallery",

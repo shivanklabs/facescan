@@ -281,7 +281,7 @@ export default function FaceScanPage() {
           <>
             <video ref={video} playsInline muted aria-label={t('scan.title')} />
             <div
-              className={`st-oval ${phase === 'capturing' ? 'is-live' : ''} ${oval ? 'is-tracking' : ''}`}
+              className={`st-oval ${phase === 'capturing' ? 'is-live' : ''} ${oval ? 'is-tracking' : ''} ${oval && oval.distance !== 'ok' && phase === 'camera' ? 'is-warn' : ''} ${step === 'eyesOpen' ? 'is-ok' : ''}`}
               style={
                 oval
                   ? {
@@ -361,6 +361,7 @@ export default function FaceScanPage() {
             </button>
           )}
           {phase === 'capturing' && <p className="st-note">{t('scan.holdStill')}</p>}
+          {phase !== 'intro' && <p className="st-trust">{t('scan.trust')}</p>}
           {message && (
             <p className="st-alert" role="alert">
               {message}
