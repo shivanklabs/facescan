@@ -34,7 +34,8 @@ export function afterSignInPath(next: string | null): string {
 const ACCOUNT_TYPES: AccountType[] = ['guest', 'organiser', 'photographer'];
 
 /**
- * The moments wall on the front page: colour tiles until real event photos are added.
+ * The moments wall on the front page: free Pexels photos (public/moments, see
+ * CREDITS.md) over the moment's colours, which show while a photo loads.
  * Heights are counted in grid rows (s = 2, m = 3, l = 4) and every column adds up to the same
  * total (3 columns x 12 rows on wide screens, 2 x 18 on phones), so the columns start and end
  * on one line. col / phoneCol say which column a tile stands in.
@@ -46,14 +47,13 @@ const MOMENTS: {
   phoneCol: 1 | 2;
   a: string;
   b: string;
-  found?: boolean;
 }[] = [
-  { key: 'haldi', size: 'l', col: 1, phoneCol: 1, a: '#f6c445', b: '#d97a12', found: true },
+  { key: 'haldi', size: 'l', col: 1, phoneCol: 1, a: '#f6c445', b: '#d97a12' },
   { key: 'baraat', size: 'm', col: 2, phoneCol: 1, a: '#e4572e', b: '#7a1d14' },
   { key: 'cake', size: 's', col: 3, phoneCol: 2, a: '#f3d9c4', b: '#c0896a' },
   { key: 'mehendi', size: 'm', col: 1, phoneCol: 1, a: '#7e9b4c', b: '#2f4a25' },
-  { key: 'varmala', size: 'l', col: 2, phoneCol: 1, a: '#f1a7b5', b: '#b23a5b', found: true },
-  { key: 'dance', size: 'l', col: 3, phoneCol: 2, a: '#3e5ba9', b: '#140f2e', found: true },
+  { key: 'varmala', size: 'l', col: 2, phoneCol: 1, a: '#f1a7b5', b: '#b23a5b' },
+  { key: 'dance', size: 'l', col: 3, phoneCol: 2, a: '#3e5ba9', b: '#140f2e' },
   { key: 'sangeet', size: 's', col: 1, phoneCol: 1, a: '#7a3f9d', b: '#251238' },
   { key: 'pheras', size: 's', col: 2, phoneCol: 1, a: '#ff9a3c', b: '#8c2d0c' },
   { key: 'reception', size: 'm', col: 3, phoneCol: 2, a: '#1f6f78', b: '#0b2730' },
@@ -282,7 +282,7 @@ export default function LoginPage() {
         {MOMENTS.map((m, i) => (
           <figure
             key={m.key}
-            className={`st-moment is-${m.size} ${m.found ? 'is-found' : ''}`}
+            className={`st-moment is-${m.size}`}
             style={
               {
                 '--a': m.a,
@@ -293,7 +293,7 @@ export default function LoginPage() {
               } as CSSProperties
             }
           >
-            {m.found && <span className="st-moment-found">{t('welcome.found')}</span>}
+            <img src={`/moments/${m.key}.jpg`} alt="" loading="lazy" decoding="async" />
             <figcaption>{t(`welcome.moment.${m.key}`)}</figcaption>
           </figure>
         ))}

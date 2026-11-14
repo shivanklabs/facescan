@@ -400,6 +400,14 @@ html::-webkit-scrollbar {
   --press: 0.97;
 }
 
+.st-moment img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .st-moment figcaption {
   position: absolute;
   left: 10px;
@@ -410,37 +418,6 @@ html::-webkit-scrollbar {
   color: #fff8ec;
   font-size: 0.78rem;
   backdrop-filter: blur(6px);
-}
-
-/* FaceScan's own mark: viewfinder corners where a face was found. */
-.st-moment.is-found::before {
-  content: '';
-  position: absolute;
-  inset: 22% 26% 30%;
-  border-radius: 12px;
-  background:
-    linear-gradient(#fff8ec, #fff8ec) top left / 18px 2px,
-    linear-gradient(#fff8ec, #fff8ec) top left / 2px 18px,
-    linear-gradient(#fff8ec, #fff8ec) top right / 18px 2px,
-    linear-gradient(#fff8ec, #fff8ec) top right / 2px 18px,
-    linear-gradient(#fff8ec, #fff8ec) bottom left / 18px 2px,
-    linear-gradient(#fff8ec, #fff8ec) bottom left / 2px 18px,
-    linear-gradient(#fff8ec, #fff8ec) bottom right / 18px 2px,
-    linear-gradient(#fff8ec, #fff8ec) bottom right / 2px 18px;
-  background-repeat: no-repeat;
-  opacity: 0.9;
-}
-
-.st-moment-found {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--fs-accent);
-  color: var(--fs-accent-ink);
-  font-size: 0.74rem;
-  font-weight: 700;
 }
 
 .st-eyebrow {
@@ -1585,6 +1562,42 @@ body:has(.st-claim-camera) .st-help-panel {
   display: none;
 }
 
+/* Scan with the camera on (every screen size): only the scan box, sized to fit the screen
+   (3:4, never taller than the space left), and one small Start button under it. */
+.st-scan.is-camera {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 14px;
+  min-height: auto;
+}
+
+.st-scan.is-camera .st-viewfinder {
+  width: min(100%, 520px, calc((100dvh - 230px) * 0.75));
+  height: auto;
+  max-height: none;
+  aspect-ratio: 3 / 4;
+}
+
+.st-scan.is-camera .st-eyebrow,
+.st-scan.is-camera .st-tips,
+.st-scan.is-camera .st-fine,
+.st-scan.is-camera .st-scan-side h1 {
+  display: none;
+}
+
+.st-scan.is-camera .st-scan-side {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.st-scan.is-camera .st-btn {
+  width: auto;
+  min-width: 150px;
+  padding: 10px 22px;
+}
+
 /* Small checkbox / policy line on Create account. */
 .st-check-small {
   font-size: 0.82rem;
@@ -1746,22 +1759,6 @@ body:has(.st-claim-camera) .st-help-panel {
   .st-tips {
     margin: 12px 0 16px;
     font-size: 0.9rem;
-  }
-
-  .st-scan.is-camera .st-eyebrow,
-  .st-scan.is-camera .st-tips,
-  .st-scan.is-camera .st-fine {
-    display: none;
-  }
-
-  .st-scan.is-camera .st-scan-side h1 {
-    font-size: 1.25rem;
-    margin-bottom: 8px;
-    text-align: center;
-  }
-
-  .st-scan.is-camera .st-btn {
-    width: 100%;
   }
 
   .st-prompt {
