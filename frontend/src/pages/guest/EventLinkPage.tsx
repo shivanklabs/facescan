@@ -1,6 +1,7 @@
 // EventLinkPage: where a QR code or invite link lands (/e/:eventId?k=key). Shows the event's
 // name; signed-out people sign in first and come back here; signed-in people join the event
 // and go to the face scan, then straight to this event's photos.
+import { useEventTheme } from '@/components/site/SiteLayout';
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -23,6 +24,7 @@ export default function EventLinkPage() {
   const { me, loading } = useCurrentUser();
   const [state, setState] = useState<LinkState>(key ? 'checking' : 'invalid');
   const [eventName, setEventName] = useState('');
+  useEventTheme(eventName);
   const [hasPhotos, setHasPhotos] = useState(false);
 
   useEffect(() => {

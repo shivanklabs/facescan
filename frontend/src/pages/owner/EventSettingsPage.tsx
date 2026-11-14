@@ -1,6 +1,7 @@
 // EventSettingsPage: one owner page for an event's settings: invite links with a printable QR,
 // sections, the search window, photographer keys (no emails) and camera clocks.
 // Every action is checked again by the server (organiser of this event, strong sign-in).
+import { useEventTheme } from '@/components/site/SiteLayout';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -517,6 +518,7 @@ export default function EventSettingsPage() {
   const { eventId = '' } = useParams();
   const { me, loading } = useCurrentUser();
   const [event, setEvent] = useState<EventInfo | null>(null);
+  useEventTheme(event?.name);
   const [error, setError] = useState('');
 
   const load = useCallback(() => {

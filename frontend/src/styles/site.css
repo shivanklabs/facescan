@@ -1604,6 +1604,111 @@ body:has(.st-claim-camera) .st-help-panel {
   color: var(--fs-muted);
 }
 
+/* ---------------------------------------------------------------- event themes
+   Event pages take a light, airy look picked from the event's name (useEventTheme in
+   SiteLayout): the site's own tokens are re-pointed, so every component follows. The photo
+   viewer (.st-lightbox) keeps its own dark backdrop so photos keep full contrast. */
+
+:root[data-event-theme='default'] .studio {
+  --fs-bg: #f8fafc;
+  --fs-bg-raised: #ffffff;
+  --fs-surface: #eff6ff;
+  --fs-surface-strong: #dbeafe;
+  --fs-line: #e2e8f0;
+  --fs-text: #0f172a;
+  --fs-muted: #475569;
+  --fs-accent: #2563eb;
+  --fs-accent-deep: #1d4ed8;
+  --fs-accent-ink: #ffffff;
+  --fs-radius: 12px;
+  --fs-serif: var(--fs-sans);
+  --fs-shadow: 0 14px 36px rgba(15, 23, 42, 0.1);
+  background: #f8fafc;
+  color-scheme: light;
+}
+
+:root[data-event-theme='corporate'] .studio {
+  --fs-bg: #f8fafc;
+  --fs-bg-raised: #ffffff;
+  --fs-surface: #eff6ff;
+  --fs-surface-strong: #dbeafe;
+  --fs-line: #e2e8f0;
+  --fs-text: #0f172a;
+  --fs-muted: #475569;
+  --fs-accent: #2563eb;
+  --fs-accent-deep: #1d4ed8;
+  --fs-accent-ink: #ffffff;
+  --fs-radius: 12px;
+  --fs-serif: var(--fs-sans);
+  --fs-shadow: 0 14px 36px rgba(15, 23, 42, 0.1);
+  background: #f8fafc;
+  color-scheme: light;
+}
+
+:root[data-event-theme='wedding'] .studio {
+  --fs-bg: #fdfbf7;
+  --fs-bg-raised: #ffffff;
+  --fs-surface: #f5efe6;
+  --fs-surface-strong: #ffe4e6;
+  --fs-line: #e6dec8;
+  --fs-text: #2c1810;
+  --fs-muted: #785a46;
+  --fs-accent: #be123c;
+  --fs-accent-deep: #9f1239;
+  --fs-accent-ink: #ffffff;
+  --fs-radius: 16px;
+  --fs-serif: Georgia, 'Times New Roman', serif;
+  --fs-shadow: 0 14px 36px rgba(15, 23, 42, 0.1);
+  background: #fdfbf7;
+  color-scheme: light;
+}
+
+:root[data-event-theme='college'] .studio {
+  --fs-bg: #f8fafc;
+  --fs-bg-raised: #ffffff;
+  --fs-surface: #f3e8ff;
+  --fs-surface-strong: #ede9fe;
+  --fs-line: #e2e8f0;
+  --fs-text: #0f172a;
+  --fs-muted: #475569;
+  --fs-accent: #6d28d9;
+  --fs-accent-deep: #5b21b6;
+  --fs-accent-ink: #ffffff;
+  --fs-radius: 14px;
+  --fs-serif: var(--fs-sans);
+  --fs-shadow: 0 14px 36px rgba(15, 23, 42, 0.1);
+  background: #f8fafc;
+  color-scheme: light;
+}
+
+:root[data-event-theme='birthday'] .studio {
+  --fs-bg: #fffdf9;
+  --fs-bg-raised: #ffffff;
+  --fs-surface: #fef3c7;
+  --fs-surface-strong: #fef3c7;
+  --fs-line: #fde68a;
+  --fs-text: #1c1917;
+  --fs-muted: #57534e;
+  --fs-accent: #d97706;
+  --fs-accent-deep: #b45309;
+  --fs-accent-ink: #ffffff;
+  --fs-radius: 20px;
+  --fs-serif: var(--fs-sans);
+  --fs-shadow: 0 14px 36px rgba(15, 23, 42, 0.1);
+  background: #fffdf9;
+  color-scheme: light;
+}
+
+/* Glass top bar on event pages. */
+:root[data-event-theme] .st-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--fs-line);
+}
+
 /* ---------------------------------------------------------------- Edit mode (dev only) */
 
 .st-edit-toggle {

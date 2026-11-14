@@ -68,6 +68,52 @@ function AccountStatusNote({ me }: { me: Me }) {
   );
 }
 
+export type EventTheme = 'wedding' | 'college' | 'corporate' | 'birthday' | 'default';
+
+/** Words in an event's name (English, Hindi, Hinglish) that pick its look. First match wins. */
+const THEME_WORDS: [EventTheme, RegExp][] = [
+  [
+    'wedding',
+    /wedding|shaadi|shadi|vivah|haldi|mehndi|mehendi|sangeet|baraat|engagement|sagai|reception|nikah|शादी|विवाह|हल्दी|संगीत/i,
+  ],
+  ['birthday', /birthday|bday|b'day|anniversary|baby shower|janamdin|जन्मदिन|सालगिरह/i],
+  [
+    'college',
+    /college|university|campus|school|fest\b|freshers|farewell|convocation|annual day|कॉलेज/i,
+  ],
+  [
+    'corporate',
+    /corporate|conference|summit|meetup|offsite|seminar|workshop|expo|launch|company|office|town ?hall/i,
+  ],
+];
+
+/**
+ * Purpose: the look of an event's pages, chosen automatically from its name (no setting).
+ * Inputs: event name (or undefined while loading). Outputs: an EventTheme.
+ * Side effects: none.
+ */
+export function eventThemeFor(name: string | undefined | null): EventTheme {
+  if (!name) return 'default';
+  return THEME_WORDS.find(([, words]) => words.test(name))?.[0] ?? 'default';
+}
+
+/**
+ * Purpose: while an event's page is open, dress the whole site (top bar included) in that
+ *   event's theme; back to the normal look when the page closes. UI only.
+ * Inputs: the event's name. Outputs: none.
+ * Side effects: sets / removes data-event-theme on <html>.
+ */
+export function useEventTheme(name: string | undefined | null) {
+  const theme = eventThemeFor(name);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.eventTheme = theme;
+    return () => {
+      delete root.dataset.eventTheme;
+    };
+  }, [theme]);
+}
+
 /** Board tiles that lean towards the mouse (front page, My photos, gallery grid, Find more). */
 const TILT_TILES = '.st-moment, .st-event-tile, .st-tile, .st-candidate';
 const TILT_DEGREES = 9;

@@ -737,3 +737,16 @@ describe('edit mode (dev only)', () => {
     expect(selectorFor(document.createElement('p'))).toBeNull();
   });
 });
+
+describe('event themes', () => {
+  it('picks the look from the event name', async () => {
+    const { eventThemeFor } = await import('@/components/site/SiteLayout');
+    expect(eventThemeFor('Sharma Wedding')).toBe('wedding');
+    expect(eventThemeFor('Riya ki Haldi')).toBe('wedding');
+    expect(eventThemeFor("Aarav's 5th Birthday")).toBe('birthday');
+    expect(eventThemeFor('IIT Tech Fest 2026')).toBe('college');
+    expect(eventThemeFor('Annual Sales Summit')).toBe('corporate');
+    expect(eventThemeFor('Diwali night')).toBe('default');
+    expect(eventThemeFor(undefined)).toBe('default');
+  });
+});

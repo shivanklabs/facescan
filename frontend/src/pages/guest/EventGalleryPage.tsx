@@ -1,6 +1,7 @@
 // EventGalleryPage: one event's photos of me as a 3D coverflow (three.js, Photo lab look:
 // polaroid frames on a dark stage), with a light grid for slow phones, no WebGL or "reduce
 // motion" (they can still switch to 3D). Tap the front photo to view it full screen; download originals; "Not me".
+import { useEventTheme } from '@/components/site/SiteLayout';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -348,6 +349,7 @@ export default function EventGalleryPage() {
   const { eventId = '' } = useParams();
   const { me, loading } = useCurrentUser();
   const [group, setGroup] = useState<EventPhotos | null | undefined>(undefined);
+  useEventTheme(group?.event_name);
   const [error, setError] = useState('');
   const [index, setIndex] = useState(0);
   const [viewing, setViewing] = useState(false);
