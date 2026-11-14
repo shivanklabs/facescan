@@ -42,6 +42,7 @@ from app.interfaces.face_analyzer import (
     SelfieQuery,
     SelfieRejectedError,
     StoredFace,
+    Vector,
 )
 
 logger = logging.getLogger("facescan.vision.download")
@@ -158,6 +159,27 @@ def strip_sensitive_exif_lossless(data: bytes) -> bytes:
     except Exception:
         logger.warning("lossless EXIF stripping failed: unexpected error processing metadata")
         return data
+
+
+def fuse_frames(frames: list[SelfieQuery]) -> dict[str, Vector]:
+    """
+    Purpose: one search query from several selfie frames of the same person: per engine, the
+        frames' unit vectors are averaged with weights from each face's quality (frames that
+        failed the quality gate count half), then re-normalised. A sharp, frontal frame so
+        pulls the query towards the person more than a blurred or turned one.
+    Inputs: selfie frames (same engines). Outputs: engine -> unit vector.
+    Side effects: none (memory only).
+    """
+    weights = np.array(
+        [max(f.quality, 0.05) * (1.0 if f.strong else 0.5) for f in frames], dtype=np.float32
+    )
+    fused: dict[str, Vector] = {}
+    for engine in frames[0].vectors:
+        stacked = np.stack([f.vectors[engine] for f in frames]).astype(np.float32)
+        mean = (stacked * weights[:, None]).sum(axis=0) / float(weights.sum())
+        norm = max(float(np.linalg.norm(mean)), 1e-12)
+        fused[engine] = (mean / norm).astype(np.float32)
+    return fused
 
 
 class FacescanAiFaceAnalyzer:
@@ -289,7 +311,9 @@ class FacescanAiFaceAnalyzer:
             query = self._get_pipeline().analyse_selfie_frames([image], self._gate)
         except SelfieFaceCountError as exc:
             raise SelfieRejectedError(exc.count) from exc
-        return SelfieQuery(vectors=dict(query.vectors), strong=query.strong)
+        return SelfieQuery(
+            vectors=dict(query.vectors), strong=query.strong, quality=float(query.quality.value)
+        )
 
     @staticmethod
     def _index(faces: list[StoredFace], versions: dict[str, str]) -> EventIndex:
@@ -384,11 +408,7 @@ class FacescanAiFaceAnalyzer:
             agree = len(winners) == 1 and None not in winners
             if not agree:
                 return FramesMatch(release=[], some_photos_missing=True, frames_agree=False)
-            combined = {}
-            for engine in frames[0].vectors:
-                mean = np.mean([f.vectors[engine] for f in frames], axis=0)
-                norm = max(float(np.linalg.norm(mean)), 1e-12)
-                combined[engine] = (mean / norm).astype(np.float32)
+            combined = fuse_frames(frames)
             result = match_event(index, combined, all(f.strong for f in frames), config)
             return FramesMatch(
                 release=[UUID(p) for p in result.release_photos],

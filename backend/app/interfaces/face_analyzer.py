@@ -97,10 +97,11 @@ class SelfieQuery:
 
     vectors: dict[str, Vector]
     strong: bool
+    quality: float = 1.0  # the face's quality score (0..1); weights the frame when fused
 
     def __repr__(self) -> str:
         """Purpose: debug text without vectors."""
-        return f"SelfieQuery(strong={self.strong})"
+        return f"SelfieQuery(strong={self.strong}, quality={self.quality:.2f})"
 
 
 @dataclass(frozen=True, slots=True)

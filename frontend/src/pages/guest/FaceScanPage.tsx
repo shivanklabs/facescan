@@ -253,16 +253,19 @@ export default function FaceScanPage() {
 
   const lang = i18n.language === 'hi' ? 'hi' : 'en';
   const noticeText = notice?.texts[lang]?.notice ?? '';
+  const HINTS = ['closer', 'farther', 'center', 'straight', 'light', 'still'];
   const stepText =
-    step === 'blink'
-      ? t('scan.stepBlink')
-      : step === 'findFace'
-        ? t('scan.stepFindFace')
-        : step === 'eyesOpen'
-          ? t('scan.stepDone')
-          : step
-            ? t('scan.stepStraight')
-            : t('scan.ready');
+    step && HINTS.includes(step)
+      ? t(`scan.hint.${step}`)
+      : step === 'blink'
+        ? t('scan.stepBlink')
+        : step === 'findFace'
+          ? t('scan.stepFindFace')
+          : step === 'eyesOpen'
+            ? t('scan.stepDone')
+            : step
+              ? t('scan.stepStraight')
+              : t('scan.ready');
 
   if (phase === 'searching') {
     return (

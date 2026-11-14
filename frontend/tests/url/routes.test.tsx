@@ -750,3 +750,24 @@ describe('event themes', () => {
     expect(eventThemeFor(undefined)).toBe('default');
   });
 });
+
+describe('scan quality gate', () => {
+  it('asks to come closer, move back, centre or look straight before taking a frame', async () => {
+    const { frameQuality } = await import('@/lib/liveBlink');
+    const frame = document.createElement('canvas');
+    const face = (x0: number, x1: number, y0: number, y1: number, nose = (x0 + x1) / 2) => {
+      const points = Array.from({ length: 300 }, () => ({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 }));
+      points[0] = { x: x0, y: y0 };
+      points[2] = { x: x1, y: y1 };
+      points[1] = { x: nose, y: (y0 + y1) / 2 };
+      points[33] = { x: x0 + (x1 - x0) * 0.25, y: y0 + 0.1 };
+      points[263] = { x: x0 + (x1 - x0) * 0.75, y: y0 + 0.1 };
+      return points;
+    };
+    expect(frameQuality(frame, face(0.45, 0.55, 0.4, 0.6)).hint).toBe('closer');
+    expect(frameQuality(frame, face(0.05, 0.95, 0.05, 0.95)).hint).toBe('farther');
+    expect(frameQuality(frame, face(0.6, 0.95, 0.3, 0.7)).hint).toBe('center');
+    expect(frameQuality(frame, face(0.3, 0.7, 0.3, 0.7, 0.62)).hint).toBe('straight');
+    expect(frameQuality(frame, face(0.3, 0.7, 0.3, 0.7)).hint).toBeNull(); // light/sharpness need a real canvas
+  });
+});

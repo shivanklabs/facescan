@@ -10,7 +10,18 @@ import wasmBinaryNoSimd from '@mediapipe/tasks-vision/vision_wasm_nosimd_interna
 import modelUrl from '@/assets/models/face_landmarker.task?url';
 import { grabCanvas, type FaceBox } from '@/lib/cameraFrames';
 
-export type LiveStep = 'findFace' | 'lookStraight' | 'blink' | 'eyesOpen';
+export type LiveStep =
+  | 'findFace'
+  | 'lookStraight'
+  | 'blink'
+  | 'eyesOpen'
+  // quality hints while waiting for a good first frame
+  | 'closer'
+  | 'farther'
+  | 'center'
+  | 'straight'
+  | 'light'
+  | 'still';
 
 /** The live detector could not start on this device (caller falls back to the timed burst). */
 export class LiveBlinkUnavailableError extends Error {}
@@ -28,6 +39,9 @@ const STEADY_MS = 600; // one open-eyed face for this long before the first fram
 const FIND_FACE_TIMEOUT_MS = 12_000;
 const BLINK_TIMEOUT_MS = 8_000;
 const REOPEN_SETTLE_MS = 350;
+const RELAX_GATE_MS = 8_000; // after this, take the best frame seen instead of waiting more
+const BACK_CANDIDATES = 6; // frames looked at after the blink to pick the sharpest
+const FIRST_LOOK_RESTING = [0.1, 0.1]; // resting eye scores when the gate was relaxed
 const LOAD_TIMEOUT_MS = 20_000;
 
 let landmarker: Promise<FaceLandmarker> | null = null;
@@ -65,6 +79,106 @@ export interface EyeReading {
   faces: number;
   left: number;
   right: number;
+  points?: { x: number; y: number }[]; // the face's landmarks (0..1), for the quality gate
+}
+
+export type FrameHint = 'closer' | 'farther' | 'center' | 'straight' | 'light' | 'still';
+
+/** Face share of the picture, centring, turn, light and sharpness limits for a usable selfie. */
+const QUALITY = {
+  minShare: 0.2,
+  maxShare: 0.75,
+  maxTurn: 0.12,
+  minLight: 60,
+  maxLight: 225,
+  minSharp: 30,
+} as const;
+
+/**
+ * Purpose: judge one selfie frame before it is used (the biggest cause of wrong or missing
+ *   matches is a poor selfie): face size, centring, looking straight (nose against the eye
+ *   corners), light and sharpness (Laplacian variance of a small grey crop of the face).
+ * Inputs: the frame canvas and the face landmarks (0..1).
+ * Outputs: { hint: what to fix, or null when good; score: sharpness, to pick the best }.
+ * Side effects: none (one small canvas in memory).
+ */
+export function frameQuality(
+  frame: HTMLCanvasElement,
+  points: { x: number; y: number }[],
+): { hint: FrameHint | null; score: number } {
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const share = maxX - minX;
+  if (share < QUALITY.minShare) return { hint: 'closer', score: 0 };
+  if (share > QUALITY.maxShare) return { hint: 'farther', score: 0 };
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  if (cx < 0.25 || cx > 0.75 || cy < 0.2 || cy > 0.8) return { hint: 'center', score: 0 };
+  const nose = points[1];
+  const left = points[33];
+  const right = points[263];
+  if (nose && left && right) {
+    const eyes = Math.abs(right.x - left.x) || 1;
+    if (Math.abs(nose.x - (left.x + right.x) / 2) / eyes > QUALITY.maxTurn) {
+      return { hint: 'straight', score: 0 };
+    }
+  }
+  const size = 64;
+  const crop = document.createElement('canvas');
+  crop.width = size;
+  crop.height = size;
+  const ctx = crop.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return { hint: null, score: 1 };
+  ctx.drawImage(
+    frame,
+    minX * frame.width,
+    minY * frame.height,
+    share * frame.width,
+    (maxY - minY) * frame.height,
+    0,
+    0,
+    size,
+    size,
+  );
+  const px = ctx.getImageData(0, 0, size, size).data;
+  const grey = new Float32Array(size * size);
+  let light = 0;
+  for (let i = 0; i < grey.length; i++) {
+    const g =
+      0.299 * (px[i * 4] ?? 0) + 0.587 * (px[i * 4 + 1] ?? 0) + 0.114 * (px[i * 4 + 2] ?? 0);
+    grey[i] = g;
+    light += g;
+  }
+  light /= grey.length;
+  if (light < QUALITY.minLight || light > QUALITY.maxLight) return { hint: 'light', score: 0 };
+  let sum = 0;
+  let sumSq = 0;
+  let n = 0;
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = y * size + x;
+      const lap =
+        4 * (grey[i] ?? 0) -
+        (grey[i - 1] ?? 0) -
+        (grey[i + 1] ?? 0) -
+        (grey[i - size] ?? 0) -
+        (grey[i + size] ?? 0);
+      sum += lap;
+      sumSq += lap * lap;
+      n++;
+    }
+  }
+  const sharp = sumSq / n - (sum / n) ** 2;
+  if (sharp < QUALITY.minSharp) return { hint: 'still', score: sharp };
+  return { hint: null, score: sharp };
 }
 
 export interface EyeLimits {
@@ -118,9 +232,10 @@ function readEyes(model: FaceLandmarker, frame: HTMLCanvasElement): EyeReading {
   if (frame.width === 0 || frame.height === 0) return { faces: 0, left: 0, right: 0 };
   const result = detect(model, frame);
   const faces = result.faceBlendshapes.length;
+  const points = result.faceLandmarks[0];
   const categories = result.faceBlendshapes[0]?.categories ?? [];
   const score = (name: string) => categories.find((c) => c.categoryName === name)?.score ?? 0;
-  return { faces, left: score('eyeBlinkLeft'), right: score('eyeBlinkRight') };
+  return { faces, left: score('eyeBlinkLeft'), right: score('eyeBlinkRight'), points };
 }
 
 let lastTime = 0;
@@ -212,24 +327,43 @@ export async function captureWithLiveBlink(
   let steadySince = 0;
   let resting: number[] = [];
   let front: HTMLCanvasElement | null = null;
+  let sharpest: { frame: HTMLCanvasElement; score: number } | null = null; // in the steady run
+  let bestSeen: { frame: HTMLCanvasElement; score: number } | null = null; // any open-eyed face
   const findDeadline = performance.now() + FIND_FACE_TIMEOUT_MS;
+  const relaxAt = performance.now() + RELAX_GATE_MS;
   while (!front) {
     stopIfAborted();
     if (performance.now() > findDeadline) throw new BlinkTimeoutError('no_face');
     const now = await nextFrame();
     const frame = grabCanvas(video);
     const eyes = readEyes(model, frame);
-    if (eyes.faces !== 1 || !eyesOpen(eyes, FIRST_LOOK_LIMITS)) {
+    if (eyes.faces !== 1 || !eyesOpen(eyes, FIRST_LOOK_LIMITS) || !eyes.points) {
       steadySince = 0;
       resting = [];
+      sharpest = null;
       onStep('findFace');
+      continue;
+    }
+    const quality = frameQuality(frame, eyes.points);
+    if (!bestSeen || quality.score > bestSeen.score) bestSeen = { frame, score: quality.score };
+    if (quality.hint) {
+      // Never stuck: after a while the best frame seen so far is good enough.
+      if (now > relaxAt && bestSeen) {
+        front = bestSeen.frame;
+        break;
+      }
+      steadySince = 0;
+      sharpest = null;
+      onStep(quality.hint);
       continue;
     }
     onStep('lookStraight');
     resting.push(eyes.left, eyes.right);
+    if (!sharpest || quality.score > sharpest.score) sharpest = { frame, score: quality.score };
     if (steadySince === 0) steadySince = now;
-    if (now - steadySince >= STEADY_MS) front = frame;
+    if (now - steadySince >= STEADY_MS) front = sharpest.frame;
   }
+  if (resting.length === 0) resting = FIRST_LOOK_RESTING;
   const limits = eyeLimits(resting);
 
   // 2. Blink: keep the last open frame before it, the most-closed frame during it, and the
@@ -265,6 +399,19 @@ export async function captureWithLiveBlink(
   onStep('eyesOpen');
   await new Promise((resolve) => setTimeout(resolve, REOPEN_SETTLE_MS));
   stopIfAborted();
-  const back = grabCanvas(video);
+  let back = grabCanvas(video);
+  let backScore = -1;
+  for (let i = 0; i < BACK_CANDIDATES; i++) {
+    await nextFrame();
+    const frame = grabCanvas(video);
+    const eyes = readEyes(model, frame);
+    if (eyes.faces !== 1 || !eyes.points || !eyesOpen(eyes, limits)) continue;
+    const quality = frameQuality(frame, eyes.points);
+    const score = quality.hint ? quality.score / 4 : quality.score;
+    if (score > backScore) {
+      backScore = score;
+      back = frame;
+    }
+  }
   return Promise.all([front, beforeBlink, closedFrame, afterBlink, back].map(toJpeg));
 }
